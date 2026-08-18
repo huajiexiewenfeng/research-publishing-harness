@@ -8,6 +8,7 @@ export type ErrorCode =
   | 'APPROVAL_STALE'
   | 'ARTIFACT_EXISTS'
   | 'ARTIFACT_NOT_FOUND'
+  | 'WORKSPACE_PATH_INVALID'
   | 'CHARACTER_LIMIT_EXCEEDED';
 
 export class HarnessError extends Error {
