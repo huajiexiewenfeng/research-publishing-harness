@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/candidate/1.0",
+  "title": "Content Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "title",
+    "source_type",
+    "research_track",
+    "thesis_hint",
+    "source_refs",
+    "privacy",
+    "status",
+    "captured_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "candidate_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "source_type": {
+      "enum": ["commit", "design", "failure", "eval", "discussion", "external_signal"]
+    },
+    "research_track": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "thesis_hint": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "novelty_hint": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "privacy": { "enum": ["public", "needs_review", "private"] },
+    "status": { "enum": ["idea", "qualifying", "evidence_ready", "packaged", "archived"] },
+    "captured_at": { "type": "string", "format": "date-time" }
+  }
+}

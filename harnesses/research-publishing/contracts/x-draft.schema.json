@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-draft/1.0",
+  "title": "X Draft Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "content_type", "format", "language", "items"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "content_type": { "enum": ["anchor", "research_note", "reply"] },
+    "format": { "enum": ["single", "thread", "reply"] },
+    "language": { "enum": ["en", "zh-CN"] },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ordinal", "text", "claim_refs"],
+        "properties": {
+          "ordinal": { "type": "integer", "minimum": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "claim_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "reply_to": { "enum": ["previous", "target"] }
+        }
+      }
+    },
+    "target_post": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url", "author", "snapshot_digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "author": { "type": "string", "minLength": 1 },
+        "snapshot_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/review-report/1.0",
+  "title": "Review Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "passed", "gates", "findings", "reviewed_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "passed": { "type": "boolean" },
+    "gates": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["research", "evidence", "privacy", "editorial", "publish"] }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["error", "warning"] },
+          "message": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reviewed_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/approval/1.0",
+  "title": "Publication Approval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "approval_id", "run_id", "publication_digest", "target_account",
+    "adapter", "scope", "approved_by", "approved_at", "expires_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "approval_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "publication_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "adapter": { "const": "manual" },
+    "target_post_id": { "type": ["string", "null"] },
+    "scope": { "const": "single_publication" },
+    "approved_by": { "type": "string", "minLength": 1 },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  }
+}

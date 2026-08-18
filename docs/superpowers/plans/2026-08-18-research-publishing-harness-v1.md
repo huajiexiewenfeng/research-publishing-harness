@@ -123,7 +123,7 @@ Run:
 
 ```text
 pnpm add ajv@8.20.0 commander@14.0.3 twitter-text@3.1.0 yaml@2.9.0
-pnpm add -D @types/node@24.13.3 eslint@10.8.1 tsx@4.23.12 typescript@6.0.3 typescript-eslint@8.67.0 vitest@4.1.10
+pnpm add -D @types/node@24.13.3 @types/twitter-text@3.1.10 eslint@10.8.1 tsx@4.23.12 typescript@6.0.3 typescript-eslint@8.67.0 vitest@4.1.10
 ```
 
 Expected: `pnpm-lock.yaml` exists and install exits 0.

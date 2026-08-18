@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-content-package/1.0",
+  "title": "Research Content Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package_id",
+    "version",
+    "status",
+    "research_track",
+    "topic",
+    "research_question",
+    "content_intent",
+    "thesis",
+    "claims",
+    "evidence",
+    "boundaries",
+    "research_lineage",
+    "open_questions",
+    "sources",
+    "privacy",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "package_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": { "enum": ["draft", "evidence_ready", "reviewed", "frozen"] },
+    "research_track": { "$ref": "#/$defs/researchTrack" },
+    "topic": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "research_question": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "content_intent": { "$ref": "#/$defs/contentIntent" },
+    "thesis": { "$ref": "#/$defs/thesis" },
+    "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/claim" } },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "boundaries": { "$ref": "#/$defs/boundaries" },
+    "research_lineage": { "type": "array", "items": { "$ref": "#/$defs/lineage" } },
+    "open_questions": { "type": "array", "items": { "$ref": "#/$defs/openQuestion" } },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "claimStatus": {
+      "enum": ["verified", "observed", "inferred", "hypothesis", "planned"]
+    },
+    "researchTrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "parent": { "type": "string", "minLength": 1 }
+      }
+    },
+    "contentIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose", "audience", "desired_discussion"],
+      "properties": {
+        "purpose": {
+          "enum": ["share_finding", "explain_decision", "report_failure", "propose_hypothesis", "invite_discussion"]
+        },
+        "audience": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "desired_discussion": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "thesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "claim_status"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "claim_status": { "$ref": "#/$defs/claimStatus" }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "statement", "claim_status", "evidence_refs"],
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+        "statement": { "type": "string", "minLength": 1 },
+        "claim_status": { "$ref": "#/$defs/claimStatus" },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "allowed_language": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "source_ref", "evidence_type", "summary", "supports", "reproducibility"],
+      "properties": {
+        "evidence_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "evidence_type": {
+          "enum": ["implementation", "test", "usage_observation", "design_decision", "failure", "external_context"]
+        },
+        "summary": { "type": "string", "minLength": 1 },
+        "supports": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reproducibility": { "enum": ["public", "internal", "unavailable"] }
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["established", "not_established", "explicitly_not_claimed", "planned_work"],
+      "properties": {
+        "established": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "not_established": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "explicitly_not_claimed": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "planned_work": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "relationship", "explanation"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "relationship": {
+          "enum": ["extracted_from", "informed_by", "built_on", "integrates_with", "replaces", "independent_of"]
+        },
+        "explanation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "openQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "importance"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "importance": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_type", "location", "access", "publication_policy"],
+      "properties": {
+        "source_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+        "source_type": {
+          "enum": ["repository", "commit", "code", "document", "experiment", "discussion", "external"]
+        },
+        "location": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "access": { "enum": ["public", "private", "restricted"] },
+        "publication_policy": { "enum": ["cite", "paraphrase_only", "internal_only"] }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contains_private_material", "review_required", "blocked_items"],
+      "properties": {
+        "contains_private_material": { "type": "boolean" },
+        "review_required": { "type": "boolean" },
+        "blocked_items": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

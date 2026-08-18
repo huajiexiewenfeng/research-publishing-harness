@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/generation-task/1.0",
+  "title": "Generation Task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "task_id", "run_id", "package_id", "package_version",
+    "branch", "mode", "language", "thesis", "claims", "boundaries", "source_summaries", "constraints"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "package_id": { "type": "string", "minLength": 1 },
+    "package_version": { "type": "integer", "minimum": 1 },
+    "branch": { "enum": ["article", "x"] },
+    "mode": { "type": "string", "minLength": 1 },
+    "language": { "enum": ["en", "zh-CN"] },
+    "thesis": { "type": "string", "minLength": 1 },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "statement", "claim_status"],
+        "properties": {
+          "claim_id": { "type": "string", "minLength": 1 },
+          "statement": { "type": "string", "minLength": 1 },
+          "claim_status": { "enum": ["verified", "observed", "inferred", "hypothesis", "planned"] }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["established", "not_established", "explicitly_not_claimed", "planned_work"],
+      "properties": {
+        "established": { "type": "array", "items": { "type": "string" } },
+        "not_established": { "type": "array", "items": { "type": "string" } },
+        "explicitly_not_claimed": { "type": "array", "items": { "type": "string" } },
+        "planned_work": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "source_summaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "summary", "publication_policy"],
+        "properties": {
+          "source_id": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 },
+          "publication_policy": { "enum": ["cite", "paraphrase_only"] }
+        }
+      }
+    },
+    "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

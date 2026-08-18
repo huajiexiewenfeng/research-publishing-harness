@@ -1,0 +1,47 @@
+{
+  "name": "research-publishing-harness",
+  "version": "0.1.0-alpha.0",
+  "description": "A local-first harness for turning ongoing technical research into evidence-backed articles and X conversations with explicit human gates.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "research-publish": "./dist/harnesses/research-publishing/cli/index.js"
+  },
+  "files": [
+    "dist/",
+    "harnesses/research-publishing/contracts/",
+    "skills/",
+    "registry/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "manifest": "tsx tools/build-manifest.ts",
+    "acceptance": "tsx tools/acceptance.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm acceptance"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "commander": "14.0.3",
+    "twitter-text": "3.1.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/twitter-text": "3.1.10",
+    "eslint": "10.8.1",
+    "tsx": "4.23.12",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.worktrees/
+.research-publishing-harness/
+*.log
+.env
+.env.*
+!.env.example
+
+# Local content workspaces and credentials must never be committed.
+content-workspace/
+receipts.local/
+secrets/
+
+# Project Develop Copilot local-only mappings.
+.llm-wiki/registry.local.json
+.llm-wiki/cross-refs/registry.local.json
+.llm-wiki/project-graph/scan-state.local.json
