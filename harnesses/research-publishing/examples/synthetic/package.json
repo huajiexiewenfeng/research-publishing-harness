@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "package_id": "synthetic_runtime_package",
+  "version": 1,
+  "status": "draft",
+  "research_track": { "id": "enterprise-agent-runtime" },
+  "topic": "Governed runtime context",
+  "research_question": "How can a fictional agent consume context without losing evidence boundaries?",
+  "content_intent": {
+    "purpose": "invite_discussion",
+    "audience": ["ai-agent-developers", "ai-infra-developers"],
+    "desired_discussion": ["runtime contracts", "evidence lifecycle"]
+  },
+  "thesis": {
+    "summary": "Context should be a versioned runtime artifact with claims, evidence, and boundaries.",
+    "claim_status": "hypothesis"
+  },
+  "claims": [
+    {
+      "claim_id": "claim_contract_test",
+      "statement": "The synthetic contract fixture passes deterministic validation.",
+      "claim_status": "verified",
+      "evidence_refs": ["evidence_contract_test"]
+    },
+    {
+      "claim_id": "claim_runtime_hypothesis",
+      "statement": "Evidence-bound context may make agent behavior easier to audit.",
+      "claim_status": "hypothesis",
+      "evidence_refs": []
+    },
+    {
+      "claim_id": "claim_trace_planned",
+      "statement": "A trace adapter is planned for a later experiment.",
+      "claim_status": "planned",
+      "evidence_refs": []
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "evidence_contract_test",
+      "source_ref": "source_synthetic_repo",
+      "evidence_type": "test",
+      "summary": "A public synthetic test validates the fixture against the V1 contract.",
+      "supports": ["claim_contract_test"],
+      "reproducibility": "public"
+    }
+  ],
+  "boundaries": {
+    "established": ["The synthetic fixture can be contract-validated."],
+    "not_established": ["No production reliability impact has been measured."],
+    "explicitly_not_claimed": ["The fictional runtime does not publish content autonomously."],
+    "planned_work": ["Evaluate a trace adapter after V1."]
+  },
+  "research_lineage": [
+    {
+      "from": "synthetic-design",
+      "to": "synthetic-runtime-contract",
+      "relationship": "informed_by",
+      "explanation": "The contract is derived from a fictional public architecture note."
+    }
+  ],
+  "open_questions": [
+    { "question": "Which evidence should survive between agent runs?", "importance": "high" }
+  ],
+  "sources": [
+    {
+      "source_id": "source_synthetic_repo",
+      "source_type": "repository",
+      "location": "https://example.com/open-context-runtime",
+      "revision": "synthetic-v1",
+      "access": "public",
+      "publication_policy": "cite"
+    }
+  ],
+  "privacy": {
+    "contains_private_material": false,
+    "review_required": false,
+    "blocked_items": []
+  },
+  "created_at": "2026-08-18T12:00:00.000Z",
+  "updated_at": "2026-08-18T12:00:00.000Z"
+}

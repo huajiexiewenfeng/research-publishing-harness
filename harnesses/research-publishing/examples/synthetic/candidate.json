@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "synthetic_context_runtime",
+  "title": "A deterministic context package for fictional agents",
+  "source_type": "design",
+  "research_track": "enterprise-agent-runtime",
+  "thesis_hint": "Runtime context should be a governed, evidence-bound artifact.",
+  "novelty_hint": "The synthetic design moves evidence boundaries from prompt prose into a runtime contract.",
+  "source_refs": ["https://example.com/open-context-runtime"],
+  "privacy": "public",
+  "status": "idea",
+  "captured_at": "2026-08-18T12:00:00.000Z"
+}

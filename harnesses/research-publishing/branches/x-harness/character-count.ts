@@ -1,4 +1,4 @@
-import { parseTweet } from 'twitter-text';
+import twitterText from 'twitter-text';
 
 export interface PostTextResult {
   readonly valid: boolean;
@@ -8,7 +8,7 @@ export interface PostTextResult {
 }
 
 export function validatePostText(text: string, maxWeightedLength = 280): PostTextResult {
-  const parsed = parseTweet(text);
+  const parsed = twitterText.parseTweet(text);
   return {
     valid: parsed.valid && parsed.weightedLength <= maxWeightedLength,
     weightedLength: parsed.weightedLength,

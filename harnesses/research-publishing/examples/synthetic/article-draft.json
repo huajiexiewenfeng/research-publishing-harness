@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "run_id": "synthetic_article",
+  "title": "Runtime Context Should Be a Governed Artifact",
+  "summary": "A synthetic architecture note about evidence, boundaries, and agent context.",
+  "language": "en",
+  "sections": [
+    {
+      "heading": "What the fixture establishes",
+      "markdown": "The synthetic contract fixture passes deterministic validation.",
+      "claim_refs": ["claim_contract_test"],
+      "source_refs": ["source_synthetic_repo"]
+    },
+    {
+      "heading": "The research hypothesis",
+      "markdown": "Evidence-bound context may make agent behavior easier to audit.",
+      "claim_refs": ["claim_runtime_hypothesis"],
+      "source_refs": []
+    },
+    {
+      "heading": "Planned work",
+      "markdown": "A trace adapter remains planned for a later experiment.",
+      "claim_refs": ["claim_trace_planned"],
+      "source_refs": []
+    }
+  ],
+  "open_questions": ["Which evidence should survive between agent runs?"]
+}

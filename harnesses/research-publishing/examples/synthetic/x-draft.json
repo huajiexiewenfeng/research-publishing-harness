@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "run_id": "synthetic_x",
+  "content_type": "anchor",
+  "format": "thread",
+  "language": "en",
+  "items": [
+    {
+      "ordinal": 1,
+      "text": "A research direction for agent runtimes: treat context as a governed artifact, not loose prompt prose.",
+      "claim_refs": ["claim_runtime_hypothesis"]
+    },
+    {
+      "ordinal": 2,
+      "text": "Our synthetic V1 fixture verifies the contract mechanics. Production impact is not established.",
+      "claim_refs": ["claim_contract_test"],
+      "reply_to": "previous"
+    },
+    {
+      "ordinal": 3,
+      "text": "Trace adapters remain planned work. What evidence should survive between agent runs?",
+      "claim_refs": ["claim_trace_planned"],
+      "reply_to": "previous"
+    }
+  ]
+}

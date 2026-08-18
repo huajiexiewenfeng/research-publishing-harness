@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["harnesses/**/*.ts", "tools/**/*.ts"],
+  "exclude": ["dist", "node_modules", "tests"]
+}
