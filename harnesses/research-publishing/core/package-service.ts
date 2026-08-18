@@ -53,7 +53,14 @@ export class PackageService {
     if (candidate.status !== 'evidence_ready') {
       throw new HarnessError('RESEARCH_GATE_BLOCKED', 'candidate is not evidence-ready');
     }
-    const valid = validateContract<ResearchContentPackage>('research-content-package', packageValue);
+    if (packageValue.status !== 'draft') {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'a new package must begin in draft state');
+    }
+    const valid = validateContract<ResearchContentPackage>('research-content-package', {
+      ...packageValue,
+      status: 'evidence_ready',
+      updated_at: this.now().toISOString()
+    });
     const research = runResearchGate(valid);
     if (!research.passed) {
       throw new HarnessError('RESEARCH_GATE_BLOCKED', 'research gate blocked package', research.findings);
@@ -66,6 +73,9 @@ export class PackageService {
     package: ResearchContentPackage;
     report: ReviewReport;
   }> {
+    if (packageValue.status !== 'evidence_ready') {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'only an evidence-ready package may be reviewed');
+    }
     const gates = [
       runResearchGate(packageValue),
       runEvidenceGate(packageValue),

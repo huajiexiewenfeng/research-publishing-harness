@@ -24,6 +24,7 @@ describe('offline ManualAdapter', () => {
       60_000,
       new Date('2026-08-18T15:01:00.000Z')
     );
+    await store.writeNew(`approvals/${approval.approval_id}.json`, approval);
 
     const receipt = await adapter.handoff(plan, approval);
     expect(receipt).toMatchObject({

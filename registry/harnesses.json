@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "harnesses": [
+    {
+      "id": "research-publishing",
+      "version": "0.1.0-alpha.0",
+      "cli": "../dist/harnesses/research-publishing/cli/index.js",
+      "manifest": "manifests/research-publishing.json",
+      "contracts": "../harnesses/research-publishing/contracts",
+      "skills": ["article-publishing-copilot", "x-publishing-copilot"]
+    }
+  ]
+}

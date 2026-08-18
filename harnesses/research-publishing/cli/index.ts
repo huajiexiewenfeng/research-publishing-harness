@@ -9,6 +9,7 @@ import { XService, type PublicationPlan, type XBrief, type XDraft } from '../bra
 import { approvePublication, type Approval } from '../core/approval.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
 import { PackageService } from '../core/package-service.js';
+import { assertContractsAvailable } from '../core/schema-validator.js';
 import type { Candidate, ResearchContentPackage } from '../core/types.js';
 import { WorkspaceStore } from '../core/workspace-store.js';
 
@@ -97,7 +98,7 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       artifact: {
         node: process.versions.node,
         workspace: store.root,
-        contracts: 8,
+        contracts: assertContractsAvailable(),
         network_required: false
       },
       state: 'ready'
@@ -149,6 +150,16 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const runId = requiredRunId(options, articleInput as { run_id?: string } | undefined);
     if (operation === 'article review') {
       const artifact = await article.reviewArticle(runId);
+      if (!artifact.passed) {
+        const privacy = artifact.findings.some((finding) =>
+          ['WINDOWS_PRIVATE_PATH', 'UNIX_PRIVATE_PATH', 'BEARER_TOKEN', 'COOKIE_VALUE'].includes(finding.code)
+        );
+        throw new HarnessError(
+          privacy ? 'PRIVACY_GATE_BLOCKED' : 'EVIDENCE_GATE_BLOCKED',
+          'article review contains blocking findings',
+          artifact.findings
+        );
+      }
       return { ok: true, operation, artifact, state: 'reviewed', findings: artifact.findings };
     }
     if (operation === 'article finalize') {
@@ -172,14 +183,6 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const accept = input as unknown as { run_id?: string; draft: XDraft };
       return { ok: true, operation, artifact: await x.acceptXDraft(requiredRunId(options, accept), accept.draft), state: 'drafted' };
     }
-    const runId = requiredRunId(options, input as { run_id?: string } | undefined);
-    if (operation === 'x review') {
-      const artifact = await x.reviewX(runId);
-      return { ok: true, operation, artifact, state: 'reviewed', findings: artifact.findings };
-    }
-    if (operation === 'x plan') {
-      return { ok: true, operation, artifact: await x.planX(runId), state: 'approval_pending' };
-    }
     if (operation === 'x approve') {
       const approve = input as unknown as {
         plan: PublicationPlan;
@@ -199,6 +202,24 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const record = input as unknown as { receipt: PublishReceipt; public_result: ManualPublicResult };
       const artifact = await new ManualAdapter(store).recordPublished(record.receipt, record.public_result);
       return { ok: true, operation, artifact, state: 'finalized' };
+    }
+    const runId = requiredRunId(options, input as { run_id?: string } | undefined);
+    if (operation === 'x review') {
+      const artifact = await x.reviewX(runId);
+      if (!artifact.passed) {
+        const characters = artifact.findings.some(
+          (finding) => finding.code === 'CHARACTER_LIMIT_EXCEEDED'
+        );
+        throw new HarnessError(
+          characters ? 'CHARACTER_LIMIT_EXCEEDED' : 'EVIDENCE_GATE_BLOCKED',
+          'X review contains blocking findings',
+          artifact.findings
+        );
+      }
+      return { ok: true, operation, artifact, state: 'reviewed', findings: artifact.findings };
+    }
+    if (operation === 'x plan') {
+      return { ok: true, operation, artifact: await x.planX(runId), state: 'approval_pending' };
     }
   }
 

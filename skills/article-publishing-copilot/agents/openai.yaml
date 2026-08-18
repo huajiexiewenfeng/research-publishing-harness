@@ -1,0 +1,6 @@
+interface:
+  display_name: "Article Publishing Copilot"
+  short_description: "Turn research packages into auditable technical articles"
+  default_prompt: "Use $article-publishing-copilot to develop this research package into a reviewed technical article."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,6 @@
+interface:
+  display_name: "X Publishing Copilot"
+  short_description: "Develop reviewed X posts with explicit human approval"
+  default_prompt: "Use $x-publishing-copilot to turn this research package into a reviewed X draft."
+policy:
+  allow_implicit_invocation: true

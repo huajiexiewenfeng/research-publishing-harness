@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { PublicationPlan } from '../../../branches/x-harness/x-service.js';
 import { type Approval, verifyApproval } from '../../../core/approval.js';
+import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
 import { validateContract } from '../../../core/schema-validator.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
@@ -54,7 +55,7 @@ export class ManualAdapter {
     const previewPath = `${root}/preview.md`;
     const receiptId = this.safeId(this.receiptId());
 
-    await this.store.writeNew(`approvals/${approval.approval_id}.json`, approval);
+    await this.persistApproval(approval);
     await this.store.writeNew(`${root}/copy-package.json`, { plan, approval });
     await this.store.writeNew(previewPath, this.renderPreview(plan));
 
@@ -98,6 +99,22 @@ export class ManualAdapter {
       throw new HarnessError('WORKSPACE_PATH_INVALID', 'receipt id contains unsafe path characters');
     }
     return value;
+  }
+
+  private async persistApproval(approval: Approval): Promise<void> {
+    const path = `approvals/${approval.approval_id}.json`;
+    try {
+      const existing = await this.store.readJson<Approval>(path);
+      if (sha256(existing) !== sha256(approval)) {
+        throw new HarnessError('ARTIFACT_EXISTS', 'approval id exists with different content');
+      }
+    } catch (error) {
+      if (error instanceof HarnessError && error.code === 'ARTIFACT_NOT_FOUND') {
+        await this.store.writeNew(path, approval);
+        return;
+      }
+      throw error;
+    }
   }
 
   private renderPreview(plan: PublicationPlan): string {

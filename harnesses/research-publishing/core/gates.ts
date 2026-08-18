@@ -155,6 +155,11 @@ const SENSITIVE_PATTERNS: ReadonlyArray<{
   message: string;
 }> = [
   {
+    code: 'PROMPT_INJECTION',
+    pattern: /\b(?:ignore|override)\s+(?:all\s+)?(?:previous|prior|system)\s+instructions\b|\bdisable\s+(?:the\s+)?(?:research|evidence|privacy|publish)\s+gate\b/i,
+    message: 'instruction-like source content attempted to override Harness policy'
+  },
+  {
     code: 'WINDOWS_PRIVATE_PATH',
     pattern: /\b[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\s"']+/,
     message: 'workstation-specific Windows path detected'

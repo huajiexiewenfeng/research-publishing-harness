@@ -17,25 +17,25 @@
   <section>
     <h2>Project Cockpit</h2>
     <p>Session: <code>research-publishing-harness-v1</code></p>
-    <p>Status: initialization complete; Work Definition active</p>
-    <p>Verification: not run</p>
-    <p>Next: migrate design baseline and create the confirmed V1 plan</p>
+    <p>Status: V1 implemented; local branch handoff recorded</p>
+    <p>Verification: agent-local 20 files / 81 tests; Manifest, build, Acceptance and safety scan passed</p>
+    <p>Next: choose merge, PR/push, or preserve branch; Git push requires separate user authorization</p>
   </section>
   <!-- LLM_SUMMARY_END -->
   <section>
     <h2>Development Flow Board</h2>
     <!-- BOARD_START -->
     <div class="board">
-      <div class="lane"><h3>来源 / 设计</h3><p>设计基线待迁入</p></div>
-      <div class="lane"><h3>计划 / 开发</h3><p>V1 计划待生成</p></div>
-      <div class="lane"><h3>测试 / 归档</h3><p>尚无验证证据</p></div>
+      <div class="lane"><h3>来源 / 设计</h3><p>设计基线与范围锁定完成</p></div>
+      <div class="lane"><h3>计划 / 开发</h3><p>M0–M2 与两个 Skill 已实现</p></div>
+      <div class="lane"><h3>测试 / 归档</h3><p>agent-local 验证通过；本地 handoff 已记录</p></div>
     </div>
     <!-- BOARD_END -->
   </section>
   <section><h2>Document Evidence</h2><p><code>.llm-wiki/artifacts/index.md</code></p></section>
   <section><h2>Skills Maintenance Convention</h2><p>Project Develop Copilot → Writing Plans → TDD → Verification</p></section>
   <script>
-    window.dashboardData={flowRecords:[]};
+    window.dashboardData={flowRecords:[{id:"research-publishing-harness-v1",development:"done",testing:"passed-agent-local",archive:"done"}]};
   </script>
 </body>
 </html>

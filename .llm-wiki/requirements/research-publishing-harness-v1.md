@@ -3,7 +3,7 @@
 ## Summary
 
 - title: Build the evidence-backed Article and Manual X publishing V1
-- status: ready
+- status: implemented
 - flow_id: `research-publishing-harness-v1`
 
 ## Routing
@@ -80,9 +80,9 @@
 | source | done | `docs/architecture/research-publishing-harness-design.zh-CN.md` | 2026-08-18 |
 | design | done | 已确认 V1 设计基线 | 2026-08-18 |
 | plan | done | `docs/superpowers/plans/2026-08-18-research-publishing-harness-v1.md` | 2026-08-18 |
-| development | pending |  | 2026-08-18 |
-| testing | pending |  | 2026-08-18 |
-| archive | pending |  | 2026-08-18 |
+| development | done | M0–M2、Article、X、Manual Adapter、CLI、Skills、Registry 与文档已实现 | 2026-08-18 |
+| testing | passed-agent-local | 20 files / 81 tests；build、Acceptance、Manifest、lint、typecheck 全通过；CI/独立 reviewer 待运行 | 2026-08-18 |
+| archive | done | `.llm-wiki/handoff/research-publishing-harness-v1-handoff.md` | 2026-08-18 |
 
 ## Open Questions
 
@@ -92,3 +92,5 @@
 
 - M0–M2 是本次 V1；不与个人研究规划中的 Phase 3/Phase 4 混淆。
 - 实施计划已确认并进入 inline execution。
+- V1 fresh verification 已通过，证据见 `.llm-wiki/verification/v1.md`。
+- 已建立本地分支交付记录；未获得 Git push 授权，远端仍无 V1 代码。

@@ -34,6 +34,13 @@ function unlockedPlan(plan: PublicationPlan): UnlockedPublicationPlan {
 }
 
 function assertPlanDigest(plan: PublicationPlan): void {
+  const invalidItem = plan.items.find((item) => sha256(item.text) !== item.digest);
+  if (invalidItem !== undefined) {
+    throw new HarnessError(
+      'APPROVAL_STALE',
+      `publication item ${invalidItem.ordinal} no longer matches its item digest`
+    );
+  }
   if (computePublicationDigest(unlockedPlan(plan)) !== plan.publication_digest) {
     throw new HarnessError('APPROVAL_STALE', 'publication content no longer matches its locked digest');
   }

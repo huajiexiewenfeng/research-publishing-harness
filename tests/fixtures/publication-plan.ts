@@ -1,5 +1,6 @@
 import type { PublicationPlan } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { computePublicationDigest } from '../../harnesses/research-publishing/core/approval.js';
+import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 
 export function publicationPlanFixture(): PublicationPlan {
   const unlocked = {
@@ -15,8 +16,8 @@ export function publicationPlanFixture(): PublicationPlan {
       snapshot_digest: `sha256:${'a'.repeat(64)}`
     },
     items: [
-      { ordinal: 1, text: 'Evidence boundaries belong in runtime contracts.', digest: `sha256:${'b'.repeat(64)}`, reply_to: 'target' as const },
-      { ordinal: 2, text: 'A second locked item.', digest: `sha256:${'c'.repeat(64)}`, reply_to: 'previous' as const }
+      { ordinal: 1, text: 'Evidence boundaries belong in runtime contracts.', digest: sha256('Evidence boundaries belong in runtime contracts.'), reply_to: 'target' as const },
+      { ordinal: 2, text: 'A second locked item.', digest: sha256('A second locked item.'), reply_to: 'previous' as const }
     ],
     planned_at: '2026-08-18T15:00:00.000Z'
   };

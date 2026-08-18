@@ -44,6 +44,7 @@ describe('research package lifecycle', () => {
       package_id: 'package_runtime',
       version: 1
     });
+    expect(draft.status).toBe('evidence_ready');
     const reviewed = await service.reviewPackage(draft);
     expect(reviewed.package.status).toBe('reviewed');
     expect(reviewed.package.version).toBe(2);

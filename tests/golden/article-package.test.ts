@@ -116,4 +116,54 @@ describe('canonical article package', () => {
       code: 'EVIDENCE_GATE_BLOCKED'
     });
   });
+
+  it('does not expose a paraphrase-only Source location', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'rph-article-paraphrase-'));
+    const store = await WorkspaceStore.open(root);
+    const articles = new ArticleService(store, {
+      runId: () => 'article_paraphrase_1',
+      now: () => new Date('2026-08-18T14:00:00.000Z')
+    });
+    const packageValue = {
+      ...researchPackage,
+      status: 'frozen',
+      version: 3,
+      sources: [
+        {
+          ...researchPackage.sources[0],
+          location: 'https://example.com/location-must-not-be-exposed',
+          publication_policy: 'paraphrase_only'
+        }
+      ]
+    } as const;
+    const run = await articles.prepareArticle(packageValue, {
+      articleType: 'architecture_note',
+      primaryAudience: 'developers',
+      language: 'en',
+      targetDepth: 'focused',
+      includeOpenQuestions: false
+    });
+    await articles.acceptArticleDraft(run.run_id, {
+      schema_version: '1.0',
+      run_id: run.run_id,
+      title: 'Paraphrase-only source',
+      summary: 'A source policy check.',
+      language: 'en',
+      sections: [
+        {
+          heading: 'Finding',
+          markdown: 'The synthetic runtime validates context packages.',
+          claim_refs: ['claim_verified'],
+          source_refs: ['source_test']
+        }
+      ],
+      open_questions: []
+    });
+    await articles.reviewArticle(run.run_id);
+    const finalized = await articles.finalizeArticle(run.run_id);
+
+    const sources = await store.readText(`${finalized.root}/sources.md`);
+    expect(sources).toContain('source_test');
+    expect(sources).not.toContain('location-must-not-be-exposed');
+  });
 });

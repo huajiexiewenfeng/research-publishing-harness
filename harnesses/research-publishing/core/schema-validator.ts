@@ -9,6 +9,7 @@ import formatsModule, { type FormatsPlugin } from 'ajv-formats';
 
 import { HarnessError } from './errors.js';
 import type { ContractName } from './types.js';
+import { CONTRACT_NAMES } from './types.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 (formatsModule as unknown as FormatsPlugin)(ajv);
@@ -53,4 +54,11 @@ export function validateContract<T>(name: ContractName, value: unknown): T {
     );
   }
   return value as T;
+}
+
+export function assertContractsAvailable(): readonly ContractName[] {
+  for (const name of CONTRACT_NAMES) {
+    loadValidator(name);
+  }
+  return CONTRACT_NAMES;
 }

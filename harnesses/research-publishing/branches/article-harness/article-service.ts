@@ -314,7 +314,11 @@ export class ArticleService {
   private renderSources(packageValue: ResearchContentPackage): string {
     const lines = packageValue.sources
       .filter((source) => source.publication_policy !== 'internal_only')
-      .map((source) => `- [${source.source_id}](${source.location}) — ${source.publication_policy}`);
+      .map((source) =>
+        source.publication_policy === 'cite'
+          ? `- [${source.source_id}](${source.location}) — cite`
+          : `- ${source.source_id} — paraphrase_only (location withheld)`
+      );
     return `# Sources\n\n${lines.join('\n')}\n`;
   }
 }
