@@ -6,7 +6,7 @@
 
 **Architecture:** A TypeScript runtime owns contracts, state, evidence/privacy gates, content digests, artifacts, and manual handoff. Two thin Agent Skills exchange `GenerationTask` and `DraftCandidate` objects with the runtime; no model provider, browser automation, X API, or autonomous topic selection is embedded in V1.
 
-**Tech Stack:** Node.js `>=20.19`, TypeScript `6.0.3`, pnpm `11.19.0`, Vitest `4.1.10`, Ajv `8.20.0`, Commander `14.0.3`, YAML `2.9.0`, twitter-text `3.1.0`, ESLint `10.8.1`, typescript-eslint `8.67.0`.
+**Tech Stack:** Node.js `>=20.19`, TypeScript `6.0.3`, pnpm `11.19.0`, Vitest `4.1.10`, Ajv `8.20.0`, ajv-formats `3.0.1`, Commander `14.0.3`, YAML `2.9.0`, twitter-text `3.1.0`, ESLint `10.8.1`, typescript-eslint `8.67.0`.
 
 ## Global Constraints
 
@@ -122,7 +122,7 @@ Use strict ESM TypeScript with `rootDir: "."`, `outDir: "dist"`, `resolveJsonMod
 Run:
 
 ```text
-pnpm add ajv@8.20.0 commander@14.0.3 twitter-text@3.1.0 yaml@2.9.0
+pnpm add ajv@8.20.0 ajv-formats@3.0.1 commander@14.0.3 twitter-text@3.1.0 yaml@2.9.0
 pnpm add -D @types/node@24.13.3 @types/twitter-text@3.1.10 eslint@10.8.1 tsx@4.23.12 typescript@6.0.3 typescript-eslint@8.67.0 vitest@4.1.10
 ```
 
