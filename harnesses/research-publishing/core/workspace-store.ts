@@ -7,10 +7,15 @@ import { HarnessError } from './errors.js';
 
 const ALLOWED_TOP_LEVEL = new Set([
   'approvals',
+  'articles',
   'candidates',
   'exports',
+  'feedback',
   'packages',
-  'runs'
+  'receipts',
+  'reviews',
+  'runs',
+  'x'
 ]);
 
 export interface ArtifactRef {
@@ -100,6 +105,18 @@ export class WorkspaceStore {
     const { absolutePath, normalized } = this.resolveAllowed(relativePath);
     try {
       return JSON.parse(await readFile(absolutePath, 'utf8')) as T;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
+      }
+      throw error;
+    }
+  }
+
+  async readText(relativePath: string): Promise<string> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    try {
+      return await readFile(absolutePath, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
