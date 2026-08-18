@@ -50,6 +50,7 @@ export interface PublicationPlan {
   readonly target_account: string;
   readonly adapter: 'manual';
   readonly target_post_id: string | null;
+  readonly target_post: NonNullable<XDraft['target_post']> | null;
   readonly items: ReadonlyArray<{
     readonly ordinal: number;
     readonly text: string;
@@ -252,6 +253,7 @@ export class XService {
       target_account: metadata.target_account,
       adapter: 'manual' as const,
       target_post_id: draft.target_post?.id ?? null,
+      target_post: draft.target_post ?? null,
       items,
       planned_at: this.now().toISOString()
     };
