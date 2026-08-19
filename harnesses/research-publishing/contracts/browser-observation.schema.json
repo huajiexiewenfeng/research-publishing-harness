@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/browser-observation/2.0",
+  "title": "Browser Observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "observation_id", "execution_id", "command_id", "origin",
+    "canonical_url", "page_revision", "observed_at", "nodes", "public_posts"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "observation_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "command_id": { "type": "string", "minLength": 1 },
+    "origin": { "const": "https://x.com" },
+    "canonical_url": { "type": "string", "format": "uri" },
+    "page_revision": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "public_posts": { "type": "array", "items": { "$ref": "#/$defs/publicPost" } }
+  },
+  "$defs": {
+    "node": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "role", "name", "text", "test_id", "editable", "disabled", "parent_ref"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "text": { "type": "string" },
+        "test_id": { "type": ["string", "null"] },
+        "editable": { "type": "boolean" },
+        "disabled": { "type": "boolean" },
+        "parent_ref": { "type": ["string", "null"] }
+      }
+    },
+    "link": {
+      "type": "object", "additionalProperties": false,
+      "required": ["display_url", "expanded_url"],
+      "properties": {
+        "display_url": { "type": "string" },
+        "expanded_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "publicPost": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "post_id", "canonical_url", "author_handle", "text", "links", "published_at", "reply_to_id"
+      ],
+      "properties": {
+        "post_id": { "type": "string", "minLength": 1 },
+        "canonical_url": { "type": "string", "format": "uri" },
+        "author_handle": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+        "text": { "type": "string" },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
+        "published_at": { "type": "string", "format": "date-time" },
+        "reply_to_id": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

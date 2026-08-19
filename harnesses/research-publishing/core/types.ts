@@ -9,7 +9,9 @@ export const CONTRACT_NAMES = [
   'publish-receipt',
   'publication-plan-v2',
   'approval-v2',
-  'browser-execution-event'
+  'browser-execution-event',
+  'browser-command',
+  'browser-observation'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

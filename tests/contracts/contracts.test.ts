@@ -13,7 +13,9 @@ const names = [
   'publish-receipt',
   'publication-plan-v2',
   'approval-v2',
-  'browser-execution-event'
+  'browser-execution-event',
+  'browser-command',
+  'browser-observation'
 ] as const;
 
 const v1Names = new Set([

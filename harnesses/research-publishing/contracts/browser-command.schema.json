@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/browser-command/2.0",
+  "title": "Browser Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "command_id", "execution_id", "run_id", "kind", "purpose",
+    "expected_page_revision", "allowed_origin", "side_effect", "payload", "payload_digest", "issued_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "command_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["observe_page", "navigate", "click", "set_text", "press_key", "wait"] },
+    "purpose": { "type": "string", "minLength": 1 },
+    "expected_page_revision": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      ]
+    },
+    "allowed_origin": { "const": "https://x.com" },
+    "side_effect": { "enum": ["read", "write", "submit"] },
+    "payload": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope"],
+          "properties": {
+            "kind": { "const": "observe_page" },
+            "scope": { "enum": ["x_page", "composer", "public_thread"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "url"],
+          "properties": { "kind": { "const": "navigate" }, "url": { "type": "string", "format": "uri" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "target_ref"],
+          "properties": { "kind": { "const": "click" }, "target_ref": { "type": "string", "minLength": 1 } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "target_ref", "text"],
+          "properties": {
+            "kind": { "const": "set_text" },
+            "target_ref": { "type": "string", "minLength": 1 },
+            "text": { "type": "string" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "target_ref", "key"],
+          "properties": {
+            "kind": { "const": "press_key" },
+            "target_ref": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "delay_ms"],
+          "properties": {
+            "kind": { "const": "wait" },
+            "delay_ms": { "enum": [0, 3000, 10000, 30000, 90000] }
+          }
+        }
+      ]
+    },
+    "payload_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "issued_at": { "type": "string", "format": "date-time" }
+  }
+}
