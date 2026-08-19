@@ -124,6 +124,19 @@ async function claimAndReport(
   });
 }
 
+async function claimAndReportWithoutObservation(
+  adapter: BrowserAdapter,
+  command: BrowserCommand,
+  status: 'success' | 'uncertain' = 'success'
+) {
+  await adapter.claim(command.execution_id, command.command_id);
+  return adapter.report(command.execution_id, {
+    schema_version: '2.0', execution_id: command.execution_id, command_id: command.command_id,
+    status, observation: null, error_code: null,
+    reported_at: '2026-08-19T07:01:02.000Z'
+  });
+}
+
 describe('BrowserAdapter', () => {
   it('rejects unsupported plans and incompatible executors before execution creation', async () => {
     const { workspace, adapter } = await fixture();
@@ -228,6 +241,29 @@ describe('BrowserAdapter', () => {
       snapshot: { state: 'submit_attempted', submit_command_count: 1 }
     });
     await expect(adapter.next('exec_thread')).resolves.toEqual(submit);
+
+    await claimAndReportWithoutObservation(adapter, submit, 'uncertain');
+    await expect(adapter.status('exec_thread')).resolves.toMatchObject({
+      snapshot: { state: 'outcome_resolving' }
+    });
+    for (let index = 0; index < 5; index += 1) {
+      if (index > 0) {
+        const wait = (await adapter.next('exec_thread'))!;
+        expect(wait).toMatchObject({ kind: 'wait', side_effect: 'read' });
+        await claimAndReportWithoutObservation(adapter, wait);
+      }
+      const observe = (await adapter.next('exec_thread'))!;
+      expect(observe).toMatchObject({ kind: 'observe_page', side_effect: 'read' });
+      await claimAndReport(adapter, observe, page(observe, 'https://x.com/home', [accountNode()]));
+    }
+    await expect(adapter.status('exec_thread')).resolves.toMatchObject({
+      snapshot: { state: 'outcome_unknown' },
+      resumable_verification: true,
+      latest_receipt_path: expect.stringMatching(/^receipts\//)
+    });
+    await adapter.resumeVerification('exec_thread');
+    const resumed = (await adapter.next('exec_thread'))!;
+    expect(resumed.side_effect).toBe('read');
   });
 
   it('rechecks approval expiry at the fresh Submit Barrier without issuing Submit', async () => {

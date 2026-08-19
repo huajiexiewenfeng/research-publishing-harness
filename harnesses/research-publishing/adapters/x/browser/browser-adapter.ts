@@ -18,6 +18,7 @@ import {
 } from './composer-protocol.js';
 import type {
   BrowserActionResultInput,
+  BrowserActionResult,
   BrowserCapabilityManifest,
   BrowserCommand,
   BrowserCommandClaim,
@@ -25,6 +26,17 @@ import type {
 } from './browser-protocol.js';
 import type { CommandBroker } from './command-broker.js';
 import type { XPageContract } from './page-contract.js';
+import {
+  DeterministicOutcomeResolver,
+  verificationDelaysMs,
+  type OutcomeDecision
+} from './outcome-resolver.js';
+import { verifyPublicThread, type PublicVerificationResult } from './public-verifier.js';
+import {
+  createPublicationReceiptV2,
+  type PublicationReceiptV2,
+  type ReceiptStatusV2
+} from './receipt-v2.js';
 
 export interface BrowserAdapterApi {
   start(input: StartBrowserExecutionInput): Promise<BrowserExecutionSnapshot>;
@@ -32,6 +44,7 @@ export interface BrowserAdapterApi {
   claim(executionId: string, commandId: string): Promise<BrowserCommandClaim>;
   report(executionId: string, result: BrowserActionResultInput): Promise<BrowserExecutionSnapshot>;
   status(executionId: string): Promise<BrowserExecutionStatus>;
+  resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot>;
   cancelBeforeSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
 }
 
@@ -77,6 +90,12 @@ interface StoredExecutionContext {
   readonly latest_receipt_path: string | null;
   readonly armed_at: string | null;
   readonly attempted_at: string | null;
+  readonly submit_command_id: string | null;
+  readonly verification_index: number;
+  readonly verification_wait_completed: boolean;
+  readonly positive_publish_signal: boolean;
+  readonly platform_rejection: { readonly attempt_id: string; readonly code: string } | null;
+  readonly latest_receipt_id: string | null;
 }
 
 const REQUIRED_CAPABILITIES = [
@@ -95,7 +114,9 @@ export class BrowserAdapter implements BrowserAdapterApi {
     private readonly broker: CommandBroker,
     private readonly contract: XPageContract,
     private readonly now: () => Date = () => new Date(),
-    private readonly attemptId: () => string = () => `attempt_${randomUUID()}`
+    private readonly attemptId: () => string = () => `attempt_${randomUUID()}`,
+    private readonly receiptId: () => string = () => `receipt_${randomUUID()}`,
+    private readonly outcomeResolver = new DeterministicOutcomeResolver()
   ) {}
 
   async start(input: StartBrowserExecutionInput): Promise<BrowserExecutionSnapshot> {
@@ -151,6 +172,12 @@ export class BrowserAdapter implements BrowserAdapterApi {
       latest_receipt_path: null,
       armed_at: null,
       attempted_at: null
+      ,submit_command_id: null
+      ,verification_index: 0
+      ,verification_wait_completed: true
+      ,positive_publish_signal: false
+      ,platform_rejection: null
+      ,latest_receipt_id: null
     };
     await this.writeContext(input.plan.run_id, input.execution_id, context);
     const snapshot = await this.executions.transition(input.execution_id, 'preflight', {
@@ -177,6 +204,39 @@ export class BrowserAdapter implements BrowserAdapterApi {
     const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
     if (context.pending_command_id !== null) {
       return this.broker.read(executionId, context.pending_command_id);
+    }
+    if (snapshot.state === 'outcome_resolving') {
+      snapshot = await this.executions.transition(executionId, 'public_verifying', {
+        event_type: 'public_verification_started',
+        ...(context.attempt_id === null ? {} : { attempt_id: context.attempt_id })
+      });
+    }
+    if (snapshot.state === 'public_verifying') {
+      if (context.verification_wait_completed) {
+        return this.issueAndPersist(snapshot, context, {
+          execution_id: executionId,
+          run_id: snapshot.run_id,
+          kind: 'observe_page',
+          purpose: `public_verification_${context.verification_index}`,
+          expected_page_revision: context.current_page_revision,
+          allowed_origin: 'https://x.com',
+          side_effect: 'read',
+          payload: { kind: 'observe_page', scope: 'public_thread' }
+        });
+      }
+      return this.issueAndPersist(snapshot, context, {
+        execution_id: executionId,
+        run_id: snapshot.run_id,
+        kind: 'wait',
+        purpose: `verification_wait_${context.verification_index}`,
+        expected_page_revision: null,
+        allowed_origin: 'https://x.com',
+        side_effect: 'read',
+        payload: {
+          kind: 'wait',
+          delay_ms: verificationDelaysMs[context.verification_index] ?? 90_000
+        }
+      });
     }
     if (this.isTerminal(snapshot.state) || snapshot.state === 'submit_attempted') return null;
     if (context.latest_observation_id === null) {
@@ -251,6 +311,104 @@ export class BrowserAdapter implements BrowserAdapterApi {
     const command = await this.broker.read(executionId, resultInput.command_id);
     const result = await this.broker.acceptResult(executionId, resultInput);
     context = { ...context, pending_command_id: null };
+
+    if (snapshot.state === 'submit_attempted' && command.side_effect === 'submit') {
+      context = {
+        ...context,
+        submit_command_id: command.command_id,
+        positive_publish_signal: result.status === 'success',
+        platform_rejection:
+          result.status === 'rejected' && result.error_code !== null && context.attempt_id !== null
+            ? { attempt_id: context.attempt_id, code: result.error_code }
+            : null,
+        verification_index: 0,
+        verification_wait_completed: true,
+        ...(result.observation === null
+          ? {}
+          : {
+              latest_observation_id: result.observation.observation_id,
+              current_page_revision: result.observation.page_revision
+            })
+      };
+      snapshot = await this.executions.transition(executionId, 'outcome_resolving', {
+        event_type: 'submit_result_reported',
+        ...(context.attempt_id === null ? {} : { attempt_id: context.attempt_id }),
+        command_id: command.command_id,
+        evidence_digest: sha256(result)
+      });
+      await this.writeContext(snapshot.run_id, executionId, context);
+      if (context.platform_rejection !== null) {
+        const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+        const verification = {
+          kind: 'no_match' as const,
+          reason: 'platform rejected the current Submit attempt'
+        };
+        return this.finalizeOutcome(
+          snapshot,
+          context,
+          plan,
+          {
+            kind: 'failed_after_submit',
+            rejection_code: context.platform_rejection.code
+          },
+          verification,
+          result.observation
+        );
+      }
+      return snapshot;
+    }
+
+    if (snapshot.state === 'outcome_resolving' || snapshot.state === 'public_verifying') {
+      if (command.side_effect !== 'read') {
+        throw new HarnessError('SUBMIT_ALREADY_ATTEMPTED', 'post-submit commands must be read-only');
+      }
+      if (command.kind === 'wait') {
+        context = { ...context, verification_wait_completed: true };
+        await this.writeContext(snapshot.run_id, executionId, context);
+        return snapshot;
+      }
+      const observation = result.observation;
+      if (observation !== null) {
+        context = {
+          ...context,
+          latest_observation_id: observation.observation_id,
+          current_page_revision: observation.page_revision,
+          positive_publish_signal:
+            context.positive_publish_signal || observation.public_posts.length > 0
+        };
+      }
+      const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+      const verification =
+        observation === null
+          ? ({ kind: 'no_match', reason: 'public observation unavailable' } as const)
+          : verifyPublicThread(plan, observation.public_posts);
+      await this.store.writeNew(
+        `${this.prefix(snapshot.run_id, executionId)}/verification-report-${snapshot.sequence}-${context.verification_index}.json`,
+        verification
+      );
+      const submitResult = await this.readSubmitResult(snapshot, context);
+      if (context.attempt_id === null) {
+        throw new HarnessError('PUBLICATION_OUTCOME_UNKNOWN', 'post-submit execution has no attempt ID');
+      }
+      const decision = this.outcomeResolver.classify({
+        attempt_id: context.attempt_id,
+        verification_index: context.verification_index,
+        submit_result: submitResult,
+        public_verification: verification,
+        positive_publish_signal: context.positive_publish_signal,
+        platform_rejection: context.platform_rejection
+      });
+      if (decision.kind === 'verify_again') {
+        context = {
+          ...context,
+          verification_index: context.verification_index + 1,
+          verification_wait_completed: false
+        };
+        await this.writeContext(snapshot.run_id, executionId, context);
+        return snapshot;
+      }
+      return this.finalizeOutcome(snapshot, context, plan, decision, verification, observation);
+    }
 
     if (result.status !== 'success' || result.observation === null) {
       if (command.side_effect === 'read' && context.read_retry_count < 2) {
@@ -346,6 +504,31 @@ export class BrowserAdapter implements BrowserAdapterApi {
     };
   }
 
+  async resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot> {
+    const snapshot = await this.executions.read(executionId);
+    if (snapshot.state !== 'outcome_unknown' && snapshot.state !== 'published_unverified') {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        'only unknown or unverified outcomes can resume public verification'
+      );
+    }
+    let context = await this.readContext(snapshot);
+    if (context.pending_command_id !== null) {
+      throw new HarnessError('EXECUTION_BUSY', 'a Browser Command is already pending');
+    }
+    const resumed = await this.executions.transition(executionId, 'public_verifying', {
+      event_type: 'public_verification_resumed',
+      ...(context.attempt_id === null ? {} : { attempt_id: context.attempt_id })
+    });
+    context = {
+      ...context,
+      verification_index: 0,
+      verification_wait_completed: true
+    };
+    await this.writeContext(snapshot.run_id, executionId, context);
+    return resumed;
+  }
+
   async cancelBeforeSubmit(executionId: string): Promise<BrowserExecutionSnapshot> {
     const snapshot = await this.executions.read(executionId);
     if (
@@ -412,6 +595,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
       pending_command_id: command.command_id,
       submit_command_count: 1,
       attempted_at: attemptedAt
+      ,submit_command_id: command.command_id
     };
     await this.writeContext(snapshot.run_id, snapshot.execution_id, context);
     await this.executions.transition(snapshot.execution_id, 'submit_attempted', {
@@ -453,6 +637,134 @@ export class BrowserAdapter implements BrowserAdapterApi {
       pending_command_id: command.command_id
     });
     return command;
+  }
+
+  private async readSubmitResult(
+    snapshot: BrowserExecutionSnapshot,
+    context: StoredExecutionContext
+  ): Promise<BrowserActionResult> {
+    if (context.submit_command_id === null) {
+      throw new HarnessError('PUBLICATION_OUTCOME_UNKNOWN', 'Submit result reference is missing');
+    }
+    return this.store.readJson<BrowserActionResult>(
+      `${this.prefix(snapshot.run_id, snapshot.execution_id)}/results/${context.submit_command_id}.json`
+    );
+  }
+
+  private async finalizeOutcome(
+    snapshot: BrowserExecutionSnapshot,
+    context: StoredExecutionContext,
+    plan: PublicationPlanV2,
+    decision: Exclude<OutcomeDecision, { readonly kind: 'verify_again' }>,
+    verification: PublicVerificationResult,
+    observation: BrowserObservation | null
+  ): Promise<BrowserExecutionSnapshot> {
+    const state = decision.kind;
+    const terminal = await this.executions.transition(snapshot.execution_id, state, {
+      event_type: `publication_${state}`,
+      ...(context.attempt_id === null ? {} : { attempt_id: context.attempt_id }),
+      evidence_digest: sha256({ decision, verification })
+    });
+    const receipt = await this.persistOutcomeReceipt(
+      terminal,
+      context,
+      plan,
+      state,
+      verification,
+      observation
+    );
+    await this.writeContext(snapshot.run_id, snapshot.execution_id, {
+      ...context,
+      latest_receipt_id: receipt.receipt_id,
+      latest_receipt_path: `receipts/${receipt.receipt_id}.json`
+    });
+    return terminal;
+  }
+
+  private async persistOutcomeReceipt(
+    snapshot: BrowserExecutionSnapshot,
+    context: StoredExecutionContext,
+    plan: PublicationPlanV2,
+    status: ReceiptStatusV2,
+    verification: PublicVerificationResult,
+    observation: BrowserObservation | null
+  ): Promise<PublicationReceiptV2> {
+    if (
+      context.attempt_id === null ||
+      context.armed_at === null ||
+      context.attempted_at === null
+    ) {
+      throw new HarnessError('PUBLICATION_OUTCOME_UNKNOWN', 'submission evidence is incomplete');
+    }
+    const approval = await this.store.readJson<ApprovalV2>(context.approval_path);
+    const verifiedPosts =
+      verification.kind === 'full_match' || verification.kind === 'partial'
+        ? verification.posts
+        : [];
+    const matchedOrdinals = verifiedPosts.map((post) => post.ordinal);
+    const publicResult =
+      verifiedPosts.length === 0
+        ? null
+        : {
+            root_url: verifiedPosts[0]!.canonical_url,
+            published_at:
+              observation?.public_posts.find((post) => post.post_id === verifiedPosts[0]!.post_id)
+                ?.published_at ?? observation?.observed_at ?? this.now().toISOString(),
+            ordered_post_ids: verifiedPosts.map((post) => post.post_id),
+            posts: verifiedPosts,
+            matched_ordinals: matchedOrdinals,
+            missing_ordinals:
+              verification.kind === 'partial' ? verification.missing_ordinals : [],
+            unexpected_post_ids:
+              verification.kind === 'conflict' ? verification.unexpected_post_ids : []
+          };
+    const full = verification.kind === 'full_match' && status === 'finalized';
+    const receipt = createPublicationReceiptV2(
+      {
+        plan,
+        supersedes_receipt_id: context.latest_receipt_id,
+        execution_id: snapshot.execution_id,
+        attempt_id: context.attempt_id,
+        run_id: snapshot.run_id,
+        platform: 'x',
+        adapter: 'browser',
+        status,
+        target_account: plan.intent.target_account,
+        observed_account: context.observed_account,
+        approval: {
+          plan_digest: plan.plan_digest,
+          approval_digest: approval.approval_digest,
+          approved_at: approval.approved_at,
+          expires_at: approval.expires_at
+        },
+        submission: {
+          armed_at: context.armed_at,
+          attempted_at: context.attempted_at,
+          submit_command_count: 1,
+          page_contract_version: context.page_contract_version,
+          executor_version: context.executor_version
+        },
+        public_result: publicResult,
+        verification: {
+          source: 'browser_public_page',
+          strength: full ? 'public_browser_verified' : 'unverified',
+          verified_at: full ? observation?.observed_at ?? this.now().toISOString() : null,
+          account_match:
+            context.observed_account?.toLowerCase() === plan.intent.target_account.toLowerCase(),
+          count_match: full,
+          content_match: full || verification.kind === 'partial',
+          order_match: full || verification.kind === 'partial',
+          reply_chain_match: full || verification.kind === 'partial',
+          links_match: full || verification.kind === 'partial',
+          unique_post_ids: new Set(verifiedPosts.map((post) => post.post_id)).size === verifiedPosts.length,
+          evidence_digest: sha256({ verification, page_revision: observation?.page_revision ?? null })
+        }
+      },
+      this.receiptId,
+      this.now
+    );
+    await this.store.writeNew(`receipts/${receipt.receipt_id}.json`, receipt);
+    return receipt;
   }
 
   private async failPreSubmit(
