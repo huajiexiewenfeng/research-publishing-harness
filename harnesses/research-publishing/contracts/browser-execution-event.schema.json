@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/browser-execution-event/2.0",
+  "title": "Browser Execution Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "execution_id",
+    "attempt_id",
+    "sequence",
+    "event_type",
+    "occurred_at",
+    "previous_state",
+    "next_state"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "attempt_id": { "type": ["string", "null"], "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "previous_state": { "$ref": "#/$defs/state" },
+    "next_state": { "$ref": "#/$defs/state" },
+    "command_id": { "type": "string", "minLength": 1 },
+    "evidence_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "submit_command_count": { "type": "integer", "minimum": 0 },
+    "latest_observation_id": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "state": {
+      "enum": [
+        "created",
+        "preflight",
+        "account_verified",
+        "composer_prepared",
+        "composer_verified",
+        "submit_armed",
+        "submit_attempted",
+        "outcome_resolving",
+        "public_verifying",
+        "finalized",
+        "pre_submit_failed",
+        "cancelled_before_submit",
+        "published_unverified",
+        "outcome_unknown",
+        "partial",
+        "failed_after_submit",
+        "verification_conflict"
+      ]
+    }
+  }
+}

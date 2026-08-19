@@ -12,8 +12,20 @@ const names = [
   'approval',
   'publish-receipt',
   'publication-plan-v2',
-  'approval-v2'
+  'approval-v2',
+  'browser-execution-event'
 ] as const;
+
+const v1Names = new Set([
+  'candidate',
+  'research-content-package',
+  'generation-task',
+  'article-draft',
+  'x-draft',
+  'review-report',
+  'approval',
+  'publish-receipt'
+]);
 
 describe('public contracts', () => {
   for (const name of names) {
@@ -30,7 +42,7 @@ describe('public contracts', () => {
         additionalProperties: boolean;
       };
 
-      const version = name.endsWith('-v2') ? '2.0' : '1.0';
+      const version = v1Names.has(name) ? '1.0' : '2.0';
       expect(schema.$id).toBe(`rph://contracts/${name}/${version}`);
       expect(schema.additionalProperties).toBe(false);
     });
