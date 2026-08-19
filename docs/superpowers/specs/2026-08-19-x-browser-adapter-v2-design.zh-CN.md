@@ -3,7 +3,8 @@
 ## 文档状态
 
 - 日期：2026-08-19
-- 状态：设计候选，待书面确认
+- 状态：设计已确认，可进入实施计划
+- 确认日期：2026-08-19
 - 适用仓库：`research-publishing-harness`
 - 设计语言：中文
 - 首版实现范围：复用现有 Chrome 登录态的 X 纯文本 Single、Thread 与 Reply 发布
@@ -517,13 +518,14 @@ Harness 生成下一条 Browser Command
 ```text
 research-publish x browser start
 research-publish x browser next
+research-publish x browser claim
 research-publish x browser report
 research-publish x browser status
 research-publish x browser resume-verification
 research-publish x browser cancel-before-submit
 ```
 
-Skill 可以循环调用这些接口，但不能自行增加、替换或跳过 Browser Command。
+Skill 可以循环调用这些接口，但不能自行增加、替换或跳过 Browser Command。Host 在执行任何 Browser Command 前必须调用 `claim`；该操作原子写入 consumed-command 记录，并拒绝同一 `command_id` 的第二次领取。
 
 ### 11.5 Codex Chrome Host 约束
 
@@ -900,7 +902,7 @@ Submit 已尝试后，即使 Browser 断开，Skill也只能恢复结果验证�
 使用本地 Mock X 页面验证完整 Host Bridge：
 
 ```text
-start → next → execute → report → next → finalized
+start → next → claim → execute → report → next → finalized
 ```
 
 CI 不允许对真实 X 账号执行发布。
