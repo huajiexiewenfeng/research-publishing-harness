@@ -217,6 +217,8 @@ Browser Executor 是 Host 注入的有限能力端口。首个 Host 实现是 Co
 
 它执行 Harness 已经决定的动作，不负责决定下一步，也不能扩展动作范围。
 
+因为 Human 已明确选择 Chrome，Host 不得在 Chrome 不可用、未登录或断开时静默切换到 Codex 内置浏览器、Edge 或独立自动化进程。Chrome 不可用必须作为明确的 Preflight 失败返回。
+
 ### 6.6 Public Thread Verifier
 
 Verifier 是 Browser Adapter 的只读子组件，负责：
@@ -523,6 +525,20 @@ research-publish x browser cancel-before-submit
 
 Skill 可以循环调用这些接口，但不能自行增加、替换或跳过 Browser Command。
 
+### 11.5 Codex Chrome Host 约束
+
+Codex Host 实现必须遵守当前 Chrome 控制面的实际能力边界：
+
+- 通过受支持的 browser-client runtime 选择明确的 Chrome family。
+- 第一次建立 Chrome binding 时完整读取该 binding 的能力文档，再把实际能力映射到 `BrowserExecutor` capability manifest。
+- 在同一执行中复用持久 Chrome binding，不因新一轮 Agent turn 重新选择浏览器。
+- Tab binding 与 Browser binding 分离；tab stale、被关闭或被清理时，只重新获取受允许的 X tab，不重新初始化 Browser binding。
+- 不读取 Cookie、local storage、浏览器 Profile、密码或 session store。
+- 不使用外部 Playwright server、独立 Browser MCP 或 Computer Use 作为 Chrome 的静默替代面。
+- 如果明确的 Chrome family 不可用，返回 `BROWSER_EXECUTOR_UNAVAILABLE`，由 Human 修复连接或显式选择其他 Adapter。
+
+浏览器能力文档可能随 Host 版本变化，因此 `BrowserExecutor` capability manifest 和版本必须进入 Preflight 证据，但不能进入内容 Plan Digest。
+
 ## 12. Browser 预检
 
 Browser Adapter 开始写操作前必须验证：
@@ -537,6 +553,8 @@ Browser Adapter 开始写操作前必须验证：
 8. Reply 模式的目标 Post Snapshot 仍然有效。
 
 Adapter 不自动登录、不自动切换账号、不关闭未知草稿，也不读取其他标签页寻找账号信息。
+
+如果 Chrome family 不可用，Adapter 必须停止并指导 Human 修复 Chrome 连接；不能自行改用内置浏览器或其他 browser family。
 
 发现已有 Composer 内容时返回 `DRAFT_CONFLICT`。系统不得覆盖、追加或关闭该内容。
 
@@ -874,6 +892,8 @@ Submit 已尝试后，即使 Browser 断开，Skill也只能恢复结果验证�
 15. 公开链接被 X 包装为 `t.co`。
 16. 出现账号锁定或安全验证页。
 17. 增加 Composer item 的点击结果未知，但重新观察可判定是否成功。
+18. Chrome family 不可用时 fail closed，且不切换 Browser surface。
+19. Chrome binding 仍有效但 tab stale 时，只恢复目标 X tab。
 
 ### 20.4 Integration Tests
 
@@ -978,11 +998,12 @@ Browser Adapter V2 实现只有满足全部条件才能称为完成：
 18. 状态可以从 append-only Ledger 完整重建。
 19. Receipt 升级不修改旧 Receipt，而是建立 supersession 链。
 20. 运行产物不含 Cookie、Token、密码、完整 DOM 或无关页面数据。
-21. Browser 失败不会静默切换 Manual Adapter。
-22. Manual fallback、Partial recovery 和重新发布都需要新的明确确认。
-23. Contract 不能识别页面时 fail closed。
-24. 所有关键成功、失败、崩溃和恢复路径有自动测试证据。
-25. CI 不对真实 X 账号产生发布副作用。
+21. 明确选择 Chrome 后不会静默切换到其他 Browser surface。
+22. Browser 失败不会静默切换 Manual Adapter。
+23. Manual fallback、Partial recovery 和重新发布都需要新的明确确认。
+24. Contract 不能识别页面时 fail closed。
+25. 所有关键成功、失败、崩溃和恢复路径有自动测试证据。
+26. CI 不对真实 X 账号产生发布副作用。
 
 ## 24. 完整性结论
 
