@@ -60,28 +60,28 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/manual/manual-adapter.ts",
-      "sha256": "b9bfc19250e1ec0d511f38539f90d5994daa4c5eca23d96a15bbe59a4e3b7678",
-      "bytes": 4927
+      "sha256": "47bc2ab991b66e459f8486750dab327ef4758e6891632f5132614d5c1906086b",
+      "bytes": 4785
     },
     {
       "path": "harnesses/research-publishing/branches/article-harness/article-service.ts",
-      "sha256": "f8ae025f40061b110b3e37b188d03d80f13f44db6391966122dcf687dccfcf4c",
-      "bytes": 12363
+      "sha256": "5055dec23e1dde2740e510f1282435e76a0a46384379d2f63784c8e423f38434",
+      "bytes": 12039
     },
     {
       "path": "harnesses/research-publishing/branches/x-harness/character-count.ts",
-      "sha256": "036574f0bfb07657ad4062397fea70174e85594733d61e41a26da10dab36a90f",
-      "bytes": 598
+      "sha256": "1bc8c978e8c3cc8e30125b078a5977ae2037ccb41631f4f5b86361e65c83f7a5",
+      "bytes": 580
     },
     {
       "path": "harnesses/research-publishing/branches/x-harness/x-service.ts",
-      "sha256": "ae2ac31693be84831a84fb4f2bd6a046355ea0a649a280990d22a71b655d801e",
-      "bytes": 12128
+      "sha256": "871f45338ee242104f8a1ee075a57ef30f809ddda75e59fd47e26fab822a56ab",
+      "bytes": 11870
     },
     {
       "path": "harnesses/research-publishing/cli/index.ts",
-      "sha256": "d718dd260efc3fe87e7abb3b705b1e72cb7abbf28739928fd92d92e15f7ecba7",
-      "bytes": 16544
+      "sha256": "50d70a0f682a4094f36d1c02a8e220d222f60b5b41d190bf3af9d0590d9a7922",
+      "bytes": 16297
     },
     {
       "path": "harnesses/research-publishing/contracts/approval-v2.schema.json",
@@ -90,13 +90,13 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/approval.schema.json",
-      "sha256": "f6bd9be4e4fdbba372431d1e5840d01fb31465e553fc27d4259e93a6a0aa4b6c",
-      "bytes": 1053
+      "sha256": "9e5fc2ad8f85edab598241b21ab6d5679282e10f1cb4b1f4acb1961082aa5953",
+      "bytes": 1029
     },
     {
       "path": "harnesses/research-publishing/contracts/article-draft.schema.json",
-      "sha256": "1f4f3537d94ff1fd137c7ac5840aa2d1d9d3750e341919969c17d6a51c172dda",
-      "bytes": 1342
+      "sha256": "c57db7c87378a543ecee5614929ad039bb875ac965d393dbb136726fe120a3c8",
+      "bytes": 1311
     },
     {
       "path": "harnesses/research-publishing/contracts/browser-command.schema.json",
@@ -115,13 +115,13 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/candidate.schema.json",
-      "sha256": "7914bf72efad55c2c4635ad13420eebd75b337780d563bb69501901669b94614",
-      "bytes": 1346
+      "sha256": "f67eae5138a5f0950ddd4346797c1c48069eb49008d777ce95e25b5661394acf",
+      "bytes": 1308
     },
     {
       "path": "harnesses/research-publishing/contracts/generation-task.schema.json",
-      "sha256": "7d6aa25926e8e682bd42d54cf1146bba8183eedf1a86fd2b75cf147aeca9c275",
-      "bytes": 2440
+      "sha256": "0d34d93dc2351465fa99843b94e6739a8de05fac83f2e2d4bc313103660b785f",
+      "bytes": 2380
     },
     {
       "path": "harnesses/research-publishing/contracts/publication-plan-v2.schema.json",
@@ -135,23 +135,23 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/publish-receipt.schema.json",
-      "sha256": "78551f8d7271321977fca8d57d7c7ca523ec7e564a59e5a3aa2b5636a9086a23",
-      "bytes": 1366
+      "sha256": "2e2c019aa2834430b0699aef23cf0eacbc3a72acc512b3654ae285e0124e8f6e",
+      "bytes": 1333
     },
     {
       "path": "harnesses/research-publishing/contracts/research-content-package.schema.json",
-      "sha256": "e69c0b8c857ee4a6f9ebf09931dd34f286590652bb4036441e3d363edb01d134",
-      "bytes": 7284
+      "sha256": "08f3507a20eef817141e4240c04dd98093e5751be4774250db054ab382393336",
+      "bytes": 7096
     },
     {
       "path": "harnesses/research-publishing/contracts/review-report.schema.json",
-      "sha256": "9b190cdaf0223a56d89371f65c696e38e665bf96579c9f83762befc6b6c94617",
-      "bytes": 1141
+      "sha256": "2b8b7614ccc21c3e518f7459ace72fb3790c21562c613d4c29f3e9f2a6ec22ef",
+      "bytes": 1108
     },
     {
       "path": "harnesses/research-publishing/contracts/x-draft.schema.json",
-      "sha256": "3e2daf4f108fde8a67307685a2b22cf45fda3f88023d09e3050cee79ba643fb3",
-      "bytes": 1565
+      "sha256": "b97f2785e4a1132ada02e7f5db162adf15beada81eb774ba9fc8f89b620cff62",
+      "bytes": 1524
     },
     {
       "path": "harnesses/research-publishing/core/approval-v2.ts",
@@ -160,8 +160,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/approval.ts",
-      "sha256": "16d50e39f0c56ac6701872ec0b4621c8f27d0b49d78f0019152d8440bb6ce6fa",
-      "bytes": 3240
+      "sha256": "33cdd1b0facc723f05cd1da450984f8b2f03d413e219d45788ee4ab9955f0e4a",
+      "bytes": 3152
     },
     {
       "path": "harnesses/research-publishing/core/artifact-retention.ts",
@@ -175,13 +175,13 @@
     },
     {
       "path": "harnesses/research-publishing/core/digest.ts",
-      "sha256": "d344e12baa65af0240707fb8c23ab9baba21ebe7982dd8962bab2b2c90b1f262",
-      "bytes": 1880
+      "sha256": "87d5b9334010ec75f3310f4c538cee4ab4282c3c1f98fb859152ef08dacc1a4a",
+      "bytes": 1814
     },
     {
       "path": "harnesses/research-publishing/core/errors.ts",
-      "sha256": "37ab17d55d804ea18d0425795cece0e2de2ba29284912371109be7a12b4fe394",
-      "bytes": 1148
+      "sha256": "3b77e5f6d6caee504468ce6dd8ea3d2dd59ab25288ecb6a447de54c40fb8fc70",
+      "bytes": 1126
     },
     {
       "path": "harnesses/research-publishing/core/execution-store.ts",
@@ -190,18 +190,18 @@
     },
     {
       "path": "harnesses/research-publishing/core/gates.ts",
-      "sha256": "968ed6686e06d5c4730a503626021e989ae57f2d665c6adf7b111203c562e469",
-      "bytes": 8505
+      "sha256": "6b9a5b2275862368953db25f7e3ce9296667e9224a3daf7c2be200089ce279ed",
+      "bytes": 8230
     },
     {
       "path": "harnesses/research-publishing/core/generation.ts",
-      "sha256": "2fdaf572c9494f9928f3fb42e7dbd55f60a2833dbc98fe6b07c5f1411c75e1b4",
-      "bytes": 2553
+      "sha256": "e523a233bfc42a4be586efaa62ed60154c21bc81c87fc21a3acead0256751777",
+      "bytes": 2479
     },
     {
       "path": "harnesses/research-publishing/core/package-service.ts",
-      "sha256": "638cae701b339ea10bc36fdd21770f2ea2ddb5ef280686fcd192e4d68c69d1b8",
-      "bytes": 5770
+      "sha256": "3718c06125450752512cf87ad77154ae08e8caf64a6ef4be37a0ea54e62c7a29",
+      "bytes": 5623
     },
     {
       "path": "harnesses/research-publishing/core/publication-plan-v2.ts",
@@ -210,58 +210,58 @@
     },
     {
       "path": "harnesses/research-publishing/core/schema-validator.ts",
-      "sha256": "6a12aa48a6473cb18e8405aef586e6a9d2d5538897ab883017c3f598d73d9016",
-      "bytes": 1996
+      "sha256": "d6b12ff218ae144e147d7dca7d151d3b0fa0ea477ef575182207b869046c8c99",
+      "bytes": 1932
     },
     {
       "path": "harnesses/research-publishing/core/state-machine.ts",
-      "sha256": "54ea00691bac7090b28d68dd9b6ad744589536cccfdef0c4933181eec7d54f65",
-      "bytes": 1511
+      "sha256": "90ae69a25f17a8002b094ed569fa2220959fa464ee1fc6049d2d542e7d5f9926",
+      "bytes": 1462
     },
     {
       "path": "harnesses/research-publishing/core/types.ts",
-      "sha256": "39d345dc2599834eef66bfa8a02d23266ae0b0dd6f2808a537e39a459c6df922",
-      "bytes": 3933
+      "sha256": "33130dd60b752b021784b879c9394adca5422771ec427c574fb9411f7df204cc",
+      "bytes": 3804
     },
     {
       "path": "harnesses/research-publishing/core/workspace-store.ts",
-      "sha256": "fbf10b2f2935ed211f9cabe31193eeb787f39497fde17358a8c605fa8ce11c76",
-      "bytes": 10674
+      "sha256": "2c77f905820ed206e0fef94a8be441e3955bf4a0c3b89106e07b4cc693903fe9",
+      "bytes": 10554
     },
     {
       "path": "harnesses/research-publishing/examples/synthetic/article-draft.json",
-      "sha256": "fac32aa9eedeb23af41f31cc81a5bd0c4a15907fc9df5b0910c158ca71d7219b",
-      "bytes": 1006
+      "sha256": "0feaa8e39e5bb620aec53d7635abd87e294392669224b4f52cf3aab373bf6740",
+      "bytes": 978
     },
     {
       "path": "harnesses/research-publishing/examples/synthetic/candidate.json",
-      "sha256": "43048c9fdcf90c81e78de98bb335f258b60113bae89e5a17c81ffacaa24d81ba",
-      "bytes": 577
+      "sha256": "7be61a11763016c9d74bdbb4d882b1dd875cf1e66ca93cc65856b3499ef59fd8",
+      "bytes": 564
     },
     {
       "path": "harnesses/research-publishing/examples/synthetic/package.json",
-      "sha256": "c72987869ccbfe92503f7250f627a27af3e6b3cc0c686c0ece788e5577d67aa8",
-      "bytes": 2873
+      "sha256": "8004d8daa766ccb7405bb78f2400a5fd8ff502474afe4bbafc9de689df5db8b7",
+      "bytes": 2791
     },
     {
       "path": "harnesses/research-publishing/examples/synthetic/x-draft.json",
-      "sha256": "ec49124bd4c0aa600f9823b1042f22a48acc3877e616cf1f910e0ec991949ede",
-      "bytes": 801
+      "sha256": "1e663706454925edab3781b59e9ee28f0f06de4f27498f0698a756cbb0da7fde",
+      "bytes": 775
     },
     {
       "path": "skills/article-publishing-copilot/SKILL.md",
-      "sha256": "621a6b7a405b10b6c064c6c939727beb405e9d9c046adc9f56a25771fe556626",
-      "bytes": 1891
+      "sha256": "8042a14252a85ae0186a056acd18bfe1fb94972a83dbbf6a6a2caee6e92b7143",
+      "bytes": 1859
     },
     {
       "path": "skills/article-publishing-copilot/agents/openai.yaml",
-      "sha256": "b74b04a1be146b84e431202ed717d4eba298e3fbfc04d1f48d8233a75e93d06f",
-      "bytes": 304
+      "sha256": "7696222cafadf418f7cf9daaf4b956f724dd0f8623e924d1376b0e99517d9de1",
+      "bytes": 298
     },
     {
       "path": "skills/article-publishing-copilot/scripts/invoke.mjs",
-      "sha256": "ec94e320cbeacb3363a877006884cf2764372a1c0ebda12739f486dc5631d688",
-      "bytes": 1652
+      "sha256": "0623e20ee5783f647a3197b077d0fb3aae164ec7a2a09f2133c69b26a7dab6e1",
+      "bytes": 1611
     },
     {
       "path": "skills/x-publishing-copilot/SKILL.md",
@@ -270,8 +270,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/agents/openai.yaml",
-      "sha256": "8e6f8d420094360071be591298955b58806d7939b6f017d1bf424976aed4b2d3",
-      "bytes": 276
+      "sha256": "37cbd4a84368479f7a6bc0e896b8c94e26b5ed8edf5c00ba94b90973c660166c",
+      "bytes": 270
     },
     {
       "path": "skills/x-publishing-copilot/references/browser-adapter-flow.md",
@@ -280,8 +280,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/invoke.mjs",
-      "sha256": "ec94e320cbeacb3363a877006884cf2764372a1c0ebda12739f486dc5631d688",
-      "bytes": 1652
+      "sha256": "0623e20ee5783f647a3197b077d0fb3aae164ec7a2a09f2133c69b26a7dab6e1",
+      "bytes": 1611
     }
   ]
 }

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 
+import { canonicalManifestBytes } from './manifest-content.js';
+
 const root = resolve(import.meta.dirname, '..');
 const output = resolve(root, 'registry/manifests/research-publishing.json');
 const sourceRoots = [
@@ -34,7 +36,7 @@ const paths = (
 
 const files = await Promise.all(
   paths.map(async (path) => {
-    const bytes = await readFile(path.absolute);
+    const bytes = canonicalManifestBytes(await readFile(path.absolute));
     return {
       path: path.relative,
       sha256: createHash('sha256').update(bytes).digest('hex'),
