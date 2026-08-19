@@ -12,6 +12,7 @@ import { ArticleService, type ArticleBrief, type ArticleDraft } from '../branche
 import { XService, type PublicationPlan, type XBrief, type XDraft } from '../branches/x-harness/x-service.js';
 import { approvePublication, type Approval } from '../core/approval.js';
 import { approvePublicationV2, type ApprovalV2 } from '../core/approval-v2.js';
+import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
 import { PackageService } from '../core/package-service.js';
 import { ExecutionStore } from '../core/execution-store.js';
@@ -214,6 +215,10 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       broker,
       new XWeb202608Contract()
     );
+    if (operation === 'x browser prune') {
+      const artifact = await pruneBrowserArtifacts(store);
+      return { ok: true, operation, artifact, state: 'pruned' };
+    }
     if (operation === 'x browser start') {
       const start = input as unknown as {
         execution_id: string;
@@ -221,6 +226,7 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         approval: ApprovalV2;
         capability_manifest: BrowserCapabilityManifest;
       };
+      await pruneBrowserArtifacts(store);
       const snapshot = await browser.start(start);
       const status = await browser.status(start.execution_id);
       return {

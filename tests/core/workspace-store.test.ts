@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -44,4 +44,23 @@ describe('WorkspaceStore', () => {
       await expect(access(join(parent, 'escape.json'))).rejects.toBeDefined();
     }
   );
+
+  it('lists links without following them and refuses to remove a link', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-store-link-'));
+    const root = join(parent, 'workspace');
+    const store = await WorkspaceStore.open(root);
+    const targetDirectory = join(parent, 'target');
+    const target = join(targetDirectory, 'target.txt');
+    await mkdir(targetDirectory);
+    await writeFile(target, 'outside', 'utf8');
+    await symlink(targetDirectory, join(root, 'runs', 'target-link'), 'junction');
+
+    await expect(store.list('runs')).resolves.toContainEqual({
+      name: 'target-link', relative_path: 'runs/target-link', kind: 'symlink'
+    });
+    await expect(store.removeFile('runs/target-link')).rejects.toMatchObject({
+      code: 'WORKSPACE_PATH_INVALID'
+    });
+    await expect(readFile(target, 'utf8')).resolves.toBe('outside');
+  });
 });

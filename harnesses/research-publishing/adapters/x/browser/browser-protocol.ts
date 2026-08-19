@@ -1,13 +1,15 @@
 import { sha256 } from '../../../core/digest.js';
 import type { ErrorCode } from '../../../core/errors.js';
 
-export type BrowserCommandKind =
-  | 'observe_page'
-  | 'navigate'
-  | 'click'
-  | 'set_text'
-  | 'press_key'
-  | 'wait';
+export const BROWSER_COMMAND_KINDS = [
+  'observe_page',
+  'navigate',
+  'click',
+  'set_text',
+  'press_key',
+  'wait'
+] as const;
+export type BrowserCommandKind = (typeof BROWSER_COMMAND_KINDS)[number];
 export type BrowserSideEffect = 'read' | 'write' | 'submit';
 
 export interface BrowserCapabilityManifest {

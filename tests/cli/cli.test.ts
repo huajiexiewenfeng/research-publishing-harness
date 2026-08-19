@@ -81,6 +81,20 @@ describe('research-publish CLI', () => {
     expect(JSON.parse(missing.stdout)).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } });
   });
 
+  it('prunes browser artifacts through a JSON-only operation', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'rph-cli-prune-'));
+    const result = run(['x', 'browser', 'prune', '--workspace', workspace, '--output', 'json']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      operation: 'x browser prune',
+      artifact: { schema_version: '2.0', deleted_paths: [] },
+      state: 'pruned'
+    });
+  });
+
   it('persists the Browser Host Bridge across CLI processes and reports full operation names', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-browser-'));
     const workspace = join(parent, 'workspace');

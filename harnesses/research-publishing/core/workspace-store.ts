@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, link, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { access, link, lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { sha256 } from './digest.js';
@@ -29,6 +29,12 @@ export interface WorkspaceExecutionApi {
   appendLine(relativePath: string, line: string): Promise<ArtifactRef>;
   replaceAtomic(relativePath: string, value: string | object): Promise<ArtifactRef>;
   withLock<T>(relativePath: string, operation: () => Promise<T>): Promise<T>;
+}
+
+export interface WorkspaceEntry {
+  readonly name: string;
+  readonly relative_path: string;
+  readonly kind: 'file' | 'directory' | 'symlink';
 }
 
 export class WorkspaceStore {
@@ -141,6 +147,49 @@ export class WorkspaceStore {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
       throw error;
     }
+  }
+
+  async list(relativeDirectory: string): Promise<readonly WorkspaceEntry[]> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativeDirectory);
+    let entries;
+    try {
+      entries = await readdir(absolutePath, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    return entries
+      .map((entry): WorkspaceEntry => ({
+        name: entry.name,
+        relative_path: `${normalized}/${entry.name}`,
+        kind: entry.isSymbolicLink()
+          ? 'symlink'
+          : entry.isDirectory()
+            ? 'directory'
+            : 'file'
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async removeFile(relativePath: string): Promise<number> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    let metadata;
+    try {
+      metadata = await lstat(absolutePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
+      }
+      throw error;
+    }
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new HarnessError(
+        'WORKSPACE_PATH_INVALID',
+        `retention may remove regular files only: ${normalized}`
+      );
+    }
+    await unlink(absolutePath);
+    return metadata.size;
   }
 
   async appendLine(relativePath: string, line: string): Promise<ArtifactRef> {

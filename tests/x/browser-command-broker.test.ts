@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  BROWSER_COMMAND_KINDS,
   type BrowserActionResultInput,
   type BrowserObservationInput
 } from '../../harnesses/research-publishing/adapters/x/browser/browser-protocol.js';
@@ -70,6 +71,15 @@ function result(commandId: string, observed: BrowserObservationInput | null): Br
 }
 
 describe('CommandBroker', () => {
+  it('exposes only bounded semantic commands, without capture or script execution', () => {
+    expect(BROWSER_COMMAND_KINDS).toEqual([
+      'observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait'
+    ]);
+    expect(BROWSER_COMMAND_KINDS).not.toContain('screenshot');
+    expect(BROWSER_COMMAND_KINDS).not.toContain('capture_screen');
+    expect(BROWSER_COMMAND_KINDS).not.toContain('javascript');
+  });
+
   it('issues, revision-binds, and claims a command exactly once', async () => {
     const { broker } = await fixture();
     const observe = await broker.issue({
