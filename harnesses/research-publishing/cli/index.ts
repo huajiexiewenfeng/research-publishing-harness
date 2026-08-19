@@ -4,11 +4,18 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { ManualAdapter, type ManualPublicResult, type PublishReceipt } from '../adapters/x/manual/manual-adapter.js';
+import { BrowserAdapter } from '../adapters/x/browser/browser-adapter.js';
+import type { BrowserActionResultInput, BrowserCapabilityManifest } from '../adapters/x/browser/browser-protocol.js';
+import { CommandBroker } from '../adapters/x/browser/command-broker.js';
+import { XWeb202608Contract } from '../adapters/x/browser/contracts/x-web-2026-08.js';
 import { ArticleService, type ArticleBrief, type ArticleDraft } from '../branches/article-harness/article-service.js';
 import { XService, type PublicationPlan, type XBrief, type XDraft } from '../branches/x-harness/x-service.js';
 import { approvePublication, type Approval } from '../core/approval.js';
+import { approvePublicationV2, type ApprovalV2 } from '../core/approval-v2.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
 import { PackageService } from '../core/package-service.js';
+import { ExecutionStore } from '../core/execution-store.js';
+import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
 import { assertContractsAvailable } from '../core/schema-validator.js';
 import type { Candidate, ResearchContentPackage } from '../core/types.js';
 import { WorkspaceStore } from '../core/workspace-store.js';
@@ -17,6 +24,9 @@ interface CliOptions {
   readonly workspace: string;
   readonly input?: string;
   readonly runId?: string;
+  readonly executionId?: string;
+  readonly commandId?: string;
+  readonly adapter?: 'manual' | 'browser';
   readonly output: string;
 }
 
@@ -49,15 +59,36 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
   if (workspace === undefined || workspace.trim().length === 0) {
     throw new HarnessError('CONTRACT_INVALID', '--workspace is required');
   }
+  const adapter = values['adapter'];
+  if (adapter !== undefined && adapter !== 'manual' && adapter !== 'browser') {
+    throw new HarnessError('CONTRACT_INVALID', '--adapter must be manual or browser');
+  }
   return {
     positional,
     options: {
       workspace: resolve(workspace),
       ...(values['input'] === undefined ? {} : { input: resolve(values['input']) }),
       ...(values['run-id'] === undefined ? {} : { runId: values['run-id'] }),
+      ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
+      ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
+      ...(adapter === undefined ? {} : { adapter }),
       output: values['output'] ?? 'json'
     }
   };
+}
+
+function requiredExecutionId(options: CliOptions): string {
+  if (options.executionId === undefined || options.executionId.length === 0) {
+    throw new HarnessError('CONTRACT_INVALID', '--execution-id is required');
+  }
+  return options.executionId;
+}
+
+function requiredCommandId(options: CliOptions): string {
+  if (options.commandId === undefined || options.commandId.length === 0) {
+    throw new HarnessError('CONTRACT_INVALID', '--command-id is required');
+  }
+  return options.commandId;
 }
 
 async function readInput<T>(options: CliOptions): Promise<T> {
@@ -175,6 +206,63 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       ...(options.runId === undefined ? {} : { runId: () => options.runId! })
     });
     const input = options.input === undefined ? undefined : await readInput<Record<string, unknown>>(options);
+    const executions = new ExecutionStore(store);
+    const broker = new CommandBroker(store, executions);
+    const browser = new BrowserAdapter(
+      store,
+      executions,
+      broker,
+      new XWeb202608Contract()
+    );
+    if (operation === 'x browser start') {
+      const start = input as unknown as {
+        execution_id: string;
+        plan: PublicationPlanV2;
+        approval: ApprovalV2;
+        capability_manifest: BrowserCapabilityManifest;
+      };
+      const snapshot = await browser.start(start);
+      const status = await browser.status(start.execution_id);
+      return {
+        ok: true,
+        operation,
+        artifact: {
+          execution_id: start.execution_id,
+          snapshot,
+          command: status.pending_command
+        },
+        state: snapshot.state
+      };
+    }
+    if (operation === 'x browser next') {
+      const executionId = requiredExecutionId(options);
+      const artifact = await browser.next(executionId);
+      const status = await browser.status(executionId);
+      return { ok: true, operation, artifact, state: status.snapshot.state };
+    }
+    if (operation === 'x browser claim') {
+      const executionId = requiredExecutionId(options);
+      const artifact = await browser.claim(executionId, requiredCommandId(options));
+      const status = await browser.status(executionId);
+      return { ok: true, operation, artifact, state: status.snapshot.state };
+    }
+    if (operation === 'x browser report') {
+      const executionId = requiredExecutionId(options);
+      const artifact = await browser.report(executionId, input as unknown as BrowserActionResultInput);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x browser status') {
+      const artifact = await browser.status(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.snapshot.state };
+    }
+    if (operation === 'x browser resume-verification') {
+      const artifact = await browser.resumeVerification(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x browser cancel-before-submit') {
+      const artifact = await browser.cancelBeforeSubmit(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
     if (operation === 'x prepare') {
       const prepare = input as unknown as { package: ResearchContentPackage; brief: XBrief };
       return { ok: true, operation, artifact: await x.prepareX(prepare.package, prepare.brief), state: 'generation_ready' };
@@ -185,11 +273,13 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     }
     if (operation === 'x approve') {
       const approve = input as unknown as {
-        plan: PublicationPlan;
+        plan: PublicationPlan | PublicationPlanV2;
         approved_by: string;
         ttl_ms: number;
       };
-      const artifact = approvePublication(approve.plan, approve.approved_by, approve.ttl_ms);
+      const artifact = approve.plan.schema_version === '2.0'
+        ? approvePublicationV2(approve.plan, approve.approved_by, approve.ttl_ms)
+        : approvePublication(approve.plan, approve.approved_by, approve.ttl_ms);
       await store.writeNew(`approvals/${artifact.approval_id}.json`, artifact);
       return { ok: true, operation, artifact, state: 'approved' };
     }
@@ -219,7 +309,10 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       return { ok: true, operation, artifact, state: 'reviewed', findings: artifact.findings };
     }
     if (operation === 'x plan') {
-      return { ok: true, operation, artifact: await x.planX(runId), state: 'approval_pending' };
+      const artifact = options.adapter === 'browser'
+        ? await x.planXBrowser(runId)
+        : await x.planX(runId);
+      return { ok: true, operation, artifact, state: 'approval_pending' };
     }
   }
 
@@ -238,7 +331,11 @@ function exitCode(error: unknown): number {
     ];
     const stateCodes: readonly ErrorCode[] = [
       'STATE_TRANSITION_INVALID',
-      'APPROVAL_STALE'
+      'APPROVAL_STALE',
+      'COMMAND_REPLAY_REJECTED',
+      'STALE_PAGE_REVISION',
+      'EXECUTION_BUSY',
+      'SUBMIT_ALREADY_ATTEMPTED'
     ];
     if (contractCodes.includes(error.code)) return 2;
     if (gateCodes.includes(error.code)) return 3;
@@ -252,7 +349,7 @@ function exitCode(error: unknown): number {
 }
 
 async function main(): Promise<void> {
-  let operation = process.argv.slice(2).filter((value) => !value.startsWith('--')).slice(0, 2).join(' ');
+  let operation = operationFromArgv(process.argv.slice(2));
   try {
     const result = await execute(process.argv.slice(2));
     process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -267,6 +364,19 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ ok: false, operation, error: { code, message } })}\n`);
     process.exitCode = exitCode(error);
   }
+}
+
+function operationFromArgv(argv: readonly string[]): string {
+  const positional: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token.startsWith('--')) {
+      index += 1;
+      continue;
+    }
+    positional.push(token);
+  }
+  return positional.join(' ');
 }
 
 await main();
