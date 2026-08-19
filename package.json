@@ -23,11 +23,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
+    "pretest": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest",
     "manifest": "tsx tools/build-manifest.ts",
     "acceptance": "tsx tools/acceptance.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm acceptance"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm acceptance"
   },
   "dependencies": {
     "ajv": "8.20.0",
