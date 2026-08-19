@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publish-receipt-v2/2.0",
+  "title": "Publication Receipt V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "receipt_id", "supersedes_receipt_id", "execution_id", "attempt_id",
+    "run_id", "platform", "adapter", "status", "target_account", "observed_account",
+    "approval", "submission", "public_result", "verification", "created_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "supersedes_receipt_id": { "type": ["string", "null"], "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "attempt_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "platform": { "const": "x" },
+    "adapter": { "enum": ["browser", "manual"] },
+    "status": { "enum": ["finalized", "partial", "published_unverified", "outcome_unknown", "failed_after_submit", "verification_conflict"] },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "observed_account": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" }
+      ]
+    },
+    "approval": { "$ref": "#/$defs/approval" },
+    "submission": { "$ref": "#/$defs/submission" },
+    "public_result": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/publicResult" }
+      ]
+    },
+    "verification": { "$ref": "#/$defs/verification" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["plan_digest", "approval_digest", "approved_at", "expires_at"],
+      "properties": {
+        "plan_digest": { "$ref": "#/$defs/sha256" },
+        "approval_digest": { "$ref": "#/$defs/sha256" },
+        "approved_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "submission": {
+      "type": "object", "additionalProperties": false,
+      "required": ["armed_at", "attempted_at", "submit_command_count", "page_contract_version", "executor_version"],
+      "properties": {
+        "armed_at": { "type": "string", "format": "date-time" },
+        "attempted_at": { "type": "string", "format": "date-time" },
+        "submit_command_count": { "const": 1 },
+        "page_contract_version": { "type": "string", "minLength": 1 },
+        "executor_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verifiedPost": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordinal", "post_id", "canonical_url", "observed_digest", "reply_to_id"],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "post_id": { "type": "string", "pattern": "^\\d+$" },
+        "canonical_url": { "type": "string", "format": "uri" },
+        "observed_digest": { "$ref": "#/$defs/sha256" },
+        "reply_to_id": {
+          "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^\\d+$" }]
+        }
+      }
+    },
+    "publicResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["root_url", "published_at", "ordered_post_ids", "posts", "matched_ordinals", "missing_ordinals", "unexpected_post_ids"],
+      "properties": {
+        "root_url": { "type": "string", "format": "uri" },
+        "published_at": { "type": "string", "format": "date-time" },
+        "ordered_post_ids": { "type": "array", "items": { "type": "string", "pattern": "^\\d+$" } },
+        "posts": { "type": "array", "items": { "$ref": "#/$defs/verifiedPost" } },
+        "matched_ordinals": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "missing_ordinals": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "unexpected_post_ids": { "type": "array", "items": { "type": "string", "pattern": "^\\d+$" } }
+      }
+    },
+    "verification": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "source", "strength", "verified_at", "account_match", "count_match", "content_match",
+        "order_match", "reply_chain_match", "links_match", "unique_post_ids", "evidence_digest"
+      ],
+      "properties": {
+        "source": { "enum": ["browser_public_page", "x_api_crosscheck", "user_report"] },
+        "strength": { "enum": ["public_browser_verified", "user_asserted", "unverified"] },
+        "verified_at": {
+          "oneOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }]
+        },
+        "account_match": { "type": "boolean" },
+        "count_match": { "type": "boolean" },
+        "content_match": { "type": "boolean" },
+        "order_match": { "type": "boolean" },
+        "reply_chain_match": { "type": "boolean" },
+        "links_match": { "type": "boolean" },
+        "unique_post_ids": { "type": "boolean" },
+        "evidence_digest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}
