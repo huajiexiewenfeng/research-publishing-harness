@@ -10,12 +10,13 @@ const names = [
   'x-draft',
   'review-report',
   'approval',
-  'publish-receipt'
+  'publish-receipt',
+  'publication-plan-v2'
 ] as const;
 
 describe('public contracts', () => {
   for (const name of names) {
-    it(`${name} has a stable v1 id and rejects unknown fields`, async () => {
+    it(`${name} has a stable versioned id and rejects unknown fields`, async () => {
       const raw = await readFile(
         new URL(
           `../../harnesses/research-publishing/contracts/${name}.schema.json`,
@@ -28,7 +29,8 @@ describe('public contracts', () => {
         additionalProperties: boolean;
       };
 
-      expect(schema.$id).toBe(`rph://contracts/${name}/1.0`);
+      const version = name.endsWith('-v2') ? '2.0' : '1.0';
+      expect(schema.$id).toBe(`rph://contracts/${name}/${version}`);
       expect(schema.additionalProperties).toBe(false);
     });
   }

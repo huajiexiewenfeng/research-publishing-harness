@@ -14,6 +14,7 @@ async function service(runId = 'x_run_1'): Promise<XService> {
   const root = await mkdtemp(join(tmpdir(), 'rph-x-'));
   return new XService(await WorkspaceStore.open(root), {
     runId: () => runId,
+    planId: () => 'plan_browser_1',
     now: () => new Date('2026-08-18T15:00:00.000Z')
   });
 }
@@ -136,5 +137,41 @@ describe('XService', () => {
     expect(plan.items.every((item) => item.digest.startsWith('sha256:'))).toBe(true);
     expect(plan.publication_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(plan.article_handoff).toBeUndefined();
+  });
+
+  it('creates a stable browser PublicationPlanV2 without changing the manual plan', async () => {
+    const x = await service('x_browser_good');
+    const run = await x.prepareX(frozenPackage, {
+      contentType: 'anchor',
+      format: 'thread',
+      language: 'en',
+      targetAccount: '@runtime_ai'
+    });
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0',
+      run_id: run.run_id,
+      content_type: 'anchor',
+      format: 'thread',
+      language: 'en',
+      items: [
+        { ordinal: 1, text: 'Reliable agents need governed runtime context.', claim_refs: ['claim_verified'] },
+        { ordinal: 2, text: 'Trace adapters remain planned work.', claim_refs: ['claim_planned'], reply_to: 'previous' }
+      ]
+    });
+    await x.reviewX(run.run_id);
+
+    const plan = await x.planXBrowser(run.run_id);
+    expect(plan).toMatchObject({
+      schema_version: '2.0',
+      plan_id: 'plan_browser_1',
+      run_id: run.run_id,
+      intent: {
+        adapter: 'browser',
+        mode: 'thread',
+        action: 'publish_once'
+      }
+    });
+    expect(plan.plan_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(plan.items).toEqual(plan.intent.items);
   });
 });

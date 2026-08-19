@@ -4,6 +4,10 @@ import { sha256 } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runPrivacyGate } from '../../core/gates.js';
+import {
+  createPublicationPlanV2,
+  type PublicationPlanV2
+} from '../../core/publication-plan-v2.js';
 import { validateContract } from '../../core/schema-validator.js';
 import type { Finding, ResearchContentPackage, ReviewReport } from '../../core/types.js';
 import type { WorkspaceStore } from '../../core/workspace-store.js';
@@ -64,6 +68,7 @@ export interface PublicationPlan {
 
 interface XServiceOptions {
   readonly runId?: () => string;
+  readonly planId?: () => string;
   readonly now?: () => Date;
 }
 
@@ -81,6 +86,7 @@ const SHIPPED_LANGUAGE =
 
 export class XService {
   private readonly runId: () => string;
+  private readonly planId: () => string;
   private readonly now: () => Date;
 
   constructor(
@@ -88,6 +94,7 @@ export class XService {
     options: XServiceOptions = {}
   ) {
     this.runId = options.runId ?? (() => `x_${randomUUID()}`);
+    this.planId = options.planId ?? (() => `plan_${randomUUID()}`);
     this.now = options.now ?? (() => new Date());
   }
 
@@ -262,6 +269,34 @@ export class XService {
       publication_digest: sha256(locked)
     };
     await this.store.writeNew(`${prefix}/publication-plan.json`, plan);
+    return plan;
+  }
+
+  async planXBrowser(runId: string): Promise<PublicationPlanV2> {
+    const prefix = this.runPrefix(runId);
+    const metadata = await this.store.readJson<XRunMetadata>(`${prefix}/run.json`);
+    const draft = await this.store.readJson<XDraft>(`${prefix}/draft-candidate.json`);
+    const report = await this.store.readJson<ReviewReport>(`${prefix}/review-report.json`);
+    if (!report.passed) {
+      throw new HarnessError('EVIDENCE_GATE_BLOCKED', 'X review contains blocking findings');
+    }
+    const plan = createPublicationPlanV2({
+      planId: this.planId(),
+      runId,
+      targetAccount: metadata.target_account,
+      adapter: 'browser',
+      mode: draft.format,
+      targetPost: draft.target_post ?? null,
+      media: [],
+      items: draft.items.map((item) => ({
+        ordinal: item.ordinal,
+        text: item.text,
+        ...(item.reply_to === undefined ? {} : { reply_to: item.reply_to })
+      })),
+      plannedAt: this.now().toISOString(),
+      provenance: { draft_digest: sha256(draft) }
+    });
+    await this.store.writeNew(`${prefix}/publication-plan-v2.json`, plan);
     return plan;
   }
 
