@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-> **Pre-alpha / V1** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
+> **Pre-alpha / V1 stable + V2 implementation branch** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
 
 Research Publishing Harness separates generative work from deterministic publication controls. An agent can help frame a thesis and draft prose; the Harness owns versioned contracts, Claim/Evidence boundaries, privacy review, weighted X character validation, immutable artifacts, content-specific Approval, and manual receipts.
 
@@ -19,7 +19,9 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 
 ## Explicit non-capabilities
 
-V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials. Browser and API adapters are future work, not partially implemented features.
+V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
+
+The V2 Browser Adapter implementation branch adds a deterministic Host Bridge for an explicitly selected Chrome session. It does not store credentials, switch Browser surfaces, use X OAuth/API, schedule posts, support media, or run a real publication in CI. Feature status changes to available only after the V2 acceptance and manifest gate passes.
 
 ## Architecture
 

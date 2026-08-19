@@ -1,4 +1,4 @@
-# V1 Quickstart
+# Research Publishing Harness Quickstart
 
 This guide validates the offline system first, then shows how the two thin Skills map to the CLI.
 
@@ -97,3 +97,27 @@ x prepare → accept-draft → review → plan → exact Preview
 - `$x-publishing-copilot`: use for a Single, Thread, or Reply from a Frozen Package or explicit Article handoff.
 
 Both Skills stop if runtime discovery fails, and both delegate enforcement to the same Harness CLI.
+
+## 8. V2 Browser Host Bridge preview
+
+The Browser Adapter V2 implementation branch reuses an explicitly selected Chrome session through a command bridge. The Harness never launches a browser from the CLI.
+
+Create the Browser Plan and Approval only after reviewing the exact Audit block:
+
+```text
+x plan --adapter browser
+→ exact Audit block
+→ one publish_once confirmation
+→ x approve
+→ x browser start
+```
+
+The Host then repeats:
+
+```text
+x browser next → x browser claim → one Chrome action → x browser report
+```
+
+For a safe synthetic preview, run `x browser start`, inspect the returned read-only `observe_page` command, and stop before claiming any command whose `side_effect` is `submit`. No real X side effect is part of automated acceptance.
+
+If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
