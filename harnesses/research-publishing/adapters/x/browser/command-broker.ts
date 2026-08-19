@@ -45,7 +45,7 @@ export class CommandBroker implements CommandBrokerApi {
     }
     if (
       input.payload.kind === 'navigate' &&
-      new URL(input.payload.url).origin.toLowerCase() !== 'https://x.com'
+      !this.isAllowedXUrl(input.payload.url)
     ) {
       throw new HarnessError('CONTRACT_INVALID', 'browser navigation must remain on x.com');
     }
@@ -146,6 +146,9 @@ export class CommandBroker implements CommandBrokerApi {
     if (!(await this.store.exists(this.claimPath(command.run_id, executionId, command.command_id)))) {
       throw new HarnessError('COMMAND_REPLAY_REJECTED', 'browser result requires a durable command claim');
     }
+    if (await this.store.exists(this.resultPath(command.run_id, executionId, command.command_id))) {
+      throw new HarnessError('COMMAND_REPLAY_REJECTED', 'browser command result was already recorded');
+    }
 
     let observation: BrowserObservation | null = null;
     if (resultInput.observation !== null) {
@@ -156,6 +159,7 @@ export class CommandBroker implements CommandBrokerApi {
       ) {
         throw new HarnessError('CONTRACT_INVALID', 'browser observation does not match command scope');
       }
+      this.assertObservationScope(resultInput.observation);
       observation = validateContract<BrowserObservation>('browser-observation', {
         ...resultInput.observation,
         page_revision: computePageRevision(resultInput.observation)
@@ -220,6 +224,36 @@ export class CommandBroker implements CommandBrokerApi {
   private assertSafeId(value: string): void {
     if (!SAFE_ID.test(value)) {
       throw new HarnessError('WORKSPACE_PATH_INVALID', 'browser protocol id is unsafe');
+    }
+  }
+
+  private isAllowedXUrl(value: string): boolean {
+    try {
+      return new URL(value).origin.toLowerCase() === 'https://x.com';
+    } catch {
+      return false;
+    }
+  }
+
+  private assertObservationScope(observation: BrowserActionResultInput['observation']): void {
+    if (observation === null || !this.isAllowedXUrl(observation.canonical_url)) {
+      throw new HarnessError('CONTRACT_INVALID', 'browser observation URL must remain on x.com');
+    }
+    const containsUnrelatedPageContent = observation.nodes.some((node) =>
+      ['article', 'feed', 'listitem'].includes(node.role.toLowerCase())
+    );
+    const serializedSemanticData = JSON.stringify({
+      nodes: observation.nodes,
+      public_posts: observation.public_posts
+    });
+    if (
+      containsUnrelatedPageContent ||
+      /Bearer\s|Cookie:|password[_ -]?field|"type"\s*:\s*"password"/i.test(serializedSemanticData)
+    ) {
+      throw new HarnessError(
+        'CONTRACT_INVALID',
+        'browser observation contains unrelated or sensitive page data'
+      );
     }
   }
 }

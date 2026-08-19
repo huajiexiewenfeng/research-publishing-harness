@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-> **Pre-alpha / V1 stable + V2 implementation branch** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
+> **Pre-alpha / V1 stable + V2 Browser Adapter available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
 
 Research Publishing Harness separates generative work from deterministic publication controls. An agent can help frame a thesis and draft prose; the Harness owns versioned contracts, Claim/Evidence boundaries, privacy review, weighted X character validation, immutable artifacts, content-specific Approval, and manual receipts.
 
@@ -17,11 +17,21 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 - Thin Article and X Skills that invoke one CLI
 - Synthetic examples, deterministic manifest, adversarial tests, and offline acceptance
 
+## Available in V2
+
+- Deterministic Browser Host Bridge for one explicitly selected, already logged-in Chrome session
+- Stable V2 Plan plus one digest-bound `publish_once` Approval
+- Account, empty-draft, composer count/order/text, and fresh Submit-barrier verification
+- At-most-once Submit command and durable claim, with no blind retry after uncertainty
+- Read-only public Thread reconstruction and immutable Final/Partial/Unknown Receipts
+- Ledger rebuild, read-only verification resume, and bounded artifact retention
+- Network-free fake-browser acceptance; real Chrome smoke remains a separately approved local action
+
 ## Explicit non-capabilities
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
 
-The V2 Browser Adapter implementation branch adds a deterministic Host Bridge for an explicitly selected Chrome session. It does not store credentials, switch Browser surfaces, use X OAuth/API, schedule posts, support media, or run a real publication in CI. Feature status changes to available only after the V2 acceptance and manifest gate passes.
+The V2 Browser Adapter does not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, or support media. CI and automated acceptance never publish to a real X account. A real Chrome smoke requires a separate test-account Publication Plan and Human confirmation.
 
 ## Architecture
 
@@ -30,7 +40,8 @@ Candidate → Research Content Package → Review → Frozen Package
                                                ├─ Article Harness → Canonical Article Package
                                                └─ X Harness → PublicationPlan
                                                                 → Approval
-                                                                → Manual Copy Package
+                                                                ├─ Manual Copy Package
+                                                                └─ Browser Host Bridge → Public verification → Receipt
 ```
 
 The Research Content Package is the shared fact source. Article and X are independent optional outputs; an article is never automatically split into a thread.
@@ -45,7 +56,7 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-`pnpm check` runs lint, type checking, all tests, build, and both offline synthetic workflows. No account, credential, or network publication access is needed.
+`pnpm check` runs lint, type checking, all tests, build, and Article, Manual X, and simulated Browser X acceptance. No account, credential, or network publication access is needed.
 
 Build and inspect the CLI:
 
@@ -54,7 +65,7 @@ pnpm build
 node dist/harnesses/research-publishing/cli/index.js doctor --workspace ./publishing-workspace --output json
 ```
 
-See the [Quickstart](docs/guides/quickstart.md) for the complete Candidate → Article and Manual X flow.
+See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, Manual X, and Browser X flows.
 
 ## Security boundary
 
@@ -64,11 +75,15 @@ See the [Quickstart](docs/guides/quickstart.md) for the complete Candidate → A
 - `planned` and `hypothesis` Claims cannot be upgraded to shipped behavior.
 - Approval binds exact ordered content, account, adapter, Reply snapshot, and expiration.
 - The Manual Adapter creates copy/paste artifacts only; verification remains explicitly manual.
+- The Browser Adapter accepts semantic, X-origin commands only; it stores no Cookie, token, password, full DOM, timeline, or private-message data.
+- Browser failure never silently switches to Manual; fallback requires a new Plan and Approval.
 
 ## Design and contracts
 
 - [Chinese architecture and product design](docs/architecture/research-publishing-harness-design.zh-CN.md)
 - [V1 implementation plan](docs/superpowers/plans/2026-08-18-research-publishing-harness-v1.md)
+- [V2 Browser Adapter design](docs/superpowers/specs/2026-08-19-x-browser-adapter-v2-design.zh-CN.md)
+- [V2 implementation plan](docs/superpowers/plans/2026-08-19-x-browser-adapter-v2.md)
 - [JSON contracts](harnesses/research-publishing/contracts)
 - [Synthetic public fixtures](harnesses/research-publishing/examples/synthetic)
 

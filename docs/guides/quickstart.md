@@ -98,9 +98,9 @@ x prepare → accept-draft → review → plan → exact Preview
 
 Both Skills stop if runtime discovery fails, and both delegate enforcement to the same Harness CLI.
 
-## 8. V2 Browser Host Bridge preview
+## 8. V2 Browser Host Bridge
 
-The Browser Adapter V2 implementation branch reuses an explicitly selected Chrome session through a command bridge. The Harness never launches a browser from the CLI.
+The available Browser Adapter V2 reuses an explicitly selected Chrome session through a command bridge. The Harness never launches a browser from the CLI, and automated acceptance uses a fake Host without network access.
 
 Create the Browser Plan and Approval only after reviewing the exact Audit block:
 
