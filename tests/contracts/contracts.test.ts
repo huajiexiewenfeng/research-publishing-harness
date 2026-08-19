@@ -11,7 +11,8 @@ const names = [
   'review-report',
   'approval',
   'publish-receipt',
-  'publication-plan-v2'
+  'publication-plan-v2',
+  'approval-v2'
 ] as const;
 
 describe('public contracts', () => {
