@@ -24,3 +24,5 @@
 - 材料化自审修复零附件 V2.1、编辑源路径冲突、Package root/path collision、上传不确定结果有限恢复及审批后源替换防护。
 - 测试完整性：生产代码与 fixtures/expected values 同改；断言直接经过 Sharp、WorkspaceStore、CommandBroker、BrowserAdapter 和 Receipt validator，Fake Browser 仅替代外部页面/Host，不 mock Digest、Approval 或 Submit Barrier。
 - 本地 `pnpm check` 通过并由 `.llm-wiki/verification/visual-publishing-v2-1.md` 逐项映射 20 条验收；信任级别 `passed-agent-local`，未冒充外部 CI/Reviewer。
+- 独立复核复现并修复三个 P1 identity-binding 缺口：finalize 前 staged bytes 替换、Approval 未绑定 Article Package、Receipt media evidence 错配。三个真实路径回归均先 RED 后 GREEN。
+- 修复后 fresh `pnpm check` 通过 40 个测试文件 / 191 项测试，manifest 64 个文件，`git diff --check` 通过；下一 Gate 为停止在 `submit_armed` 的受控 Chrome smoke。

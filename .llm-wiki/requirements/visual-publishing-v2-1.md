@@ -13,7 +13,7 @@
 - secondary_bridges: `writing-plans`, `test-driven-development`, `executing-plans`, `verification-before-completion`, `project-finish`
 - confidence: high
 - reason: 规格、边界、兼容要求和 20 条验收标准均已书面批准。
-- next_gate: External Bridge Gate → writing-plans
+- next_gate: Controlled Chrome smoke at `submit_armed`; real Submit requires separate human authorization
 
 ## Sources
 
@@ -97,8 +97,8 @@
 | source | done | 批准规格提交 `d502ac9`、批准状态提交 `ff2d824` | 2026-08-20 |
 | design | done | `docs/superpowers/specs/2026-08-20-visual-publishing-v2-1-design.zh-CN.md` | 2026-08-20 |
 | plan | done | `docs/superpowers/plans/2026-08-20-visual-publishing-v2-1.md` | 2026-08-20 |
-| development | done | Core/Article/X/Browser/CLI/Skills/Docs implementation and direct tests | 2026-08-20 |
-| testing | passed-agent-local | `pnpm check` plus 20-item audit in `.llm-wiki/verification/visual-publishing-v2-1.md`; not external CI/reviewer evidence | 2026-08-20 |
+| development | done | Core/Article/X/Browser/CLI/Skills/Docs implementation plus post-review identity-binding remediation | 2026-08-20 |
+| testing | passed-agent-local | `pnpm check` 40 files / 191 tests, three RED/GREEN security regressions and 20-item audit; not external CI/reviewer evidence | 2026-08-20 |
 | archive | done | `.llm-wiki/handoff/visual-publishing-v2-1-handoff.md` | 2026-08-20 |
 
 ## Open Questions

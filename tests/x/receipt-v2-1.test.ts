@@ -37,6 +37,19 @@ describe('PublicationReceiptV2.1', () => {
     expect(() => createPublicationReceiptV2_1({ ...value, media_evidence: { ...value.media_evidence!, public_media_verified: false } })).toThrowError(expect.objectContaining({ code: 'PUBLIC_MEDIA_UNVERIFIED' }));
   });
 
+  it('rejects media evidence that does not identify the Plan attachment and target ordinal', () => {
+    const value = input();
+    expect(() => createPublicationReceiptV2_1({
+      ...value,
+      media_evidence: {
+        ...value.media_evidence!,
+        asset_id: 'asset_wrong',
+        source_digest: `sha256:${'f'.repeat(64)}`,
+        target_ordinal: 99
+      }
+    })).toThrowError(expect.objectContaining({ code: 'PUBLIC_MEDIA_UNVERIFIED' }));
+  });
+
   it('allows an honest immutable media-unverified receipt', () => {
     const value = input();
     const receipt = createPublicationReceiptV2_1({

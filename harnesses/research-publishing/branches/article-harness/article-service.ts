@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { sha256 } from '../../core/digest.js';
+import { sha256, sha256Bytes } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runEvidenceGate, runPrivacyGate } from '../../core/gates.js';
@@ -383,6 +383,22 @@ export class ArticleService {
       throw new HarnessError('VISUAL_ASSET_INVALID', 'selected visual assets contain a Package path collision');
     }
 
+    const selectedFiles = new Map<string, Uint8Array>();
+    for (const { candidate } of selected) {
+      const assetBytes = await this.store.readBytes(candidate.staged_relative_path);
+      if (sha256Bytes(assetBytes) !== candidate.asset.digest) {
+        throw new HarnessError('VISUAL_DIGEST_MISMATCH', `selected visual asset ${candidate.asset.asset_id} changed after import`);
+      }
+      selectedFiles.set(candidate.asset.relative_path, assetBytes);
+      if (candidate.editable_source !== null) {
+        const editableBytes = await this.store.readBytes(candidate.editable_source.staged_relative_path);
+        if (sha256Bytes(editableBytes) !== candidate.editable_source.digest) {
+          throw new HarnessError('VISUAL_DIGEST_MISMATCH', `editable source for ${candidate.asset.asset_id} changed after import`);
+        }
+        selectedFiles.set(candidate.editable_source.relative_path, editableBytes);
+      }
+    }
+
     const root = `articles/${slugify(draft.title)}/${runId}`;
     const manifestBase = {
       schema_version: '1.0' as const,
@@ -452,11 +468,8 @@ export class ArticleService {
       ...files,
       'package-ref.json': ref
     };
-    for (const { candidate } of selected) {
-      packageFiles[candidate.asset.relative_path] = await this.store.readBytes(candidate.staged_relative_path);
-      if (candidate.editable_source !== null) {
-        packageFiles[candidate.editable_source.relative_path] = await this.store.readBytes(candidate.editable_source.staged_relative_path);
-      }
+    for (const [relativePath, bytes] of selectedFiles) {
+      packageFiles[relativePath] = bytes;
     }
     await this.store.writeNewDirectory(root, packageFiles);
     await this.store.writeNew(`${prefix}/finalized-package.json`, ref);

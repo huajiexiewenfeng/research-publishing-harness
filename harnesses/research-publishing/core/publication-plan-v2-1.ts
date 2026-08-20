@@ -77,7 +77,7 @@ export function createPublicationPlanV2_1(input: CreatePublicationPlanV2_1Input)
   };
   const plan: PublicationPlanV2_1 = {
     schema_version: '2.1', plan_id: input.planId, run_id: input.runId,
-    intent, items, plan_digest: sha256(intent), planned_at: input.plannedAt,
+    intent, items, plan_digest: sha256({ intent, article_package: input.articlePackage }), planned_at: input.plannedAt,
     provenance: input.provenance, article_package: input.articlePackage
   };
   assertPublicationPlanV2_1(plan);
@@ -86,7 +86,9 @@ export function createPublicationPlanV2_1(input: CreatePublicationPlanV2_1Input)
 
 export function assertPublicationPlanV2_1(plan: PublicationPlanV2_1): void {
   validateContract<PublicationPlanV2_1>('publication-plan-v2-1', plan);
-  if (!ACCOUNT.test(plan.intent.target_account) || sha256(plan.intent) !== plan.plan_digest || sha256(plan.items) !== sha256(plan.intent.items)) {
+  if (!ACCOUNT.test(plan.intent.target_account) ||
+    sha256({ intent: plan.intent, article_package: plan.article_package }) !== plan.plan_digest ||
+    sha256(plan.items) !== sha256(plan.intent.items)) {
     throw new HarnessError('APPROVAL_STALE', 'V2.1 publication intent no longer matches its digest');
   }
   plan.items.forEach((item, index) => {

@@ -17,4 +17,16 @@ describe('ApprovalV2.1', () => {
     const changed = { ...plan, items: plan.items.map((item, index) => index === 0 ? { ...item, attachments: [{ ...item.attachments[0]!, alt_text: 'changed' }] } : item) };
     expect(() => verifyApprovalV2_1(changed, approval, new Date('2026-08-20T03:01:30.000Z'))).toThrowError(expect.objectContaining({ code: 'APPROVAL_STALE' }));
   });
+
+  it('becomes stale if the approved Article Package identity changes', () => {
+    const plan = publicationPlanV2_1Fixture();
+    const approval = approvePublicationV2_1(plan, 'human-reviewer', 60_000, new Date('2026-08-20T03:01:00.000Z'));
+    const changed = {
+      ...plan,
+      article_package: { root: 'articles/visual/replaced', digest: `sha256:${'f'.repeat(64)}` }
+    };
+
+    expect(() => verifyApprovalV2_1(changed, approval, new Date('2026-08-20T03:01:30.000Z')))
+      .toThrowError(expect.objectContaining({ code: 'APPROVAL_STALE' }));
+  });
 });

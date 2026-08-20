@@ -32,7 +32,7 @@ async function setup(required = true) {
     open_questions: []
   });
   await article.reviewArticle(run.run_id);
-  return { article, store, runId: run.run_id, source };
+  return { article, store, root, runId: run.run_id, source };
 }
 
 describe('Article visual lifecycle', () => {
@@ -71,6 +71,23 @@ describe('Article visual lifecycle', () => {
       candidateId: 'late', assetId: 'late', slotId: 'cover', sourcePath: source,
       altText: 'Late.', claimRefs: ['claim_verified'], provenance: { method: 'manual', tool: null }
     })).rejects.toMatchObject({ code: 'STATE_TRANSITION_INVALID' });
+  });
+
+  it('rejects a selected staged asset whose bytes changed after visual review', async () => {
+    const { article, root, runId, source } = await setup();
+    const candidate = await article.attachVisual(runId, {
+      candidateId: 'candidate_tampered', assetId: 'asset_tampered', slotId: 'cover', sourcePath: source,
+      altText: 'The reviewed runtime boundary.', claimRefs: ['claim_verified'],
+      provenance: { method: 'generated', tool: 'synthetic-test' }
+    });
+    await article.reviewVisual(runId, {
+      selectedCandidates: { cover: candidate.candidate_id }, reviewedBy: 'human:test',
+      claimAlignment: true, boundaryAlignment: true, mobileLegibility: true,
+      singleMessage: true, privacyReview: true
+    });
+    await writeFile(join(root, 'workspace', candidate.staged_relative_path), Buffer.from('tampered'));
+
+    await expect(article.finalizeArticle(runId)).rejects.toMatchObject({ code: 'VISUAL_DIGEST_MISMATCH' });
   });
 
   it('allows an optional unresolved slot with an explicit warning', async () => {

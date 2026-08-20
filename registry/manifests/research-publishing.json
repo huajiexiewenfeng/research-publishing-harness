@@ -55,8 +55,8 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/browser/receipt-v2-1.ts",
-      "sha256": "270bf56e862a1330df15eaf7b1136ff1b6d3f8811ae694c5a8832ae93da905c8",
-      "bytes": 3257
+      "sha256": "3a7bbdb9ba1c87a889dcf627e3d85643bcbc5fddccd2386d4bef0fb4f5416a1e",
+      "bytes": 3772
     },
     {
       "path": "harnesses/research-publishing/adapters/x/browser/receipt-v2.ts",
@@ -70,8 +70,8 @@
     },
     {
       "path": "harnesses/research-publishing/branches/article-harness/article-service.ts",
-      "sha256": "cd6ac95df23aac99286fefdab4073c33aca5672de0ff4f1543520f34177b5eab",
-      "bytes": 26392
+      "sha256": "6767159c5c757222646dfcd5dadb14118c08be71612fdbee0b1ffeec13bdd85a",
+      "bytes": 27083
     },
     {
       "path": "harnesses/research-publishing/branches/x-harness/character-count.ts",
@@ -245,8 +245,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/publication-plan-v2-1.ts",
-      "sha256": "802c352523af17521abb970fe5aa89d5a7092e7d90e35db1d795ab6d066a2230",
-      "bytes": 6349
+      "sha256": "0d6ba6441f2aa1f8a24d8346e75641478e0dec11db37ffd1054a8fdc85b51c9e",
+      "bytes": 6451
     },
     {
       "path": "harnesses/research-publishing/core/publication-plan-v2.ts",

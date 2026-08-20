@@ -65,9 +65,18 @@ export function createPublicationReceiptV2_1(
   if (receipt.plan_digest !== plan.plan_digest || receipt.approval.plan_digest !== plan.plan_digest) {
     throw new HarnessError('PUBLIC_VERIFICATION_CONFLICT', 'V2.1 Receipt does not reference its locked Plan');
   }
-  const hasAttachment = plan.items.some((item) => item.attachments.length > 0);
+  const attachments = plan.items.flatMap((item) => item.attachments.map((asset) => ({ ordinal: item.ordinal, asset })));
+  const hasAttachment = attachments.length > 0;
   if (hasAttachment !== (receipt.media_evidence !== null)) {
     throw new HarnessError('PUBLIC_MEDIA_UNVERIFIED', 'V2.1 Receipt media evidence must match Plan attachment presence');
+  }
+  if (receipt.media_evidence !== null) {
+    const planned = attachments[0]!;
+    if (receipt.media_evidence.asset_id !== planned.asset.asset_id ||
+      receipt.media_evidence.source_digest !== planned.asset.digest ||
+      receipt.media_evidence.target_ordinal !== planned.ordinal) {
+      throw new HarnessError('PUBLIC_MEDIA_UNVERIFIED', 'V2.1 Receipt media evidence does not match the locked Plan attachment');
+    }
   }
   if (
     receipt.status === 'finalized' &&

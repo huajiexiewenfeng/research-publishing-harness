@@ -17,3 +17,4 @@
 | visual-v2-1-manifest | manifest | `registry/manifests/research-publishing.json` | project | visual-publishing-v2-1 | verified-local | 2026-08-20 | Deterministically regenerated after contract/runtime changes |
 | visual-v2-1-verification | verification | `.llm-wiki/verification/visual-publishing-v2-1.md` | project | visual-publishing-v2-1 | passed-agent-local | 2026-08-20 | Full check and design §25 criteria 1–20 evidence |
 | visual-v2-1-handoff | handoff | `.llm-wiki/handoff/visual-publishing-v2-1-handoff.md` | project | visual-publishing-v2-1 | active | 2026-08-20 | Inline `main` delivery summary; no push performed |
+| visual-v2-1-evidence-binding-fix | bug | `.llm-wiki/bugs/2026-08-20-visual-publication-evidence-binding.md` | project | 2026-08-20-visual-publication-evidence-binding | passed-agent-local | 2026-08-20 | Three independently reproduced identity-binding gaps fixed with RED/GREEN regressions |
