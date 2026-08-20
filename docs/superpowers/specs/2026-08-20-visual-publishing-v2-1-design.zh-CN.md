@@ -3,7 +3,8 @@
 ## 文档状态
 
 - 日期：2026-08-20
-- 状态：方案已确认，书面规格待用户审阅
+- 状态：书面规格已确认；是否进入实施计划由用户另行授权
+- 确认日期：2026-08-20
 - 适用仓库：`research-publishing-harness`
 - 设计语言：中文
 - 前置基线：`docs/architecture/research-publishing-harness-design.zh-CN.md`
