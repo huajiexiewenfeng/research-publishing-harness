@@ -80,8 +80,19 @@ export class XWeb202608Contract implements XPageContract {
     return {
       items,
       has_unknown_content: false,
-      add_control_ref: add?.ref ?? null
+      add_control_ref: add?.ref ?? null,
+      attachments: this.readComposerAttachments(observation)
     };
+  }
+
+  readComposerAttachments(observation: BrowserObservation) {
+    const attachments = observation.composer_attachments ?? [];
+    const refs = new Set<string>();
+    for (const attachment of attachments) {
+      if (refs.has(attachment.ref)) throw new HarnessError('PAGE_CONTRACT_UNSUPPORTED', 'duplicate attachment reference');
+      refs.add(attachment.ref);
+    }
+    return attachments;
   }
 
   readComposerItems(observation: BrowserObservation): readonly XComposerItem[] {

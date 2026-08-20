@@ -14,9 +14,22 @@ import {
 import { XWeb202608Contract } from '../../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import { createPublicationPlanV2 } from '../../harnesses/research-publishing/core/publication-plan-v2.js';
+import { createPublicationPlanV2_1 } from '../../harnesses/research-publishing/core/publication-plan-v2-1.js';
+import { visualAssetFixture } from '../fixtures/publication-plan-v2-1.js';
 import { activeDraft, emptyComposer, loggedIn } from '../fixtures/x-browser-observations.js';
 
 const contract = new XWeb202608Contract();
+
+function visualPlan() {
+  return createPublicationPlanV2_1({
+    planId: 'plan_visual_single', runId: 'run_1', targetAccount: '@runtime_ai',
+    mode: 'single', targetPost: null,
+    items: [{ ordinal: 1, text: 'Visual locked item', attachments: [visualAssetFixture] }],
+    articlePackage: { root: 'articles/visual/run_1', digest: `sha256:${'a'.repeat(64)}` },
+    authorizedAsset: visualAssetFixture, plannedAt: '2026-08-20T03:00:00.000Z',
+    provenance: { handoff_id: 'handoff_1' }
+  });
+}
 
 function plan(mode: 'single' | 'thread', texts: readonly string[]) {
   return createPublicationPlanV2({
@@ -294,5 +307,59 @@ describe('nextComposerDecision', () => {
     expect(nextComposerDecision(context(replyPlan), staleTarget, contract)).toMatchObject({
       kind: 'blocked', code: 'REPLY_TARGET_STALE'
     });
+  });
+
+  it('uploads the exact V2.1 asset, sets exact Alt Text, then verifies the Composer', () => {
+    const publication = visualPlan();
+    const filled = revise(emptyComposer, emptyComposer.nodes.map((node) =>
+      node.test_id === 'tweetTextarea_0'
+        ? { ...node, text: publication.items[0]!.text }
+        : node.test_id === 'tweetButton'
+          ? { ...node, disabled: false }
+          : node
+    ), 'visual_filled');
+    const visualContext = {
+      ...context(publication as never),
+      created_item_refs: ['item_1'],
+      next_ordinal: publication.items.length + 1
+    };
+    const upload = nextComposerDecision(visualContext, { ...filled, composer_attachments: [] } as never, contract);
+    expect(upload).toMatchObject({
+      kind: 'command',
+      input: {
+        kind: 'upload_attachment', side_effect: 'write',
+        payload: { kind: 'upload_attachment', target_ordinal: 1, package_root: 'articles/visual/run_1' }
+      }
+    });
+    if (upload.kind !== 'command') throw new Error('expected upload');
+    const attachment = {
+      ref: 'attachment_1', ordinal: 1, kind: 'image' as const, mime_type: 'image/png' as const,
+      alt_text: null, status: 'uploaded' as const, owned_by_execution: true
+    };
+    const setAlt = nextComposerDecision(upload.next_context, { ...filled, composer_attachments: [attachment] } as never, contract);
+    expect(setAlt).toMatchObject({ kind: 'command', input: { kind: 'set_attachment_alt_text', payload: { alt_text: publication.items[0]!.attachments[0]!.alt_text } } });
+    if (setAlt.kind !== 'command') throw new Error('expected Alt Text command');
+    const verified = nextComposerDecision(setAlt.next_context, {
+      ...filled,
+      composer_attachments: [{ ...attachment, alt_text: publication.items[0]!.attachments[0]!.alt_text }]
+    } as never, contract);
+    expect(verified).toMatchObject({ kind: 'verified', submit_ref: 'submit_one' });
+  });
+
+  it('fails closed when the Composer contains an unknown attachment', () => {
+    const publication = visualPlan();
+    const filled = revise(emptyComposer, emptyComposer.nodes.map((node) =>
+      node.test_id === 'tweetTextarea_0' ? { ...node, text: publication.items[0]!.text } : node
+    ), 'visual_conflict');
+    const decision = nextComposerDecision({
+      ...context(publication as never), created_item_refs: ['item_1'], next_ordinal: publication.items.length + 1
+    }, {
+      ...filled,
+      composer_attachments: [{
+        ref: 'unknown', ordinal: 1, kind: 'image', mime_type: 'image/png', alt_text: null,
+        status: 'uploaded', owned_by_execution: false
+      }]
+    } as never, contract);
+    expect(decision).toMatchObject({ kind: 'blocked', code: 'X_ATTACHMENT_CONFLICT' });
   });
 });

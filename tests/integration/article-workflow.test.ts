@@ -48,7 +48,19 @@ describe('offline synthetic Article workflow', () => {
     const canonical = await articles.finalizeArticle(run.run_id);
     const handoff = await articles.createXHandoff(run.run_id);
 
-    expect(canonical.artifacts).toHaveLength(7);
+    expect(canonical.artifacts.map((artifact) => artifact.split('/').at(-1))).toEqual([
+      'article.md',
+      'article.meta.yaml',
+      'claim-map.json',
+      'sources.md',
+      'source-lineage.json',
+      'boundary-note.md',
+      'review-report.json',
+      'visual-review-report.json',
+      'visual-manifest.json',
+      'generation-task.json',
+      'draft-candidate.json'
+    ]);
     expect(handoff.article_digest).toBe(canonical.digest);
   });
 });

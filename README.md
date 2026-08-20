@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-> **Pre-alpha / V1 stable + V2 Browser Adapter available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
+> **Pre-alpha / V1 stable + V2.1 Visual Publishing available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
 
 Research Publishing Harness separates generative work from deterministic publication controls. An agent can help frame a thesis and draft prose; the Harness owns versioned contracts, Claim/Evidence boundaries, privacy review, weighted X character validation, immutable artifacts, content-specific Approval, and manual receipts.
 
@@ -27,11 +27,20 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 - Ledger rebuild, read-only verification resume, and bounded artifact retention
 - Network-free fake-browser acceptance; real Chrome smoke remains a separately approved local action
 
+## Available in V2.1
+
+- Required/optional Article Visual Slots and Human Visual Review after Content Review
+- Metadata-stripping normalization for PNG, JPEG, and static WebP
+- Self-contained Article Packages with relative image links, Visual Manifest, and asset-covered Package Digest
+- Explicit `asset_id` Article-to-X handoff; at most one image and Thread Post 1 only
+- One Approval binding account, mode, text, image, Alt Text, ordinal, Adapter, and `publish_once`
+- Restricted Package-contained Browser upload and Source/Composer/Public media evidence
+
 ## Explicit non-capabilities
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
 
-The V2 Browser Adapter does not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, or support media. CI and automated acceptance never publish to a real X account. A real Chrome smoke requires a separate test-account Publication Plan and Human confirmation.
+The V2.1 Browser Adapter does not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, select images automatically, or support GIF/video/multiple images. CI and automated acceptance never publish to a real X account. A real Chrome smoke requires a separate test-account Plan and Human confirmation and stops at `submit_armed` by default.
 
 ## Architecture
 
@@ -84,6 +93,8 @@ See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, M
 - [V1 implementation plan](docs/superpowers/plans/2026-08-18-research-publishing-harness-v1.md)
 - [V2 Browser Adapter design](docs/superpowers/specs/2026-08-19-x-browser-adapter-v2-design.zh-CN.md)
 - [V2 implementation plan](docs/superpowers/plans/2026-08-19-x-browser-adapter-v2.md)
+- [V2.1 Visual Publishing design](docs/superpowers/specs/2026-08-20-visual-publishing-v2-1-design.zh-CN.md)
+- [V2.1 implementation plan](docs/superpowers/plans/2026-08-20-visual-publishing-v2-1.md)
 - [JSON contracts](harnesses/research-publishing/contracts)
 - [Synthetic public fixtures](harnesses/research-publishing/examples/synthetic)
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BrowserPublicPostObservation } from '../../harnesses/research-publishing/adapters/x/browser/browser-protocol.js';
 import { verifyPublicThread } from '../../harnesses/research-publishing/adapters/x/browser/public-verifier.js';
 import { createPublicationPlanV2 } from '../../harnesses/research-publishing/core/publication-plan-v2.js';
+import { publicationPlanV2_1Fixture } from '../fixtures/publication-plan-v2-1.js';
 
 function plan() {
   return createPublicationPlanV2({
@@ -74,5 +75,38 @@ describe('verifyPublicThread', () => {
       altered[1] = { ...altered[1]!, text: changed };
       expect(verifyPublicThread(plan(), altered)).not.toMatchObject({ kind: 'full_match' });
     }
+  });
+
+  it('distinguishes verified, unobservable, and conflicting public media', () => {
+    const visual = publicationPlanV2_1Fixture();
+    const visualPosts: BrowserPublicPostObservation[] = visual.items.map((item, index) => ({
+      post_id: String(700 + index),
+      canonical_url: `https://x.com/runtime_ai/status/${700 + index}`,
+      author_handle: '@runtime_ai',
+      text: item.text,
+      links: [],
+      published_at: `2026-08-20T03:10:0${index}.000Z`,
+      reply_to_id: index === 0 ? null : String(699 + index),
+      ...(index === 0 ? { media: [{ kind: 'image' as const, alt_text: item.attachments[0]!.alt_text, url: 'https://pbs.twimg.com/media/700' }] } : {})
+    }));
+    expect(verifyPublicThread(visual, visualPosts)).toMatchObject({
+      kind: 'full_match',
+      media_evidence: { verified: true, alt_text_verified: true }
+    });
+    const hidden = visualPosts.map((post) => ({
+      post_id: post.post_id,
+      canonical_url: post.canonical_url,
+      author_handle: post.author_handle,
+      text: post.text,
+      links: post.links,
+      published_at: post.published_at,
+      reply_to_id: post.reply_to_id
+    }));
+    expect(verifyPublicThread(visual, hidden)).toMatchObject({
+      kind: 'full_match',
+      media_evidence: { verified: false, alt_text_verified: null }
+    });
+    const wrong = visualPosts.map((post, index) => index === 0 ? { ...post, media: [{ kind: 'image' as const, alt_text: 'wrong', url: null }] } : post);
+    expect(verifyPublicThread(visual, wrong)).toMatchObject({ kind: 'conflict' });
   });
 });

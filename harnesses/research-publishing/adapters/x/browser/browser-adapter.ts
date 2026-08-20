@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type { ApprovalV2 } from '../../../core/approval-v2.js';
 import { verifyApprovalV2 } from '../../../core/approval-v2.js';
+import type { ApprovalV2_1 } from '../../../core/approval-v2-1.js';
+import { verifyApprovalV2_1 } from '../../../core/approval-v2-1.js';
 import type {
   BrowserExecutionSnapshot,
   BrowserExecutionState
@@ -11,6 +13,8 @@ import { HarnessError, type ErrorCode } from '../../../core/errors.js';
 import type { ExecutionStore } from '../../../core/execution-store.js';
 import type { PublicationPlanV2 } from '../../../core/publication-plan-v2.js';
 import { assertPublicationPlanV2 } from '../../../core/publication-plan-v2.js';
+import type { PublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
+import { assertPublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import {
   type ComposerContext,
@@ -37,6 +41,11 @@ import {
   type PublicationReceiptV2,
   type ReceiptStatusV2
 } from './receipt-v2.js';
+import {
+  createPublicationReceiptV2_1,
+  type PublicationReceiptV2_1,
+  type ReceiptStatusV2_1
+} from './receipt-v2-1.js';
 
 export interface BrowserAdapterApi {
   start(input: StartBrowserExecutionInput): Promise<BrowserExecutionSnapshot>;
@@ -50,10 +59,12 @@ export interface BrowserAdapterApi {
 
 export interface StartBrowserExecutionInput {
   readonly execution_id: string;
-  readonly plan: PublicationPlanV2;
-  readonly approval: ApprovalV2;
+  readonly plan: BrowserPublicationPlan;
+  readonly approval: ApprovalV2 | ApprovalV2_1;
   readonly capability_manifest: BrowserCapabilityManifest;
 }
+
+type BrowserPublicationPlan = PublicationPlanV2 | PublicationPlanV2_1;
 
 export interface BrowserExecutionStatus {
   readonly snapshot: BrowserExecutionSnapshot;
@@ -68,6 +79,9 @@ interface StoredComposerContext {
   readonly next_ordinal: number;
   readonly add_retry_count: number;
   readonly last_page_revision: string | null;
+  readonly attachment_command_issued: boolean;
+  readonly alt_text_command_issued: boolean;
+  readonly attachment_retry_count: number;
 }
 
 interface StoredExecutionContext {
@@ -96,6 +110,9 @@ interface StoredExecutionContext {
   readonly positive_publish_signal: boolean;
   readonly platform_rejection: { readonly attempt_id: string; readonly code: string } | null;
   readonly latest_receipt_id: string | null;
+  readonly source_asset_verified: boolean;
+  readonly composer_attachment_verified: boolean;
+  readonly attachment_outcome_pending: boolean;
 }
 
 const REQUIRED_CAPABILITIES = [
@@ -105,6 +122,12 @@ const REQUIRED_CAPABILITIES = [
   'set_text',
   'press_key',
   'wait'
+] as const;
+const REQUIRED_VISUAL_CAPABILITIES = [
+  'file_upload',
+  'attachment_alt_text',
+  'upload_attachment',
+  'set_attachment_alt_text'
 ] as const;
 
 export class BrowserAdapter implements BrowserAdapterApi {
@@ -120,18 +143,22 @@ export class BrowserAdapter implements BrowserAdapterApi {
   ) {}
 
   async start(input: StartBrowserExecutionInput): Promise<BrowserExecutionSnapshot> {
-    if ((input.plan as { schema_version?: string }).schema_version !== '2.0') {
-      throw new HarnessError('CONTRACT_INVALID', 'Browser Adapter accepts PublicationPlanV2 only');
-    }
-    assertPublicationPlanV2(input.plan);
+    if (input.plan.schema_version === '2.0') assertPublicationPlanV2(input.plan);
+    else if (input.plan.schema_version === '2.1') assertPublicationPlanV2_1(input.plan);
+    else throw new HarnessError('CONTRACT_INVALID', 'Browser Adapter accepts PublicationPlan V2.0 or V2.1 only');
     if (input.plan.intent.adapter !== 'browser') {
       throw new HarnessError('CONTRACT_INVALID', 'Browser Adapter requires a browser publication intent');
     }
-    if (input.plan.intent.media.length > 0) {
+    if (input.plan.schema_version === '2.0' && input.plan.intent.media.length > 0) {
       throw new HarnessError('UNSUPPORTED_PUBLICATION_FEATURE', 'Browser Adapter V2 is text-only');
     }
-    this.assertCapabilityManifest(input.capability_manifest);
-    verifyApprovalV2(input.plan, input.approval, this.now());
+    this.assertCapabilityManifest(
+      input.capability_manifest,
+      input.plan.schema_version === '2.1' &&
+        input.plan.items.some((item) => item.attachments.length > 0)
+    );
+    if (input.plan.schema_version === '2.0') verifyApprovalV2(input.plan, input.approval as ApprovalV2, this.now());
+    else verifyApprovalV2_1(input.plan, input.approval as ApprovalV2_1, this.now());
 
     await this.executions.create({
       execution_id: input.execution_id,
@@ -140,8 +167,8 @@ export class BrowserAdapter implements BrowserAdapterApi {
       created_at: this.now().toISOString()
     });
     const prefix = this.prefix(input.plan.run_id, input.execution_id);
-    const planPath = `${prefix}/publication-plan-v2.json`;
-    const approvalPath = `${prefix}/approval-v2.json`;
+    const planPath = `${prefix}/publication-plan-${input.plan.schema_version}.json`;
+    const approvalPath = `${prefix}/approval-${input.plan.schema_version}.json`;
     const manifestPath = `${prefix}/capability-manifest.json`;
     await this.store.writeNew(planPath, input.plan);
     await this.store.writeNew(approvalPath, input.approval);
@@ -161,7 +188,10 @@ export class BrowserAdapter implements BrowserAdapterApi {
         created_item_refs: [],
         next_ordinal: 1,
         add_retry_count: 0,
-        last_page_revision: null
+        last_page_revision: null,
+        attachment_command_issued: false,
+        alt_text_command_issued: false,
+        attachment_retry_count: 0
       },
       pending_command_id: null,
       attempt_id: null,
@@ -171,13 +201,16 @@ export class BrowserAdapter implements BrowserAdapterApi {
       barrier_observation_fresh: false,
       latest_receipt_path: null,
       armed_at: null,
-      attempted_at: null
-      ,submit_command_id: null
-      ,verification_index: 0
-      ,verification_wait_completed: true
-      ,positive_publish_signal: false
-      ,platform_rejection: null
-      ,latest_receipt_id: null
+      attempted_at: null,
+      submit_command_id: null,
+      verification_index: 0,
+      verification_wait_completed: true,
+      positive_publish_signal: false,
+      platform_rejection: null,
+      latest_receipt_id: null,
+      source_asset_verified: false,
+      composer_attachment_verified: false,
+      attachment_outcome_pending: false
     };
     await this.writeContext(input.plan.run_id, input.execution_id, context);
     const snapshot = await this.executions.transition(input.execution_id, 'preflight', {
@@ -201,7 +234,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
   async next(executionId: string): Promise<BrowserCommand | null> {
     let snapshot = await this.executions.read(executionId);
     let context = await this.readContext(snapshot);
-    const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+    const plan = await this.store.readJson<BrowserPublicationPlan>(context.plan_path);
     if (context.pending_command_id !== null) {
       return this.broker.read(executionId, context.pending_command_id);
     }
@@ -239,6 +272,9 @@ export class BrowserAdapter implements BrowserAdapterApi {
       });
     }
     if (this.isTerminal(snapshot.state) || snapshot.state === 'submit_attempted') return null;
+    if (context.attachment_outcome_pending) {
+      return this.issueObservation(snapshot, context, 'attachment_outcome_observation');
+    }
     if (context.latest_observation_id === null) {
       return this.issueObservation(snapshot, context, 'missing_observation');
     }
@@ -281,7 +317,11 @@ export class BrowserAdapter implements BrowserAdapterApi {
         evidence_digest: plan.plan_digest,
         latest_observation_id: observation.observation_id
       });
-      context = { ...context, barrier_observation_fresh: false };
+      context = {
+        ...context,
+        barrier_observation_fresh: false,
+        composer_attachment_verified: plan.schema_version === '2.1'
+      };
       await this.writeContext(snapshot.run_id, executionId, context);
       return this.issueObservation(snapshot, context, 'submit_barrier_observation');
     }
@@ -310,7 +350,22 @@ export class BrowserAdapter implements BrowserAdapterApi {
     }
     const command = await this.broker.read(executionId, resultInput.command_id);
     const result = await this.broker.acceptResult(executionId, resultInput);
-    context = { ...context, pending_command_id: null };
+    context = {
+      ...context,
+      pending_command_id: null,
+      source_asset_verified:
+        context.source_asset_verified ||
+        command.kind === 'upload_attachment'
+    };
+
+    if (
+      command.kind === 'upload_attachment' &&
+      (result.status === 'uncertain' || result.observation === null)
+    ) {
+      context = { ...context, attachment_outcome_pending: true };
+      await this.writeContext(snapshot.run_id, executionId, context);
+      return snapshot;
+    }
 
     if (snapshot.state === 'submit_attempted' && command.side_effect === 'submit') {
       context = {
@@ -338,7 +393,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
       });
       await this.writeContext(snapshot.run_id, executionId, context);
       if (context.platform_rejection !== null) {
-        const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+        const plan = await this.store.readJson<BrowserPublicationPlan>(context.plan_path);
         const verification = {
           kind: 'no_match' as const,
           reason: 'platform rejected the current Submit attempt'
@@ -377,7 +432,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
             context.positive_publish_signal || observation.public_posts.length > 0
         };
       }
-      const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+      const plan = await this.store.readJson<BrowserPublicationPlan>(context.plan_path);
       const verification =
         observation === null
           ? ({ kind: 'no_match', reason: 'public observation unavailable' } as const)
@@ -448,7 +503,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
         );
       }
       const observedAccount = this.contract.detectAccount(observation).handle;
-      const plan = await this.store.readJson<PublicationPlanV2>(context.plan_path);
+      const plan = await this.store.readJson<BrowserPublicationPlan>(context.plan_path);
       if (observedAccount.toLowerCase() !== plan.intent.target_account.toLowerCase()) {
         await this.failPreSubmit(
           executionId,
@@ -459,6 +514,23 @@ export class BrowserAdapter implements BrowserAdapterApi {
       }
       context = { ...context, observed_account: observedAccount };
       if (page.kind === 'composer') this.contract.detectComposer(observation);
+
+      if (command.purpose === 'attachment_outcome_observation') {
+        const attachments = this.contract.detectComposer(observation).attachments;
+        if (attachments.length === 0 && context.composer.attachment_retry_count < 1) {
+          context = {
+            ...context,
+            attachment_outcome_pending: false,
+            composer: {
+              ...context.composer,
+              attachment_command_issued: false,
+              attachment_retry_count: context.composer.attachment_retry_count + 1
+            }
+          };
+        } else {
+          context = { ...context, attachment_outcome_pending: false };
+        }
+      }
 
       if (snapshot.state === 'preflight') {
         snapshot = await this.executions.transition(executionId, 'account_verified', {
@@ -546,11 +618,14 @@ export class BrowserAdapter implements BrowserAdapterApi {
   private async crossSubmitBarrier(
     snapshot: BrowserExecutionSnapshot,
     context: StoredExecutionContext,
-    plan: PublicationPlanV2,
+    plan: BrowserPublicationPlan,
     observation: BrowserObservation
   ): Promise<BrowserCommand> {
-    const approval = await this.store.readJson<ApprovalV2>(context.approval_path);
-    verifyApprovalV2(plan, approval, this.now());
+    if (plan.schema_version === '2.0') {
+      verifyApprovalV2(plan, await this.store.readJson<ApprovalV2>(context.approval_path), this.now());
+    } else {
+      verifyApprovalV2_1(plan, await this.store.readJson<ApprovalV2_1>(context.approval_path), this.now());
+    }
     if (
       context.attempt_id !== null ||
       context.submit_command_count !== 0 ||
@@ -654,7 +729,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
   private async finalizeOutcome(
     snapshot: BrowserExecutionSnapshot,
     context: StoredExecutionContext,
-    plan: PublicationPlanV2,
+    plan: BrowserPublicationPlan,
     decision: Exclude<OutcomeDecision, { readonly kind: 'verify_again' }>,
     verification: PublicVerificationResult,
     observation: BrowserObservation | null
@@ -684,11 +759,11 @@ export class BrowserAdapter implements BrowserAdapterApi {
   private async persistOutcomeReceipt(
     snapshot: BrowserExecutionSnapshot,
     context: StoredExecutionContext,
-    plan: PublicationPlanV2,
+    plan: BrowserPublicationPlan,
     status: ReceiptStatusV2,
     verification: PublicVerificationResult,
     observation: BrowserObservation | null
-  ): Promise<PublicationReceiptV2> {
+  ): Promise<PublicationReceiptV2 | PublicationReceiptV2_1> {
     if (
       context.attempt_id === null ||
       context.armed_at === null ||
@@ -696,7 +771,6 @@ export class BrowserAdapter implements BrowserAdapterApi {
     ) {
       throw new HarnessError('PUBLICATION_OUTCOME_UNKNOWN', 'submission evidence is incomplete');
     }
-    const approval = await this.store.readJson<ApprovalV2>(context.approval_path);
     const verifiedPosts =
       verification.kind === 'full_match' || verification.kind === 'partial'
         ? verification.posts
@@ -719,6 +793,78 @@ export class BrowserAdapter implements BrowserAdapterApi {
               verification.kind === 'conflict' ? verification.unexpected_post_ids : []
           };
     const full = verification.kind === 'full_match' && status === 'finalized';
+    if (plan.schema_version === '2.1') {
+      const approval = await this.store.readJson<ApprovalV2_1>(context.approval_path);
+      const expected = plan.items.flatMap((item) => item.attachments.map((asset) => ({ ordinal: item.ordinal, asset })))[0];
+      const publicMedia = verification.kind === 'full_match' ? verification.media_evidence : undefined;
+      const limitations = [
+        ...(context.source_asset_verified ? [] : ['source asset was not verified immediately before upload']),
+        ...(context.composer_attachment_verified ? [] : ['Composer attachment was not verified before Submit']),
+        ...(publicMedia?.limitations ?? ['public media was not verified'])
+      ];
+      const mappedStatus: ReceiptStatusV2_1 =
+        status === 'published_unverified' ? 'published_media_unverified' : status;
+      const receipt = createPublicationReceiptV2_1(
+        {
+          plan,
+          supersedes_receipt_id: context.latest_receipt_id,
+          execution_id: snapshot.execution_id,
+          attempt_id: context.attempt_id,
+          run_id: snapshot.run_id,
+          platform: 'x',
+          adapter: 'browser',
+          status: mappedStatus,
+          target_account: plan.intent.target_account,
+          observed_account: context.observed_account,
+          plan_digest: plan.plan_digest,
+          approval: {
+            plan_digest: plan.plan_digest,
+            approval_digest: approval.approval_digest,
+            approved_at: approval.approved_at,
+            expires_at: approval.expires_at
+          },
+          submission: {
+            armed_at: context.armed_at,
+            attempted_at: context.attempted_at,
+            submit_command_count: 1,
+            page_contract_version: context.page_contract_version,
+            executor_version: context.executor_version
+          },
+          public_result: publicResult,
+          verification: {
+            source: 'browser_public_page',
+            strength: full && publicMedia?.verified === true ? 'public_browser_verified' : 'unverified',
+            verified_at: full ? observation?.observed_at ?? this.now().toISOString() : null,
+            account_match: context.observed_account?.toLowerCase() === plan.intent.target_account.toLowerCase(),
+            count_match: verification.kind === 'full_match',
+            content_match: verification.kind === 'full_match' || verification.kind === 'partial',
+            order_match: verification.kind === 'full_match' || verification.kind === 'partial',
+            reply_chain_match: verification.kind === 'full_match' || verification.kind === 'partial',
+            links_match: verification.kind === 'full_match' || verification.kind === 'partial',
+            unique_post_ids: new Set(verifiedPosts.map((post) => post.post_id)).size === verifiedPosts.length,
+            evidence_digest: sha256({ verification, page_revision: observation?.page_revision ?? null })
+          },
+          media_evidence: expected === undefined
+            ? null
+            : {
+                asset_id: expected.asset.asset_id,
+                source_digest: expected.asset.digest,
+                source_asset_verified: context.source_asset_verified,
+                composer_attachment_verified: context.composer_attachment_verified,
+                public_media_verified: publicMedia?.verified ?? false,
+                target_ordinal: expected.ordinal,
+                alt_text_verified: publicMedia?.alt_text_verified ?? null,
+                public_media_url: publicMedia?.public_media_url ?? null,
+                limitations
+              }
+        },
+        this.receiptId,
+        this.now
+      );
+      await this.store.writeNew(`receipts/${receipt.receipt_id}.json`, receipt);
+      return receipt;
+    }
+    const approval = await this.store.readJson<ApprovalV2>(context.approval_path);
     const receipt = createPublicationReceiptV2(
       {
         plan,
@@ -781,7 +927,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
     throw new HarnessError(code, message);
   }
 
-  private inflateComposer(stored: StoredComposerContext, plan: PublicationPlanV2): ComposerContext {
+  private inflateComposer(stored: StoredComposerContext, plan: BrowserPublicationPlan): ComposerContext {
     return { plan, ...stored };
   }
 
@@ -791,7 +937,10 @@ export class BrowserAdapter implements BrowserAdapterApi {
       created_item_refs: context.created_item_refs,
       next_ordinal: context.next_ordinal,
       add_retry_count: context.add_retry_count,
-      last_page_revision: context.last_page_revision
+      last_page_revision: context.last_page_revision,
+      attachment_command_issued: context.attachment_command_issued ?? false,
+      alt_text_command_issued: context.alt_text_command_issued ?? false,
+      attachment_retry_count: context.attachment_retry_count ?? 0
     };
   }
 
@@ -825,16 +974,19 @@ export class BrowserAdapter implements BrowserAdapterApi {
     return `runs/${runId}/x/browser/${executionId}`;
   }
 
-  private assertCapabilityManifest(manifest: BrowserCapabilityManifest): void {
+  private assertCapabilityManifest(manifest: BrowserCapabilityManifest, visual = false): void {
     if (
       manifest.executor !== 'codex-chrome' ||
       manifest.browser_family !== 'chrome' ||
       !REQUIRED_CAPABILITIES.every((kind) => manifest.capabilities.includes(kind)) ||
+      (visual && !REQUIRED_VISUAL_CAPABILITIES.every((kind) => manifest.capabilities.includes(kind))) ||
       !Number.isFinite(Date.parse(manifest.observed_at))
     ) {
       throw new HarnessError(
-        'BROWSER_EXECUTOR_INCOMPATIBLE',
-        'Codex Chrome executor capabilities are missing or incompatible'
+        visual ? 'BROWSER_FILE_UPLOAD_UNAVAILABLE' : 'BROWSER_EXECUTOR_INCOMPATIBLE',
+        visual
+          ? 'Codex Chrome executor lacks restricted file upload or Alt Text capability'
+          : 'Codex Chrome executor capabilities are missing or incompatible'
       );
     }
   }

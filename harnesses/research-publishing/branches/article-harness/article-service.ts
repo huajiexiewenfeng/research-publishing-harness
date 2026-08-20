@@ -5,10 +5,15 @@ import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runEvidenceGate, runPrivacyGate } from '../../core/gates.js';
 import { validateContract } from '../../core/schema-validator.js';
+import { VisualAssetImporter, type AttachVisualInput, type VisualCandidate } from '../../core/visual-assets.js';
 import type {
+  ArticleVisualManifest,
   Finding,
   ResearchContentPackage,
-  ReviewReport
+  ReviewReport,
+  VisualAssetRef,
+  VisualReviewReport,
+  VisualSlot
 } from '../../core/types.js';
 import type { WorkspaceStore } from '../../core/workspace-store.js';
 
@@ -31,11 +36,13 @@ export interface ArticleDraft {
   readonly summary: string;
   readonly language: 'en' | 'zh-CN';
   readonly sections: ReadonlyArray<{
+    readonly section_id?: string;
     readonly heading: string;
     readonly markdown: string;
     readonly claim_refs: readonly string[];
     readonly source_refs: readonly string[];
   }>;
+  readonly visual_slots?: readonly VisualSlot[];
   readonly open_questions: readonly string[];
 }
 
@@ -51,16 +58,29 @@ export interface ArticlePackageRef {
   readonly root: string;
   readonly digest: string;
   readonly artifacts: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 export interface XHandoff {
-  readonly schema_version: '1.0';
+  readonly schema_version: '1.0' | '1.1';
   readonly handoff_id: string;
   readonly article_run_id: string;
   readonly article_digest: string;
   readonly package_id: string;
   readonly package_version: number;
   readonly requested_at: string;
+  readonly article_package_root?: string;
+  readonly visual_asset?: VisualAssetRef;
+}
+
+export interface VisualReviewInput {
+  readonly selectedCandidates: Readonly<Record<string, string>>;
+  readonly reviewedBy: string;
+  readonly claimAlignment: boolean;
+  readonly boundaryAlignment: boolean;
+  readonly mobileLegibility: boolean;
+  readonly singleMessage: boolean;
+  readonly privacyReview: boolean;
 }
 
 interface ArticleServiceOptions {
@@ -157,11 +177,31 @@ export class ArticleService {
         .map((source) => source.source_id)
     );
     for (const section of draft.sections) {
+      if (/!\[[^\]]*\]\([^)]*\)/.test(section.markdown)) {
+        throw new HarnessError(
+          'VISUAL_ASSET_INVALID',
+          'Article Markdown images must be declared through a Visual Slot and Canonical Package asset'
+        );
+      }
       if (section.claim_refs.some((claimId) => !claimIds.has(claimId))) {
         throw new HarnessError('CONTRACT_INVALID', 'draft references a Claim outside the frozen package');
       }
       if (section.source_refs.some((sourceId) => !sourceIds.has(sourceId))) {
         throw new HarnessError('CONTRACT_INVALID', 'draft references a missing or non-public Source');
+      }
+    }
+    const sectionIds = new Set(draft.sections.flatMap((section) => section.section_id === undefined ? [] : [section.section_id]));
+    const slotIds = new Set<string>();
+    for (const slot of draft.visual_slots ?? []) {
+      if (slotIds.has(slot.slot_id)) {
+        throw new HarnessError('CONTRACT_INVALID', `duplicate Visual Slot ${slot.slot_id}`);
+      }
+      slotIds.add(slot.slot_id);
+      if (slot.claim_refs.some((claimId) => !claimIds.has(claimId))) {
+        throw new HarnessError('VISUAL_CLAIM_REF_INVALID', `Visual Slot ${slot.slot_id} references a Claim outside the frozen package`);
+      }
+      if (slot.placement.kind === 'after_section' && !sectionIds.has(slot.placement.section_id)) {
+        throw new HarnessError('CONTRACT_INVALID', `Visual Slot ${slot.slot_id} references an unknown section`);
       }
     }
     await this.store.writeNew(`${prefix}/draft-candidate.json`, draft);
@@ -172,6 +212,83 @@ export class ArticleService {
       generation_task: task,
       draft
     };
+  }
+
+  async visualStatus(runId: string): Promise<{
+    readonly slots: readonly VisualSlot[];
+    readonly candidates: readonly VisualCandidate[];
+    readonly required_unresolved: readonly string[];
+    readonly warnings: readonly string[];
+  }> {
+    const draft = await this.store.readJson<ArticleDraft>(`${this.runPrefix(runId)}/draft-candidate.json`);
+    const candidates = await this.readVisualCandidates(runId);
+    const selected = await this.readVisualReview(runId);
+    const selectedSlots = new Set(Object.keys(selected?.selected_candidates ?? {}));
+    const slots = draft.visual_slots ?? [];
+    return {
+      slots,
+      candidates,
+      required_unresolved: slots.filter((slot) => slot.required && !selectedSlots.has(slot.slot_id)).map((slot) => slot.slot_id),
+      warnings: slots.filter((slot) => !slot.required && !selectedSlots.has(slot.slot_id)).map((slot) => `optional visual slot ${slot.slot_id} is unresolved`)
+    };
+  }
+
+  async attachVisual(
+    runId: string,
+    input: Omit<AttachVisualInput, 'runId'>
+  ): Promise<VisualCandidate> {
+    await this.assertArticleMutable(runId);
+    const prefix = this.runPrefix(runId);
+    const [draft, report] = await Promise.all([
+      this.store.readJson<ArticleDraft>(`${prefix}/draft-candidate.json`),
+      this.store.readJson<ReviewReport>(`${prefix}/review-report.json`)
+    ]);
+    if (!report.passed) throw new HarnessError('EVIDENCE_GATE_BLOCKED', 'Content Review must pass before visual import');
+    const slot = (draft.visual_slots ?? []).find((candidate) => candidate.slot_id === input.slotId);
+    if (slot === undefined) throw new HarnessError('VISUAL_SLOT_UNRESOLVED', `Visual Slot ${input.slotId} does not exist`);
+    if (input.claimRefs.some((claimId) => !slot.claim_refs.includes(claimId))) {
+      throw new HarnessError('VISUAL_CLAIM_REF_INVALID', 'visual candidate exceeds its Slot Claim boundary');
+    }
+    const candidate = await new VisualAssetImporter(this.store).attach({ ...input, runId });
+    await this.store.writeNew(`${prefix}/visual-candidates/${input.candidateId}/candidate.json`, candidate);
+    return candidate;
+  }
+
+  async removeVisual(runId: string, candidateId: string): Promise<void> {
+    await this.assertArticleMutable(runId);
+    if (!/^[A-Za-z0-9_-]+$/.test(candidateId)) throw new HarnessError('CONTRACT_INVALID', 'unsafe visual candidate id');
+    const candidate = await this.store.readJson<VisualCandidate>(`${this.runPrefix(runId)}/visual-candidates/${candidateId}/candidate.json`);
+    await this.store.removeFile(candidate.staged_relative_path);
+    if (candidate.editable_source !== null) await this.store.removeFile(candidate.editable_source.staged_relative_path);
+    await this.store.removeFile(`${this.runPrefix(runId)}/visual-candidates/${candidateId}/candidate.json`);
+  }
+
+  async reviewVisual(runId: string, input: VisualReviewInput): Promise<VisualReviewReport> {
+    await this.assertArticleMutable(runId);
+    const prefix = this.runPrefix(runId);
+    const draft = await this.store.readJson<ArticleDraft>(`${prefix}/draft-candidate.json`);
+    const candidates = await this.readVisualCandidates(runId);
+    const findings: Finding[] = [];
+    for (const slot of draft.visual_slots ?? []) {
+      const candidateId = input.selectedCandidates[slot.slot_id];
+      if (candidateId === undefined) {
+        if (slot.required) findings.push({ code: 'VISUAL_SLOT_UNRESOLVED', severity: 'error', message: `required Visual Slot ${slot.slot_id} is unresolved` });
+        continue;
+      }
+      const candidate = candidates.find((value) => value.candidate_id === candidateId && value.slot_id === slot.slot_id);
+      if (candidate === undefined) findings.push({ code: 'VISUAL_ASSET_INVALID', severity: 'error', message: `selected candidate ${candidateId} does not belong to Slot ${slot.slot_id}` });
+    }
+    const semanticFlags = [input.claimAlignment, input.boundaryAlignment, input.mobileLegibility, input.singleMessage, input.privacyReview];
+    if (semanticFlags.some((value) => !value)) findings.push({ code: 'VISUAL_REVIEW_BLOCKED', severity: 'error', message: 'Visual Review semantic checks must all pass' });
+    const report = validateContract<VisualReviewReport>('visual-review-report', {
+      schema_version: '1.0', article_run_id: runId, selected_candidates: input.selectedCandidates,
+      claim_alignment: input.claimAlignment, boundary_alignment: input.boundaryAlignment,
+      mobile_legibility: input.mobileLegibility, single_message: input.singleMessage,
+      privacy_review: input.privacyReview, reviewed_by: input.reviewedBy,
+      reviewed_at: this.now().toISOString(), passed: findings.every((finding) => finding.severity !== 'error'), findings
+    });
+    await this.store.writeNew(`${prefix}/visual-review-report.json`, report);
+    return report;
   }
 
   async reviewArticle(runId: string): Promise<ReviewReport> {
@@ -218,6 +335,9 @@ export class ArticleService {
 
   async finalizeArticle(runId: string): Promise<ArticlePackageRef> {
     const prefix = this.runPrefix(runId);
+    if (await this.store.exists(`${prefix}/finalized-package.json`)) {
+      return this.store.readJson<ArticlePackageRef>(`${prefix}/finalized-package.json`);
+    }
     const metadata = await this.store.readJson<RunMetadata>(`${prefix}/run.json`);
     const packageValue = await this.store.readJson<ResearchContentPackage>(`${prefix}/package.json`);
     const task = await this.store.readJson<GenerationTask>(`${prefix}/generation-task.json`);
@@ -230,9 +350,59 @@ export class ArticleService {
       throw new HarnessError(code, 'article review contains blocking findings', report.findings);
     }
 
+    const slots = draft.visual_slots ?? [];
+    const candidates = await this.readVisualCandidates(runId);
+    let visualReview = await this.readVisualReview(runId);
+    if (visualReview === null && slots.some((slot) => slot.required)) {
+      throw new HarnessError('VISUAL_SLOT_UNRESOLVED', 'required Visual Slots need a passed Visual Review');
+    }
+    if (visualReview === null) {
+      const warnings = slots.map((slot) => ({ code: 'VISUAL_SLOT_UNRESOLVED', severity: 'warning' as const, message: `optional Visual Slot ${slot.slot_id} is unresolved` }));
+      visualReview = {
+        schema_version: '1.0', article_run_id: runId, selected_candidates: {}, claim_alignment: true,
+        boundary_alignment: true, mobile_legibility: true, single_message: true, privacy_review: true,
+        reviewed_by: 'harness:no-selected-visuals', reviewed_at: this.now().toISOString(), passed: true, findings: warnings
+      };
+    }
+    if (!visualReview.passed) throw new HarnessError('VISUAL_SLOT_UNRESOLVED', 'Visual Review contains blocking findings', visualReview.findings);
+    const selected = slots.flatMap((slot, index) => {
+      const candidateId = visualReview!.selected_candidates[slot.slot_id];
+      if (candidateId === undefined) {
+        if (slot.required) throw new HarnessError('VISUAL_SLOT_UNRESOLVED', `required Visual Slot ${slot.slot_id} is unresolved`);
+        return [];
+      }
+      const candidate = candidates.find((value) => value.candidate_id === candidateId && value.slot_id === slot.slot_id);
+      if (candidate === undefined) throw new HarnessError('VISUAL_ASSET_INVALID', `selected candidate ${candidateId} is missing`);
+      return [{ slot, candidate, placementOrdinal: index + 1 }];
+    });
+    const selectedPaths = selected.flatMap(({ candidate }) => [
+      candidate.asset.relative_path,
+      ...(candidate.editable_source === null ? [] : [candidate.editable_source.relative_path])
+    ]);
+    if (new Set(selectedPaths).size !== selectedPaths.length) {
+      throw new HarnessError('VISUAL_ASSET_INVALID', 'selected visual assets contain a Package path collision');
+    }
+
     const root = `articles/${slugify(draft.title)}/${runId}`;
+    const manifestBase = {
+      schema_version: '1.0' as const,
+      article_run_id: runId,
+      bindings: selected.map(({ slot, candidate, placementOrdinal }) => ({
+        slot_id: slot.slot_id, asset: candidate.asset, placement_ordinal: placementOrdinal,
+        width: candidate.width, height: candidate.height, byte_size: candidate.byte_size,
+        normalization_version: candidate.normalization_version, provenance: candidate.provenance,
+        editable_source: candidate.editable_source === null ? null : {
+          relative_path: candidate.editable_source.relative_path,
+          digest: candidate.editable_source.digest
+        }
+      }))
+    };
+    const manifest = validateContract<ArticleVisualManifest>('visual-manifest', {
+      ...manifestBase,
+      manifest_digest: sha256(manifestBase)
+    });
     const files: Readonly<Record<string, string | object>> = {
-      'article.md': this.renderArticle(draft),
+      'article.md': this.renderArticle(draft, new Map(selected.map(({ slot, candidate }) => [slot.slot_id, candidate.asset]))),
       'article.meta.yaml': this.renderMetadata(draft, metadata),
       'claim-map.json': draft.sections.map((section) => ({
         heading: section.heading,
@@ -240,13 +410,31 @@ export class ArticleService {
         source_refs: section.source_refs
       })),
       'sources.md': this.renderSources(packageValue),
+      'source-lineage.json': packageValue.research_lineage,
+      'boundary-note.md': this.renderBoundaryNote(packageValue),
       'review-report.json': report,
+      'visual-review-report.json': visualReview,
+      'visual-manifest.json': manifest,
       'generation-task.json': task,
       'draft-candidate.json': draft
     };
-    const digest = sha256(files);
-    const artifacts = Object.keys(files).map((name) => `${root}/${name}`);
-    const ref: ArticlePackageRef = { root, digest, artifacts };
+    const digestEntries = [
+      ...Object.entries(files).map(([path, value]) => ({ path, digest: sha256(value) })),
+      ...selected.flatMap(({ candidate }) => [
+        { path: candidate.asset.relative_path, digest: candidate.asset.digest },
+        ...(candidate.editable_source === null ? [] : [{ path: candidate.editable_source.relative_path, digest: candidate.editable_source.digest }])
+      ])
+    ].sort((left, right) => left.path.localeCompare(right.path));
+    const digest = sha256(digestEntries);
+    const artifacts = [
+      ...Object.keys(files).map((name) => `${root}/${name}`),
+      ...selected.flatMap(({ candidate }) => [
+        `${root}/${candidate.asset.relative_path}`,
+        ...(candidate.editable_source === null ? [] : [`${root}/${candidate.editable_source.relative_path}`])
+      ])
+    ];
+    const warnings = slots.filter((slot) => visualReview!.selected_candidates[slot.slot_id] === undefined).map((slot) => `optional visual slot ${slot.slot_id} is unresolved`);
+    const ref: ArticlePackageRef = { root, digest, artifacts, warnings };
 
     try {
       const existing = await this.store.readJson<ArticlePackageRef>(`${root}/package-ref.json`);
@@ -260,24 +448,39 @@ export class ArticleService {
       }
     }
 
-    for (const [name, value] of Object.entries(files)) {
-      await this.store.writeNew(`${root}/${name}`, value);
+    const packageFiles: Record<string, string | object | Uint8Array> = {
+      ...files,
+      'package-ref.json': ref
+    };
+    for (const { candidate } of selected) {
+      packageFiles[candidate.asset.relative_path] = await this.store.readBytes(candidate.staged_relative_path);
+      if (candidate.editable_source !== null) {
+        packageFiles[candidate.editable_source.relative_path] = await this.store.readBytes(candidate.editable_source.staged_relative_path);
+      }
     }
-    await this.store.writeNew(`${root}/package-ref.json`, ref);
+    await this.store.writeNewDirectory(root, packageFiles);
+    await this.store.writeNew(`${prefix}/finalized-package.json`, ref);
     return ref;
   }
 
-  async createXHandoff(runId: string): Promise<XHandoff> {
+  async createXHandoff(runId: string, assetId?: string): Promise<XHandoff> {
     const finalized = await this.finalizeArticle(runId);
     const metadata = await this.store.readJson<RunMetadata>(`${this.runPrefix(runId)}/run.json`);
+    let visualAsset: VisualAssetRef | undefined;
+    if (assetId !== undefined) {
+      const manifest = await this.store.readJson<ArticleVisualManifest>(`${finalized.root}/visual-manifest.json`);
+      visualAsset = manifest.bindings.find((binding) => binding.asset.asset_id === assetId)?.asset;
+      if (visualAsset === undefined) throw new HarnessError('VISUAL_ASSET_INVALID', `asset ${assetId} is not in the finalized Article Package`);
+    }
     const handoff: XHandoff = {
-      schema_version: '1.0',
+      schema_version: visualAsset === undefined ? '1.0' : '1.1',
       handoff_id: `x_handoff_${runId}`,
       article_run_id: runId,
       article_digest: finalized.digest,
       package_id: metadata.package_id,
       package_version: metadata.package_version,
-      requested_at: this.now().toISOString()
+      requested_at: this.now().toISOString(),
+      ...(visualAsset === undefined ? {} : { article_package_root: finalized.root, visual_asset: visualAsset })
     };
     await this.store.writeNew(`${finalized.root}/x-handoff.json`, handoff);
     return handoff;
@@ -290,14 +493,28 @@ export class ArticleService {
     return `runs/${runId}/article`;
   }
 
-  private renderArticle(draft: ArticleDraft): string {
+  private renderArticle(draft: ArticleDraft, selected = new Map<string, VisualAssetRef>()): string {
+    const slots = draft.visual_slots ?? [];
+    const cover = slots.find((slot) => slot.placement.kind === 'cover');
+    const coverMarkdown = cover === undefined || !selected.has(cover.slot_id)
+      ? ''
+      : `\n\n${this.renderVisual(selected.get(cover.slot_id)!)}`;
     const sections = draft.sections
-      .map((section) => `## ${section.heading}\n\n${section.markdown}`)
+      .map((section) => {
+        const sectionVisuals = slots.filter((slot) => slot.placement.kind === 'after_section' && slot.placement.section_id === section.section_id)
+          .flatMap((slot) => selected.has(slot.slot_id) ? [`\n\n${this.renderVisual(selected.get(slot.slot_id)!)}`] : [])
+          .join('');
+        return `## ${section.heading}\n\n${section.markdown}${sectionVisuals}`;
+      })
       .join('\n\n');
     const questions = draft.open_questions.length === 0
       ? ''
       : `\n\n## Open questions\n\n${draft.open_questions.map((question) => `- ${question}`).join('\n')}`;
-    return `# ${draft.title}\n\n${draft.summary}\n\n${sections}${questions}\n`;
+    return `# ${draft.title}\n\n${draft.summary}${coverMarkdown}\n\n${sections}${questions}\n`;
+  }
+
+  private renderVisual(asset: VisualAssetRef): string {
+    return `![${asset.alt_text.replaceAll('[', '\\[').replaceAll(']', '\\]')}](${asset.relative_path})`;
   }
 
   private renderMetadata(draft: ArticleDraft, metadata: RunMetadata): string {
@@ -320,5 +537,31 @@ export class ArticleService {
           : `- ${source.source_id} — paraphrase_only (location withheld)`
       );
     return `# Sources\n\n${lines.join('\n')}\n`;
+  }
+
+  private renderBoundaryNote(packageValue: ResearchContentPackage): string {
+    const section = (title: string, values: readonly string[]) => `## ${title}\n\n${values.map((value) => `- ${value}`).join('\n') || '- None'}`;
+    return `# Evidence boundaries\n\n${section('Established', packageValue.boundaries.established)}\n\n${section('Not established', packageValue.boundaries.not_established)}\n\n${section('Explicitly not claimed', packageValue.boundaries.explicitly_not_claimed)}\n\n${section('Planned work', packageValue.boundaries.planned_work)}\n`;
+  }
+
+  private async readVisualCandidates(runId: string): Promise<readonly VisualCandidate[]> {
+    const directory = `${this.runPrefix(runId)}/visual-candidates`;
+    const entries = await this.store.list(directory);
+    const candidates: VisualCandidate[] = [];
+    for (const entry of entries) {
+      if (entry.kind === 'directory') candidates.push(await this.store.readJson<VisualCandidate>(`${entry.relative_path}/candidate.json`));
+    }
+    return candidates;
+  }
+
+  private async readVisualReview(runId: string): Promise<VisualReviewReport | null> {
+    const path = `${this.runPrefix(runId)}/visual-review-report.json`;
+    return await this.store.exists(path) ? this.store.readJson<VisualReviewReport>(path) : null;
+  }
+
+  private async assertArticleMutable(runId: string): Promise<void> {
+    if (await this.store.exists(`${this.runPrefix(runId)}/finalized-package.json`)) {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'finalized Article Packages are immutable');
+    }
   }
 }

@@ -3,8 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
 import type { ExecutionStore } from '../../../core/execution-store.js';
+import {
+  assertPublicationPlanV2_1,
+  type PublicationPlanV2_1
+} from '../../../core/publication-plan-v2-1.js';
 import { validateContract } from '../../../core/schema-validator.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
+import { verifyPackageVisualAsset } from '../../../core/visual-assets.js';
 import {
   type BrowserActionResult,
   type BrowserActionResultInput,
@@ -48,6 +53,9 @@ export class CommandBroker implements CommandBrokerApi {
       !this.isAllowedXUrl(input.payload.url)
     ) {
       throw new HarnessError('CONTRACT_INVALID', 'browser navigation must remain on x.com');
+    }
+    if (input.payload.kind === 'upload_attachment' || input.payload.kind === 'set_attachment_alt_text') {
+      await this.assertVisualCommandAuthorized(input.execution_id, execution.run_id, input.payload);
     }
     const command = validateContract<BrowserCommand>('browser-command', {
       ...input,
@@ -100,6 +108,13 @@ export class CommandBroker implements CommandBrokerApi {
 
   async claim(executionId: string, commandId: string): Promise<BrowserCommandClaim> {
     const command = await this.read(executionId, commandId);
+    if (command.payload.kind === 'upload_attachment') {
+      const packageRef = await this.store.readJson<{ readonly root: string; readonly digest: string }>(`${command.payload.package_root}/package-ref.json`);
+      if (packageRef.root !== command.payload.package_root || packageRef.digest !== command.payload.package_digest) {
+        throw new HarnessError('VISUAL_DIGEST_MISMATCH', 'upload Package identity no longer matches the locked Plan');
+      }
+      await verifyPackageVisualAsset(this.store, command.payload.package_root, command.payload.asset);
+    }
     if (command.expected_page_revision !== null) {
       let context: BrowserContext;
       try {
@@ -224,6 +239,27 @@ export class CommandBroker implements CommandBrokerApi {
   private assertSafeId(value: string): void {
     if (!SAFE_ID.test(value)) {
       throw new HarnessError('WORKSPACE_PATH_INVALID', 'browser protocol id is unsafe');
+    }
+  }
+
+  private async assertVisualCommandAuthorized(
+    executionId: string,
+    runId: string,
+    payload: Extract<IssueBrowserCommandInput['payload'], { kind: 'upload_attachment' | 'set_attachment_alt_text' }>
+  ): Promise<void> {
+    const plan = await this.store.readJson<PublicationPlanV2_1>(`${this.prefix(runId, executionId)}/publication-plan-2.1.json`);
+    assertPublicationPlanV2_1(plan);
+    if (plan.run_id !== runId) throw new HarnessError('CONTRACT_INVALID', 'visual Browser Plan run does not match execution');
+    const expected = plan.items.flatMap((item) => item.attachments.map((asset) => ({ ordinal: item.ordinal, asset })))[0];
+    if (expected === undefined || expected.ordinal !== payload.target_ordinal) {
+      throw new HarnessError('X_ATTACHMENT_MISMATCH', 'visual Browser command ordinal is outside the locked Plan');
+    }
+    if (payload.kind === 'upload_attachment') {
+      if (plan.article_package === null || payload.package_root !== plan.article_package.root || payload.package_digest !== plan.article_package.digest || sha256(payload.asset) !== sha256(expected.asset)) {
+        throw new HarnessError('VISUAL_DIGEST_MISMATCH', 'upload command asset or Package is outside the locked Plan');
+      }
+    } else if (payload.alt_text !== expected.asset.alt_text) {
+      throw new HarnessError('X_ALT_TEXT_MISMATCH', 'Alt Text command differs from the locked Plan');
     }
   }
 

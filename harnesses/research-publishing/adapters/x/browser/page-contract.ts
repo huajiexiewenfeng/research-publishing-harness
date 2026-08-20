@@ -1,6 +1,7 @@
 import { HarnessError } from '../../../core/errors.js';
 import type {
   BrowserNodeObservation,
+  BrowserComposerAttachmentObservation,
   BrowserObservation,
   BrowserPublicPostObservation
 } from './browser-protocol.js';
@@ -12,6 +13,7 @@ export interface XPageContract {
   detectAccount(observation: BrowserObservation): { readonly handle: string };
   detectComposer(observation: BrowserObservation): XComposerState;
   readComposerItems(observation: BrowserObservation): readonly XComposerItem[];
+  readComposerAttachments(observation: BrowserObservation): readonly BrowserComposerAttachmentObservation[];
   detectSubmitControl(observation: BrowserObservation): XSubmitControl;
   detectPublishedPosts(observation: BrowserObservation): readonly BrowserPublicPostObservation[];
 }
@@ -33,6 +35,7 @@ export interface XComposerState {
   readonly items: readonly XComposerItem[];
   readonly has_unknown_content: boolean;
   readonly add_control_ref: string | null;
+  readonly attachments: readonly BrowserComposerAttachmentObservation[];
 }
 
 export interface XSubmitControl {

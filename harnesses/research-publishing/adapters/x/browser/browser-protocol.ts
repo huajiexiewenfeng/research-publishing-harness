@@ -1,5 +1,6 @@
 import { sha256 } from '../../../core/digest.js';
 import type { ErrorCode } from '../../../core/errors.js';
+import type { VisualAssetRef } from '../../../core/types.js';
 
 export const BROWSER_COMMAND_KINDS = [
   'observe_page',
@@ -7,16 +8,19 @@ export const BROWSER_COMMAND_KINDS = [
   'click',
   'set_text',
   'press_key',
-  'wait'
+  'wait',
+  'upload_attachment',
+  'set_attachment_alt_text'
 ] as const;
 export type BrowserCommandKind = (typeof BROWSER_COMMAND_KINDS)[number];
+export type BrowserCapability = BrowserCommandKind | 'file_upload' | 'attachment_alt_text';
 export type BrowserSideEffect = 'read' | 'write' | 'submit';
 
 export interface BrowserCapabilityManifest {
   readonly executor: 'codex-chrome';
   readonly executor_version: string;
   readonly browser_family: 'chrome';
-  readonly capabilities: readonly BrowserCommandKind[];
+  readonly capabilities: readonly BrowserCapability[];
   readonly observed_at: string;
 }
 
@@ -44,6 +48,23 @@ export interface BrowserPublicPostObservation {
   readonly links: readonly BrowserObservedLink[];
   readonly published_at: string;
   readonly reply_to_id: string | null;
+  readonly media?: readonly BrowserPublicMediaObservation[];
+}
+
+export interface BrowserComposerAttachmentObservation {
+  readonly ref: string;
+  readonly ordinal: number;
+  readonly kind: 'image';
+  readonly mime_type: 'image/png' | 'image/jpeg' | 'image/webp' | null;
+  readonly alt_text: string | null;
+  readonly status: 'processing' | 'uploaded' | 'failed';
+  readonly owned_by_execution: boolean;
+}
+
+export interface BrowserPublicMediaObservation {
+  readonly kind: 'image';
+  readonly alt_text: string | null;
+  readonly url: string | null;
 }
 
 export interface BrowserObservation {
@@ -57,6 +78,7 @@ export interface BrowserObservation {
   readonly observed_at: string;
   readonly nodes: readonly BrowserNodeObservation[];
   readonly public_posts: readonly BrowserPublicPostObservation[];
+  readonly composer_attachments?: readonly BrowserComposerAttachmentObservation[];
 }
 
 export type BrowserCommandPayload =
@@ -65,7 +87,20 @@ export type BrowserCommandPayload =
   | { readonly kind: 'click'; readonly target_ref: string }
   | { readonly kind: 'set_text'; readonly target_ref: string; readonly text: string }
   | { readonly kind: 'press_key'; readonly target_ref: string; readonly key: string }
-  | { readonly kind: 'wait'; readonly delay_ms: 0 | 3000 | 10000 | 30000 | 90000 };
+  | { readonly kind: 'wait'; readonly delay_ms: 0 | 3000 | 10000 | 30000 | 90000 }
+  | {
+      readonly kind: 'upload_attachment';
+      readonly target_ordinal: number;
+      readonly package_root: string;
+      readonly package_digest: string;
+      readonly asset: VisualAssetRef;
+    }
+  | {
+      readonly kind: 'set_attachment_alt_text';
+      readonly target_ordinal: number;
+      readonly attachment_ref: string;
+      readonly alt_text: string;
+    };
 
 export interface IssueBrowserCommandInput {
   readonly execution_id: string;
@@ -122,5 +157,6 @@ export function computePageRevision(input: BrowserObservationInput): string {
     canonical_url: input.canonical_url,
     nodes: input.nodes,
     public_posts: input.public_posts
+    ,composer_attachments: input.composer_attachments ?? []
   });
 }

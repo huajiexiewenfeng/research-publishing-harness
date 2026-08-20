@@ -65,11 +65,13 @@ Subsequent commands use explicit JSON inputs and never discover a topic. `candid
 The Article Skill calls these operations:
 
 ```text
-article prepare → accept-draft → review → finalize
-                                      └→ handoff-x (explicit request only)
+article prepare → accept-draft → review → visual status
+                                      → visual attach → visual review
+                                      → finalize
+                                      └→ handoff-x (explicit request and optional exact asset_id)
 ```
 
-`prepare` receives `{ "package": <frozen-package>, "brief": <article-brief> }`. The generated task is the allowed Claim/Boundary/Source envelope. `finalize` writes `article.md`, metadata, Claim map, sources, Review, Generation Task, and Draft Candidate.
+`prepare` receives `{ "package": <frozen-package>, "brief": <article-brief> }`. Visual candidates are accepted only after Content Review. `finalize` writes relative image references, normalized assets, Visual Manifest/Review, Claim map, lineage, Boundary note, content Review, Generation Task, and Draft Candidate.
 
 Invoke the thin Skill adapter after build:
 
@@ -121,3 +123,15 @@ x browser next → x browser claim → one Chrome action → x browser report
 For a safe synthetic preview, run `x browser start`, inspect the returned read-only `observe_page` command, and stop before claiming any command whose `side_effect` is `submit`. No real X side effect is part of automated acceptance.
 
 If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
+
+## 9. V2.1 visual handoff
+
+```text
+article handoff-x  # input includes {"asset_id":"asset_cover"}
+→ x plan --adapter browser  # input carries that exact article_handoff
+→ show text + image + Alt + ordinal + digests
+→ one publish_once confirmation
+→ x approve
+```
+
+The Host manifest must include `file_upload`, `attachment_alt_text`, `upload_attachment`, and `set_attachment_alt_text`. Upload only the claimed Package-relative path. Automated acceptance uses generated synthetic images and a Fake Browser only.

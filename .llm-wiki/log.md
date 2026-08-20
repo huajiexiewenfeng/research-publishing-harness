@@ -16,3 +16,11 @@
 - fresh verification：20 个测试文件、81 项测试全部通过；lint、typecheck、build、Manifest、Acceptance 与 diff check 通过；信任级别为 agent-local。
 - Acceptance 在一次性临时工作区完成 Article 与 Manual X，结果 `network: unused`。
 - V1 development 标记 done，testing 标记 passed-agent-local；已写入本地 handoff 并完成 archive，未执行 Git push。
+
+## 2026-08-20
+
+- 依据批准提交 `d502ac9` 与批准状态 `ff2d824`，锁定 Visual Publishing V2.1 范围并生成同日实施计划。
+- 完成静态图片规范化、原子 Canonical Article Package、显式 X Asset Handoff、V2.1 Plan/Approval、受限 Browser upload/Alt、公开媒体证据与 Receipt V2.1。
+- 材料化自审修复零附件 V2.1、编辑源路径冲突、Package root/path collision、上传不确定结果有限恢复及审批后源替换防护。
+- 测试完整性：生产代码与 fixtures/expected values 同改；断言直接经过 Sharp、WorkspaceStore、CommandBroker、BrowserAdapter 和 Receipt validator，Fake Browser 仅替代外部页面/Host，不 mock Digest、Approval 或 Submit Barrier。
+- 本地 `pnpm check` 通过并由 `.llm-wiki/verification/visual-publishing-v2-1.md` 逐项映射 20 条验收；信任级别 `passed-agent-local`，未冒充外部 CI/Reviewer。

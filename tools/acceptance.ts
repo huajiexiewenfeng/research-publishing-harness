@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
@@ -16,7 +16,7 @@ import { XWeb202608Contract } from '../harnesses/research-publishing/adapters/x/
 import { ArticleService, type ArticleDraft } from '../harnesses/research-publishing/branches/article-harness/article-service.js';
 import { XService, type XDraft } from '../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { approvePublication } from '../harnesses/research-publishing/core/approval.js';
-import { approvePublicationV2 } from '../harnesses/research-publishing/core/approval-v2.js';
+import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
@@ -70,13 +70,14 @@ function observed(
   command: BrowserCommand,
   url: string,
   nodes: readonly BrowserNodeObservation[],
-  posts: readonly BrowserPublicPostObservation[] = []
+  posts: readonly BrowserPublicPostObservation[] = [],
+  composerAttachments: BrowserObservationInput['composer_attachments'] = []
 ): BrowserObservationInput {
   return {
     schema_version: '2.0', observation_id: `obs_${command.command_id}`,
     execution_id: command.execution_id, command_id: command.command_id,
     origin: 'https://x.com', canonical_url: url, observed_at: browserAt,
-    nodes, public_posts: posts
+    nodes, public_posts: posts, composer_attachments: composerAttachments
   };
 }
 
@@ -121,16 +122,37 @@ try {
   });
   const articleDraft = {
     ...(await fixture<ArticleDraft>('article-draft.json')),
-    run_id: articleRun.run_id
+    run_id: articleRun.run_id,
+    sections: (await fixture<ArticleDraft>('article-draft.json')).sections.map((section, index) =>
+      index === 0 ? { ...section, section_id: 'runtime-boundary' } : section
+    ),
+    visual_slots: [{
+      slot_id: 'cover', placement: { kind: 'cover' as const }, purpose: 'cover' as const,
+      required: true, brief: 'Show one evidence-backed runtime boundary.', claim_refs: ['claim_contract_test']
+    }]
   };
   await articles.acceptArticleDraft(articleRun.run_id, articleDraft);
   const articleReview = await articles.reviewArticle(articleRun.run_id);
+  const visualSource = join(workspace, 'acceptance-visual.png');
+  await writeFile(visualSource, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
+  const visualCandidate = await articles.attachVisual(articleRun.run_id, {
+    candidateId: 'candidate_cover', assetId: 'asset_cover', slotId: 'cover',
+    sourcePath: visualSource, altText: 'One evidence-backed runtime boundary.',
+    claimRefs: ['claim_contract_test'], provenance: { method: 'generated', tool: 'acceptance-synthetic' }
+  });
+  await articles.reviewVisual(articleRun.run_id, {
+    selectedCandidates: { cover: visualCandidate.candidate_id }, reviewedBy: 'acceptance-reviewer',
+    claimAlignment: true, boundaryAlignment: true, mobileLegibility: true,
+    singleMessage: true, privacyReview: true
+  });
   const canonical = await articles.finalizeArticle(articleRun.run_id);
-  const articleHandoff = await articles.createXHandoff(articleRun.run_id);
+  const articleHandoff = await articles.createXHandoff(articleRun.run_id, 'asset_cover');
   articleComplete =
     articleReview.passed &&
-    canonical.artifacts.length === 7 &&
-    articleHandoff.article_digest === canonical.digest;
+    canonical.artifacts.includes(`${canonical.root}/visual-manifest.json`) &&
+    canonical.artifacts.includes(`${canonical.root}/assets/asset_cover.png`) &&
+    articleHandoff.article_digest === canonical.digest &&
+    articleHandoff.visual_asset?.asset_id === 'asset_cover';
 
   const x = new XService(store, {
     runId: () => 'acceptance_x',
@@ -179,8 +201,9 @@ try {
   const browserDraft = { ...(await fixture<XDraft>('x-draft.json')), run_id: browserRun.run_id };
   await browserX.acceptXDraft(browserRun.run_id, browserDraft);
   const browserReview = await browserX.reviewX(browserRun.run_id);
-  const browserPlan = await browserX.planXBrowser(browserRun.run_id);
-  const browserApproval = approvePublicationV2(
+  const browserPlan = await browserX.planXBrowser(browserRun.run_id, articleHandoff);
+  if (browserPlan.schema_version !== '2.1') throw new Error('visual handoff did not create a V2.1 Plan');
+  const browserApproval = approvePublicationV2_1(
     browserPlan, 'acceptance-reviewer', 60_000, new Date(browserAt), () => 'approval_acceptance_browser'
   );
   let browserEvent = 0;
@@ -197,7 +220,11 @@ try {
   );
   await browserAdapter.start({
     execution_id: 'exec_acceptance_browser', plan: browserPlan,
-    approval: browserApproval, capability_manifest: browserManifest
+    approval: browserApproval,
+    capability_manifest: {
+      ...browserManifest,
+      capabilities: [...browserManifest.capabilities, 'file_upload', 'attachment_alt_text', 'upload_attachment', 'set_attachment_alt_text']
+    }
   });
   let browserNext = (await browserAdapter.next('exec_acceptance_browser'))!;
   await browserReport(
@@ -226,9 +253,25 @@ try {
     }
   }
   browserNext = (await browserAdapter.next('exec_acceptance_browser'))!;
+  const attachment = {
+    ref: 'attachment_acceptance', ordinal: 1, kind: 'image' as const,
+    mime_type: 'image/png' as const, alt_text: null, status: 'uploaded' as const,
+    owned_by_execution: true
+  };
   await browserReport(
     browserAdapter, browserNext,
-    observed(browserNext, 'https://x.com/compose/post', composerNodes(browserTexts))
+    observed(browserNext, 'https://x.com/compose/post', composerNodes(browserTexts), [], [attachment])
+  );
+  browserNext = (await browserAdapter.next('exec_acceptance_browser'))!;
+  const altAttachment = { ...attachment, alt_text: articleHandoff.visual_asset!.alt_text };
+  await browserReport(
+    browserAdapter, browserNext,
+    observed(browserNext, 'https://x.com/compose/post', composerNodes(browserTexts), [], [altAttachment])
+  );
+  browserNext = (await browserAdapter.next('exec_acceptance_browser'))!;
+  await browserReport(
+    browserAdapter, browserNext,
+    observed(browserNext, 'https://x.com/compose/post', composerNodes(browserTexts), [], [altAttachment])
   );
   const submit = (await browserAdapter.next('exec_acceptance_browser'))!;
   await browserReport(browserAdapter, submit, null, 'uncertain');
@@ -237,7 +280,8 @@ try {
     return {
       post_id: id, canonical_url: `https://x.com/runtime_ai/status/${id}`,
       author_handle: '@runtime_ai', text, links: [], published_at: browserAt,
-      reply_to_id: index === 0 ? null : (800000000000000100n + BigInt(index - 1)).toString()
+      reply_to_id: index === 0 ? null : (800000000000000100n + BigInt(index - 1)).toString(),
+      ...(index === 0 ? { media: [{ kind: 'image' as const, alt_text: articleHandoff.visual_asset!.alt_text, url: 'https://pbs.twimg.com/media/acceptance' }] } : {})
     };
   });
   browserNext = (await browserAdapter.next('exec_acceptance_browser'))!;
@@ -246,6 +290,7 @@ try {
     observed(browserNext, publicPosts[0]!.canonical_url, [accountNode()], publicPosts)
   );
   const browserStatus = await browserAdapter.status('exec_acceptance_browser');
+  const visualReceipt = await store.readJson<{ schema_version: string; media_evidence: { source_asset_verified: boolean; composer_attachment_verified: boolean; public_media_verified: boolean } }>(browserStatus.latest_receipt_path!);
   const browserPrefix = 'runs/acceptance_browser_x/x/browser/exec_acceptance_browser';
   for (const entry of await store.list(`${browserPrefix}/commands`)) {
     if (entry.kind !== 'file') continue;
@@ -260,7 +305,11 @@ try {
     browserStatus.snapshot.state === 'finalized' &&
     browserStatus.snapshot.submit_command_count === 1 &&
     submitCommands === 1 &&
-    submitClaims === 1;
+    submitClaims === 1 &&
+    visualReceipt.schema_version === '2.1' &&
+    visualReceipt.media_evidence.source_asset_verified &&
+    visualReceipt.media_evidence.composer_attachment_verified &&
+    visualReceipt.media_evidence.public_media_verified;
 
   if (!articleComplete || !manualXComplete || !browserXComplete) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
@@ -271,6 +320,7 @@ try {
       article: 'complete',
       manual_x: 'complete',
       browser_x: 'simulated_complete',
+      visual_v2_1: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims

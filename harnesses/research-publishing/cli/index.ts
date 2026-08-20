@@ -8,15 +8,18 @@ import { BrowserAdapter } from '../adapters/x/browser/browser-adapter.js';
 import type { BrowserActionResultInput, BrowserCapabilityManifest } from '../adapters/x/browser/browser-protocol.js';
 import { CommandBroker } from '../adapters/x/browser/command-broker.js';
 import { XWeb202608Contract } from '../adapters/x/browser/contracts/x-web-2026-08.js';
-import { ArticleService, type ArticleBrief, type ArticleDraft } from '../branches/article-harness/article-service.js';
+import { ArticleService, type ArticleBrief, type ArticleDraft, type VisualReviewInput, type XHandoff } from '../branches/article-harness/article-service.js';
 import { XService, type PublicationPlan, type XBrief, type XDraft } from '../branches/x-harness/x-service.js';
 import { approvePublication, type Approval } from '../core/approval.js';
 import { approvePublicationV2, type ApprovalV2 } from '../core/approval-v2.js';
+import { approvePublicationV2_1, type ApprovalV2_1 } from '../core/approval-v2-1.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
 import { PackageService } from '../core/package-service.js';
 import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
+import type { PublicationPlanV2_1 } from '../core/publication-plan-v2-1.js';
+import type { AttachVisualInput } from '../core/visual-assets.js';
 import { assertContractsAvailable } from '../core/schema-validator.js';
 import type { Candidate, ResearchContentPackage } from '../core/types.js';
 import { WorkspaceStore } from '../core/workspace-store.js';
@@ -197,8 +200,26 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     if (operation === 'article finalize') {
       return { ok: true, operation, artifact: await article.finalizeArticle(runId), state: 'finalized' };
     }
+    if (operation === 'article visual status') {
+      return { ok: true, operation, artifact: await article.visualStatus(runId), state: 'reviewed' };
+    }
+    if (operation === 'article visual attach') {
+      const value = articleInput as unknown as { visual?: Omit<AttachVisualInput, 'runId'> };
+      const visual = value.visual ?? (articleInput as unknown as Omit<AttachVisualInput, 'runId'>);
+      return { ok: true, operation, artifact: await article.attachVisual(runId, visual), state: 'reviewed' };
+    }
+    if (operation === 'article visual remove') {
+      const value = articleInput as unknown as { candidate_id: string };
+      await article.removeVisual(runId, value.candidate_id);
+      return { ok: true, operation, artifact: { candidate_id: value.candidate_id, removed: true }, state: 'reviewed' };
+    }
+    if (operation === 'article visual review') {
+      const value = articleInput as unknown as { review?: VisualReviewInput };
+      return { ok: true, operation, artifact: await article.reviewVisual(runId, value.review ?? articleInput as unknown as VisualReviewInput), state: 'reviewed' };
+    }
     if (operation === 'article handoff-x') {
-      return { ok: true, operation, artifact: await article.createXHandoff(runId), state: 'finalized' };
+      const value = articleInput as unknown as { asset_id?: string } | undefined;
+      return { ok: true, operation, artifact: await article.createXHandoff(runId, value?.asset_id), state: 'finalized' };
     }
   }
 
@@ -222,8 +243,8 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     if (operation === 'x browser start') {
       const start = input as unknown as {
         execution_id: string;
-        plan: PublicationPlanV2;
-        approval: ApprovalV2;
+        plan: PublicationPlanV2 | PublicationPlanV2_1;
+        approval: ApprovalV2 | ApprovalV2_1;
         capability_manifest: BrowserCapabilityManifest;
       };
       await pruneBrowserArtifacts(store);
@@ -279,13 +300,15 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     }
     if (operation === 'x approve') {
       const approve = input as unknown as {
-        plan: PublicationPlan | PublicationPlanV2;
+        plan: PublicationPlan | PublicationPlanV2 | PublicationPlanV2_1;
         approved_by: string;
         ttl_ms: number;
       };
-      const artifact = approve.plan.schema_version === '2.0'
-        ? approvePublicationV2(approve.plan, approve.approved_by, approve.ttl_ms)
-        : approvePublication(approve.plan, approve.approved_by, approve.ttl_ms);
+      const artifact = approve.plan.schema_version === '2.1'
+        ? approvePublicationV2_1(approve.plan, approve.approved_by, approve.ttl_ms)
+        : approve.plan.schema_version === '2.0'
+          ? approvePublicationV2(approve.plan, approve.approved_by, approve.ttl_ms)
+          : approvePublication(approve.plan, approve.approved_by, approve.ttl_ms);
       await store.writeNew(`approvals/${artifact.approval_id}.json`, artifact);
       return { ok: true, operation, artifact, state: 'approved' };
     }
@@ -315,8 +338,11 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       return { ok: true, operation, artifact, state: 'reviewed', findings: artifact.findings };
     }
     if (operation === 'x plan') {
+      const handoff = (input as { article_handoff?: XHandoff } | undefined)?.article_handoff;
       const artifact = options.adapter === 'browser'
-        ? await x.planXBrowser(runId)
+        ? handoff === undefined
+          ? await x.planXBrowser(runId)
+          : await x.planXBrowser(runId, handoff)
         : await x.planX(runId);
       return { ok: true, operation, artifact, state: 'approval_pending' };
     }

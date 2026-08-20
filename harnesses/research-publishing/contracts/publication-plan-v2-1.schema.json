@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/publication-plan-v2-1/2.1", "title": "Publication Plan V2.1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "run_id", "intent", "items", "plan_digest", "planned_at", "provenance", "article_package"],
+  "properties": {
+    "schema_version": { "const": "2.1" }, "plan_id": { "type": "string", "minLength": 1 }, "run_id": { "type": "string", "minLength": 1 },
+    "intent": { "$ref": "#/$defs/intent" }, "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/item" } },
+    "plan_digest": { "$ref": "#/$defs/sha256" }, "planned_at": { "type": "string", "format": "date-time" }, "provenance": { "type": "object", "additionalProperties": { "type": "string" } },
+    "article_package": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["root", "digest"], "properties": { "root": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/sha256" } } }] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "asset": { "type": "object", "additionalProperties": false, "required": ["asset_id", "relative_path", "digest", "mime_type", "alt_text", "claim_refs"], "properties": { "asset_id": { "type": "string", "minLength": 1 }, "relative_path": { "type": "string", "pattern": "^assets/", "not": { "pattern": "(^|/)\\.\\.(/|$)" } }, "digest": { "$ref": "#/$defs/sha256" }, "mime_type": { "enum": ["image/png", "image/jpeg", "image/webp"] }, "alt_text": { "type": "string", "minLength": 1 }, "claim_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } },
+    "item": { "type": "object", "additionalProperties": false, "required": ["ordinal", "text", "digest", "attachments"], "properties": { "ordinal": { "type": "integer", "minimum": 1 }, "text": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/sha256" }, "reply_to": { "enum": ["previous", "target"] }, "attachments": { "type": "array", "maxItems": 1, "items": { "$ref": "#/$defs/asset" } } } },
+    "targetPost": { "type": "object", "additionalProperties": false, "required": ["id", "url", "author", "snapshot_digest"], "properties": { "id": { "type": "string", "minLength": 1 }, "url": { "type": "string", "format": "uri" }, "author": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" }, "snapshot_digest": { "$ref": "#/$defs/sha256" } } },
+    "intent": { "type": "object", "additionalProperties": false, "required": ["schema_version", "platform", "target_account", "adapter", "mode", "target_post", "items", "action"], "properties": { "schema_version": { "const": "2.1" }, "platform": { "const": "x" }, "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" }, "adapter": { "const": "browser" }, "mode": { "enum": ["single", "thread", "reply"] }, "target_post": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/targetPost" }] }, "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/item" } }, "action": { "const": "publish_once" } } }
+  }
+}

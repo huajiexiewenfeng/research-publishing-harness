@@ -18,7 +18,8 @@
     "page_revision": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "observed_at": { "type": "string", "format": "date-time" },
     "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
-    "public_posts": { "type": "array", "items": { "$ref": "#/$defs/publicPost" } }
+    "public_posts": { "type": "array", "items": { "$ref": "#/$defs/publicPost" } },
+    "composer_attachments": { "type": "array", "items": { "$ref": "#/$defs/composerAttachment" } }
   },
   "$defs": {
     "node": {
@@ -55,8 +56,24 @@
         "text": { "type": "string" },
         "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
         "published_at": { "type": "string", "format": "date-time" },
-        "reply_to_id": { "type": ["string", "null"] }
+        "reply_to_id": { "type": ["string", "null"] },
+        "media": { "type": "array", "items": { "$ref": "#/$defs/publicMedia" } }
       }
+    },
+    "composerAttachment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "ordinal", "kind", "mime_type", "alt_text", "status", "owned_by_execution"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 }, "ordinal": { "type": "integer", "minimum": 1 },
+        "kind": { "const": "image" }, "mime_type": { "enum": ["image/png", "image/jpeg", "image/webp", null] },
+        "alt_text": { "type": ["string", "null"] }, "status": { "enum": ["processing", "uploaded", "failed"] },
+        "owned_by_execution": { "type": "boolean" }
+      }
+    },
+    "publicMedia": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "alt_text", "url"],
+      "properties": { "kind": { "const": "image" }, "alt_text": { "type": ["string", "null"] }, "url": { "type": ["string", "null"], "format": "uri" } }
     }
   }
 }

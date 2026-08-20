@@ -11,3 +11,9 @@
 | v1-verification | verification | `.llm-wiki/verification/v1.md` | project | research-publishing-harness-v1 | verified | 2026-08-18 | 17 条设计验收标准逐项证据 |
 | v1-quickstart | guide | `README.md` | project | research-publishing-harness-v1 | verified | 2026-08-18 | Pre-alpha/V1 能力、边界与 Synthetic Quickstart |
 | v1-handoff | handoff | `.llm-wiki/handoff/research-publishing-harness-v1-handoff.md` | project | research-publishing-harness-v1 | active | 2026-08-18 | codex/v1 本地交付入口；远端 push 待用户授权 |
+| visual-v2-1-spec | design | `docs/superpowers/specs/2026-08-20-visual-publishing-v2-1-design.zh-CN.md` | project | visual-publishing-v2-1 | approved | 2026-08-20 | 批准提交 `d502ac9`，状态提交 `ff2d824` |
+| visual-v2-1-plan | plan | `docs/superpowers/plans/2026-08-20-visual-publishing-v2-1.md` | project | visual-publishing-v2-1 | executed | 2026-08-20 | Tasks 1–9 implementation record |
+| visual-v2-1-runtime | implementation | `harnesses/research-publishing/` | project | visual-publishing-v2-1 | implemented-local | 2026-08-20 | Core/Article/X/Browser/CLI V2.1 implementation |
+| visual-v2-1-manifest | manifest | `registry/manifests/research-publishing.json` | project | visual-publishing-v2-1 | verified-local | 2026-08-20 | Deterministically regenerated after contract/runtime changes |
+| visual-v2-1-verification | verification | `.llm-wiki/verification/visual-publishing-v2-1.md` | project | visual-publishing-v2-1 | passed-agent-local | 2026-08-20 | Full check and design §25 criteria 1–20 evidence |
+| visual-v2-1-handoff | handoff | `.llm-wiki/handoff/visual-publishing-v2-1-handoff.md` | project | visual-publishing-v2-1 | active | 2026-08-20 | Inline `main` delivery summary; no push performed |

@@ -20,9 +20,31 @@
         "required": ["heading", "markdown", "claim_refs", "source_refs"],
         "properties": {
           "heading": { "type": "string", "minLength": 1 },
+          "section_id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+$" },
           "markdown": { "type": "string", "minLength": 1 },
           "claim_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
           "source_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+        }
+      }
+    },
+    "visual_slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slot_id", "placement", "purpose", "required", "brief", "claim_refs"],
+        "properties": {
+          "slot_id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+$" },
+          "placement": {
+            "oneOf": [
+              { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "cover" } } },
+              { "type": "object", "additionalProperties": false, "required": ["kind", "section_id"], "properties": { "kind": { "const": "after_section" }, "section_id": { "type": "string", "minLength": 1 } } }
+            ]
+          },
+          "purpose": { "enum": ["cover", "explanation", "architecture", "evidence"] },
+          "required": { "type": "boolean" },
+          "brief": { "type": "string", "minLength": 1 },
+          "claim_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
         }
       }
     },

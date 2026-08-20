@@ -9,6 +9,7 @@ import { approvePublicationV2 } from '../../harnesses/research-publishing/core/a
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { publicationPlanV2Fixture } from '../fixtures/publication-plan-v2.js';
+import { publicationPlanV2_1Fixture } from '../fixtures/publication-plan-v2-1.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
 const cli = resolve('dist/harnesses/research-publishing/cli/index.js');
@@ -218,6 +219,22 @@ describe('research-publish CLI', () => {
     expect(approved.status).toBe(0);
     expect(JSON.parse(approved.stdout)).toMatchObject({
       operation: 'x approve', artifact: { schema_version: '2.0', scope: 'publish_once' }
+    });
+
+    const approveV2_1Input = join(parent, 'approve-v2-1.json');
+    await writeFile(approveV2_1Input, JSON.stringify({
+      plan: publicationPlanV2_1Fixture(), approved_by: 'human', ttl_ms: 600_000
+    }));
+    const approvedV2_1 = run([
+      'x', 'approve', '--workspace', workspace, '--input', approveV2_1Input, '--output', 'json'
+    ]);
+    expect(approvedV2_1.status).toBe(0);
+    expect(JSON.parse(approvedV2_1.stdout)).toMatchObject({
+      operation: 'x approve',
+      artifact: {
+        schema_version: '2.1', scope: 'publish_once', adapter: 'browser',
+        target_account: '@runtime_ai', plan_digest: publicationPlanV2_1Fixture().plan_digest
+      }
     });
   });
 });

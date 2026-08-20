@@ -43,6 +43,9 @@ export class DeterministicOutcomeResolver implements OutcomeResolver {
       };
     }
     if (input.public_verification.kind === 'full_match') {
+      if (input.public_verification.media_evidence?.verified === false) {
+        return { kind: 'published_unverified', reason: input.public_verification.media_evidence.limitations.join('; ') };
+      }
       return { kind: 'finalized', verification: input.public_verification };
     }
     if (input.public_verification.kind === 'partial') {

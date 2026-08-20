@@ -13,13 +13,15 @@ Use the repository Harness as the deterministic boundary. The agent may help sha
 2. Confirm the user-selected research track and a Frozen Research Content Package. Run `article prepare`; use its Generation Task as the complete Claim, Boundary, and allowed-source envelope.
 3. Draft one Article Candidate, preserving `verified`, `hypothesis`, and `planned` language. Submit it through `article accept-draft` and `article review`.
 4. If any Gate blocks, show the findings and return to the draft. Do not bypass, weaken, or reimplement a Gate.
-5. After the user chooses the reviewed final content, run `article finalize` and return the Canonical Article Package paths and digest.
+5. After Content Review, inspect `article visual status`. The Visual Skill may create candidates and submit a chosen file, Alt Text, provenance, and Claim refs through `article visual attach`; it never chooses the Package path.
+6. Run `article visual review` only after Human selection and checks for Claim alignment, Boundary alignment, mobile legibility, single-message focus, and privacy. Required unresolved Slots block Finalize; optional unresolved Slots are warnings.
+7. Run `article finalize` and return the self-contained Canonical Article Package paths, Visual Manifest digest, and Package digest.
 
 The Harness owns the Publish Gate. Article finalization does not authorize external publication.
 
 ## X boundary
 
-An article never automatically triggers X generation or publication. Run `article handoff-x` only when the user explicitly requests that separate artifact; then use `x-publishing-copilot` for the X branch.
+An article never automatically triggers X generation or publication. A visual `article handoff-x` must include the exact user-selected `asset_id`; never choose a cover or other image automatically.
 
 ## Invocation
 
@@ -29,4 +31,4 @@ Pass CLI arguments unchanged through:
 node skills/article-publishing-copilot/scripts/invoke.mjs article prepare --workspace <path> --input <json> --output json
 ```
 
-All source discovery is read-only unless the user explicitly supplies a publishing workspace. Never request credentials: V1 has no Browser or X API adapter.
+Only PNG, JPEG, and static WebP are supported. Do not bypass normalization, copy original bytes into the final Package, or introduce absolute/remote Markdown image paths. Never request credentials.

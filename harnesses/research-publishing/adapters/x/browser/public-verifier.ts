@@ -4,10 +4,18 @@ import {
   normalizePublicationText,
   type PublicationPlanV2
 } from '../../../core/publication-plan-v2.js';
+import type { PublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
 import type { BrowserPublicPostObservation } from './browser-protocol.js';
 
+export interface PublicMediaEvidence {
+  readonly verified: boolean;
+  readonly alt_text_verified: boolean | null;
+  readonly public_media_url: string | null;
+  readonly limitations: readonly string[];
+}
+
 export type PublicVerificationResult =
-  | { readonly kind: 'full_match'; readonly root_url: string; readonly posts: readonly VerifiedPost[] }
+  | { readonly kind: 'full_match'; readonly root_url: string; readonly posts: readonly VerifiedPost[]; readonly media_evidence?: PublicMediaEvidence }
   | {
       readonly kind: 'partial';
       readonly matched_ordinals: readonly number[];
@@ -31,7 +39,7 @@ interface ExtractedUrl {
 }
 
 export function verifyPublicThread(
-  plan: PublicationPlanV2,
+  plan: PublicationPlanV2 | PublicationPlanV2_1,
   observed: readonly BrowserPublicPostObservation[]
 ): PublicVerificationResult {
   const ids = observed.map((post) => post.post_id);
@@ -81,6 +89,36 @@ export function verifyPublicThread(
 
   const unexpected = observed.filter((post) => !selected.includes(post)).map((post) => post.post_id);
   if (unexpected.length > 0) return conflict('unexpected Posts were observed beside the approved chain', unexpected);
+  if (plan.schema_version === '2.1') {
+    const expected = plan.items.flatMap((item) => item.attachments.map((asset) => ({ ordinal: item.ordinal, asset })))[0];
+    if (expected !== undefined) {
+      const mediaPosts = selected.flatMap((post, index) => (post.media ?? []).map((media) => ({ ordinal: index + 1, post, media })));
+      const target = selected[expected.ordinal - 1]!;
+      if (target.media === undefined) {
+        return {
+          kind: 'full_match', root_url: verified[0]!.canonical_url, posts: verified,
+          media_evidence: { verified: false, alt_text_verified: null, public_media_url: null, limitations: ['public page did not expose media fields'] }
+        };
+      }
+      if (mediaPosts.length !== 1 || mediaPosts[0]!.ordinal !== expected.ordinal || mediaPosts[0]!.media.kind !== 'image') {
+        return conflict('public media count, type, or Post ordinal differs from the Plan', [target.post_id]);
+      }
+      const media = mediaPosts[0]!.media;
+      if (media.alt_text === null) {
+        return {
+          kind: 'full_match', root_url: verified[0]!.canonical_url, posts: verified,
+          media_evidence: { verified: false, alt_text_verified: null, public_media_url: media.url, limitations: ['public page did not expose Alt Text'] }
+        };
+      }
+      if (media.alt_text !== expected.asset.alt_text) {
+        return conflict('public media Alt Text differs from the Plan', [target.post_id]);
+      }
+      return {
+        kind: 'full_match', root_url: verified[0]!.canonical_url, posts: verified,
+        media_evidence: { verified: true, alt_text_verified: true, public_media_url: media.url, limitations: ['public media bytes may be transcoded and are not source-digest comparable'] }
+      };
+    }
+  }
   return { kind: 'full_match', root_url: verified[0]!.canonical_url, posts: verified };
 }
 

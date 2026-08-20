@@ -4,6 +4,7 @@ import {
   normalizePublicationText,
   type PublicationPlanV2
 } from '../../../core/publication-plan-v2.js';
+import type { PublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
 import type {
   BrowserObservation,
   IssueBrowserCommandInput
@@ -11,12 +12,15 @@ import type {
 import type { XPageContract } from './page-contract.js';
 
 export interface ComposerContext {
-  readonly plan: PublicationPlanV2;
+  readonly plan: PublicationPlanV2 | PublicationPlanV2_1;
   readonly expected_account: string;
   readonly created_item_refs: readonly string[];
   readonly next_ordinal: number;
   readonly add_retry_count: number;
   readonly last_page_revision: string | null;
+  readonly attachment_command_issued?: boolean;
+  readonly alt_text_command_issued?: boolean;
+  readonly attachment_retry_count?: number;
 }
 
 export type ComposerDecision =
@@ -86,6 +90,8 @@ export function nextComposerDecision(
     if (items.length !== context.plan.items.length) {
       return blocked('COMPOSER_ITEM_COUNT_MISMATCH', 'composer contains extra or missing items');
     }
+    const attachmentDecision = decideAttachments(context, observation, contract);
+    if (attachmentDecision !== null) return attachmentDecision;
     const submit = contract.detectSubmitControl(observation);
     const expectedLabel =
       context.plan.intent.mode === 'thread'
@@ -105,6 +111,54 @@ export function nextComposerDecision(
     if (error instanceof HarnessError) return blocked(error.code, error.message);
     throw error;
   }
+}
+
+function decideAttachments(
+  context: ComposerContext,
+  observation: BrowserObservation,
+  contract: XPageContract
+): ComposerDecision | null {
+  const composer = contract.detectComposer(observation);
+  const visualPlan = context.plan.schema_version === '2.1' ? context.plan : null;
+  const expected = visualPlan === null
+    ? undefined
+    : visualPlan.items.flatMap((item) => item.attachments.map((asset) => ({ ordinal: item.ordinal, asset })))[0];
+  const observed = composer.attachments;
+  if (expected === undefined) {
+    return observed.length === 0 ? null : blocked('X_ATTACHMENT_CONFLICT', 'Composer contains an attachment outside the locked Plan');
+  }
+  if (observed.some((attachment) => !attachment.owned_by_execution)) {
+    return blocked('X_ATTACHMENT_CONFLICT', 'Composer contains an unknown existing attachment');
+  }
+  if (observed.length === 0) {
+    if (context.attachment_command_issued === true) {
+      return blocked('X_ATTACHMENT_OUTCOME_UNKNOWN', 'the issued upload did not produce an observable attachment');
+    }
+    const articlePackage = visualPlan!.article_package;
+    if (articlePackage === null) return blocked('VISUAL_PATH_OUTSIDE_PACKAGE', 'locked Article Package is missing');
+    return command(
+      { ...context, attachment_command_issued: true }, observation,
+      'upload_locked_attachment', 'upload_attachment', 'write',
+      { kind: 'upload_attachment', target_ordinal: expected.ordinal, package_root: articlePackage.root, package_digest: articlePackage.digest, asset: expected.asset }
+    );
+  }
+  if (observed.length !== 1) return blocked('X_ATTACHMENT_MISMATCH', 'Composer attachment count does not match the Plan');
+  const attachment = observed[0]!;
+  if (attachment.status === 'failed') return blocked('X_ATTACHMENT_UPLOAD_FAILED', 'Composer reports an attachment upload failure');
+  if (attachment.status !== 'uploaded') return blocked('X_ATTACHMENT_OUTCOME_UNKNOWN', 'Composer attachment upload is not complete');
+  if (attachment.ordinal !== expected.ordinal || attachment.kind !== 'image' || attachment.mime_type !== expected.asset.mime_type) {
+    return blocked('X_ATTACHMENT_MISMATCH', 'Composer attachment type or ordinal does not match the Plan');
+  }
+  if (attachment.alt_text === null) {
+    if (context.alt_text_command_issued === true) return blocked('X_ALT_TEXT_MISMATCH', 'Composer did not retain the locked Alt Text');
+    return command(
+      { ...context, alt_text_command_issued: true }, observation,
+      'set_locked_attachment_alt_text', 'set_attachment_alt_text', 'write',
+      { kind: 'set_attachment_alt_text', target_ordinal: expected.ordinal, attachment_ref: attachment.ref, alt_text: expected.asset.alt_text }
+    );
+  }
+  if (attachment.alt_text !== expected.asset.alt_text) return blocked('X_ALT_TEXT_MISMATCH', 'Composer Alt Text differs from the locked Plan');
+  return null;
 }
 
 function decideReplyEntry(

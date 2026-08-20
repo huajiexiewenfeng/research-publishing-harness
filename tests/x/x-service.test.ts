@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { researchPackage } from '../fixtures/research-package.js';
+import { visualAssetFixture } from '../fixtures/publication-plan-v2-1.js';
 
 const frozenPackage = { ...researchPackage, status: 'frozen', version: 3 } as const;
 
@@ -173,5 +174,31 @@ describe('XService', () => {
     });
     expect(plan.plan_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(plan.items).toEqual(plan.intent.items);
+  });
+
+  it('creates V2.1 only from an explicit Article asset handoff', async () => {
+    const x = await service('x_visual_good');
+    const run = await x.prepareX(frozenPackage, {
+      contentType: 'research_note', format: 'single', language: 'en', targetAccount: '@runtime_ai'
+    });
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0', run_id: run.run_id, content_type: 'research_note',
+      format: 'single', language: 'en',
+      items: [{ ordinal: 1, text: 'A visual keeps the boundary explicit.', claim_refs: ['claim_verified'] }]
+    });
+    await x.reviewX(run.run_id);
+    const handoff = {
+      schema_version: '1.1' as const, handoff_id: 'handoff_visual',
+      article_run_id: 'article_visual', article_digest: `sha256:${'a'.repeat(64)}`,
+      package_id: frozenPackage.package_id, package_version: frozenPackage.version,
+      requested_at: '2026-08-20T03:00:00.000Z',
+      article_package_root: 'articles/visual/article_visual',
+      visual_asset: visualAssetFixture
+    };
+    const plan = await x.planXBrowser(run.run_id, handoff);
+    expect(plan).toMatchObject({
+      schema_version: '2.1',
+      items: [{ ordinal: 1, attachments: [{ asset_id: 'asset_cover' }] }]
+    });
   });
 });

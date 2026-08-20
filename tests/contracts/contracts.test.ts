@@ -16,7 +16,13 @@ const names = [
   'browser-execution-event',
   'browser-command',
   'browser-observation',
-  'publish-receipt-v2'
+  'publish-receipt-v2',
+  'visual-asset-ref',
+  'visual-manifest',
+  'visual-review-report',
+  'publication-plan-v2-1',
+  'approval-v2-1',
+  'publish-receipt-v2-1'
 ] as const;
 
 const v1Names = new Set([
@@ -45,7 +51,13 @@ describe('public contracts', () => {
         additionalProperties: boolean;
       };
 
-      const version = v1Names.has(name) ? '1.0' : '2.0';
+      const version = v1Names.has(name)
+        ? '1.0'
+        : name.endsWith('v2-1')
+          ? '2.1'
+          : name.startsWith('visual-')
+            ? '1.0'
+            : '2.0';
       expect(schema.$id).toBe(`rph://contracts/${name}/${version}`);
       expect(schema.additionalProperties).toBe(false);
     });

@@ -8,6 +8,22 @@ import type { HarnessError } from '../../harnesses/research-publishing/core/erro
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
 describe('WorkspaceStore', () => {
+  it('installs a complete directory atomically and refuses replacement or traversal', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'rph-workspace-directory-'));
+    const store = await WorkspaceStore.open(root);
+    await store.writeNewDirectory('articles/atomic/run_1', {
+      'article.md': '# Complete\n',
+      'assets/image.png': Buffer.from([137, 80, 78, 71])
+    });
+    await expect(store.readText('articles/atomic/run_1/article.md')).resolves.toBe('# Complete\n');
+    await expect(store.readBytes('articles/atomic/run_1/assets/image.png')).resolves.toEqual(Buffer.from([137, 80, 78, 71]));
+    await expect(store.writeNewDirectory('articles/atomic/run_1', { 'other.md': 'no' }))
+      .rejects.toMatchObject({ code: 'ARTIFACT_EXISTS' });
+    await expect(store.writeNewDirectory('articles/atomic/run_2', { '../escape.md': 'no' }))
+      .rejects.toMatchObject({ code: 'WORKSPACE_PATH_INVALID' });
+    await expect(store.exists('articles/atomic/run_2')).resolves.toBe(false);
+  });
+
   it('creates an atomic artifact and round-trips JSON', async () => {
     const root = await mkdtemp(join(tmpdir(), 'rph-store-'));
     const store = await WorkspaceStore.open(root);

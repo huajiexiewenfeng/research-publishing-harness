@@ -455,3 +455,8 @@ CLI 默认 `dry-run`，输出稳定 JSON 和 Error Code。V1 采用 TypeScript +
 ## 18. North Star
 
 > Turn ongoing AI systems research into evidence-backed public artifacts and technical conversations without losing lineage, boundaries, privacy, or human control.
+## Visual Publishing V2.1 增量
+
+V2.1 将 Canonical Markdown Article Package 定义为静态视觉资产的事实源。Core 只增加最小 `VisualAssetRef`；Article Harness 管理 Slot、候选、Visual Review、Manifest 和 Package Digest；X Harness 只通过显式 `asset_id` Handoff 复用一个资产。Browser Host 只能上传锁定 Package 内、路径受限且 Digest/MIME 匹配的 PNG、JPEG 或静态 WebP。
+
+V2.1 不改变 V2 write-ahead Submit Barrier、Host consumed-command、at-most-once 或公开只读恢复。Receipt 分别记录 Source Asset、Composer Attachment 和 Public Media 证据；不声称 X 转码后的公开媒体与源文件字节相同。动态图、GIF、视频、多图、X Articles、自动选图和 LLM Wiki 动态接入均不在本版本范围内。

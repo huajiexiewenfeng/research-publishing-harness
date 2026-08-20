@@ -73,7 +73,8 @@ function result(commandId: string, observed: BrowserObservationInput | null): Br
 describe('CommandBroker', () => {
   it('exposes only bounded semantic commands, without capture or script execution', () => {
     expect(BROWSER_COMMAND_KINDS).toEqual([
-      'observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait'
+      'observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait',
+      'upload_attachment', 'set_attachment_alt_text'
     ]);
     expect(BROWSER_COMMAND_KINDS).not.toContain('screenshot');
     expect(BROWSER_COMMAND_KINDS).not.toContain('capture_screen');

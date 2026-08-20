@@ -32,4 +32,32 @@ describe('validateContract', () => {
       validateContract('candidate', { ...candidate, captured_at: 'today' })
     ).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
   });
+
+  it('accepts Article V2.1 visual slots without changing the draft schema version', () => {
+    const draft = {
+      schema_version: '1.0',
+      run_id: 'article_visual_1',
+      title: 'Visual boundaries',
+      summary: 'A visual article.',
+      language: 'en',
+      sections: [{
+        section_id: 'runtime-boundary',
+        heading: 'Runtime boundary',
+        markdown: 'The boundary is explicit.',
+        claim_refs: ['claim_verified'],
+        source_refs: ['source_test']
+      }],
+      visual_slots: [{
+        slot_id: 'visual_cover',
+        placement: { kind: 'cover' },
+        purpose: 'cover',
+        required: true,
+        brief: 'Show the runtime boundary.',
+        claim_refs: ['claim_verified']
+      }],
+      open_questions: []
+    } as const;
+
+    expect(validateContract('article-draft', draft)).toEqual(draft);
+  });
 });

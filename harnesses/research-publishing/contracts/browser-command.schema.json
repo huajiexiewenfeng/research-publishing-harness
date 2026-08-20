@@ -13,7 +13,7 @@
     "command_id": { "type": "string", "minLength": 1 },
     "execution_id": { "type": "string", "minLength": 1 },
     "run_id": { "type": "string", "minLength": 1 },
-    "kind": { "enum": ["observe_page", "navigate", "click", "set_text", "press_key", "wait"] },
+    "kind": { "enum": ["observe_page", "navigate", "click", "set_text", "press_key", "wait", "upload_attachment", "set_attachment_alt_text"] },
     "purpose": { "type": "string", "minLength": 1 },
     "expected_page_revision": {
       "oneOf": [
@@ -68,10 +68,45 @@
             "kind": { "const": "wait" },
             "delay_ms": { "enum": [0, 3000, 10000, 30000, 90000] }
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "target_ordinal", "package_root", "package_digest", "asset"],
+          "properties": {
+            "kind": { "const": "upload_attachment" },
+            "target_ordinal": { "type": "integer", "minimum": 1 },
+            "package_root": { "type": "string", "minLength": 1 },
+            "package_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "asset": { "$ref": "#/$defs/asset" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "target_ordinal", "attachment_ref", "alt_text"],
+          "properties": {
+            "kind": { "const": "set_attachment_alt_text" },
+            "target_ordinal": { "type": "integer", "minimum": 1 },
+            "attachment_ref": { "type": "string", "minLength": 1 },
+            "alt_text": { "type": "string", "minLength": 1 }
+          }
         }
       ]
     },
     "payload_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "issued_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_id", "relative_path", "digest", "mime_type", "alt_text", "claim_refs"],
+      "properties": {
+        "asset_id": { "type": "string", "minLength": 1 },
+        "relative_path": { "type": "string", "pattern": "^assets/", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "mime_type": { "enum": ["image/png", "image/jpeg", "image/webp"] },
+        "alt_text": { "type": "string", "minLength": 1 },
+        "claim_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    }
   }
 }

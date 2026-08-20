@@ -8,6 +8,11 @@ import {
   createPublicationPlanV2,
   type PublicationPlanV2
 } from '../../core/publication-plan-v2.js';
+import {
+  createPublicationPlanV2_1,
+  type PublicationPlanV2_1
+} from '../../core/publication-plan-v2-1.js';
+import type { XHandoff } from '../article-harness/article-service.js';
 import { validateContract } from '../../core/schema-validator.js';
 import type { Finding, ResearchContentPackage, ReviewReport } from '../../core/types.js';
 import type { WorkspaceStore } from '../../core/workspace-store.js';
@@ -272,7 +277,9 @@ export class XService {
     return plan;
   }
 
-  async planXBrowser(runId: string): Promise<PublicationPlanV2> {
+  async planXBrowser(runId: string): Promise<PublicationPlanV2>;
+  async planXBrowser(runId: string, handoff: XHandoff): Promise<PublicationPlanV2 | PublicationPlanV2_1>;
+  async planXBrowser(runId: string, handoff?: XHandoff): Promise<PublicationPlanV2 | PublicationPlanV2_1> {
     const prefix = this.runPrefix(runId);
     const metadata = await this.store.readJson<XRunMetadata>(`${prefix}/run.json`);
     const draft = await this.store.readJson<XDraft>(`${prefix}/draft-candidate.json`);
@@ -280,7 +287,22 @@ export class XService {
     if (!report.passed) {
       throw new HarnessError('EVIDENCE_GATE_BLOCKED', 'X review contains blocking findings');
     }
-    const plan = createPublicationPlanV2({
+    if (
+      handoff?.visual_asset !== undefined &&
+      (handoff.schema_version !== '1.1' ||
+        handoff.article_package_root === undefined ||
+        handoff.package_id !== metadata.package_id ||
+        handoff.package_version !== metadata.package_version)
+    ) {
+      throw new HarnessError('VISUAL_ASSET_INVALID', 'X visual Plan requires an exact finalized Article Handoff');
+    }
+    const commonItems = draft.items.map((item) => ({
+      ordinal: item.ordinal,
+      text: item.text,
+      ...(item.reply_to === undefined ? {} : { reply_to: item.reply_to })
+    }));
+    const plan = handoff?.visual_asset === undefined
+      ? createPublicationPlanV2({
       planId: this.planId(),
       runId,
       targetAccount: metadata.target_account,
@@ -288,15 +310,29 @@ export class XService {
       mode: draft.format,
       targetPost: draft.target_post ?? null,
       media: [],
-      items: draft.items.map((item) => ({
-        ordinal: item.ordinal,
-        text: item.text,
-        ...(item.reply_to === undefined ? {} : { reply_to: item.reply_to })
-      })),
+      items: commonItems,
       plannedAt: this.now().toISOString(),
       provenance: { draft_digest: sha256(draft) }
-    });
-    await this.store.writeNew(`${prefix}/publication-plan-v2.json`, plan);
+    })
+      : createPublicationPlanV2_1({
+          planId: this.planId(),
+          runId,
+          targetAccount: metadata.target_account,
+          mode: draft.format,
+          targetPost: draft.target_post ?? null,
+          items: commonItems.map((item, index) => ({
+            ...item,
+            attachments: index === 0 ? [handoff.visual_asset!] : []
+          })),
+          articlePackage: {
+            root: handoff.article_package_root!,
+            digest: handoff.article_digest
+          },
+          authorizedAsset: handoff.visual_asset,
+          plannedAt: this.now().toISOString(),
+          provenance: { draft_digest: sha256(draft), handoff_id: handoff.handoff_id }
+        });
+    await this.store.writeNew(`${prefix}/publication-plan-v${plan.schema_version}.json`, plan);
     return plan;
   }
 

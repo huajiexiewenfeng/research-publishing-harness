@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,8 +13,10 @@ import type {
 import { CommandBroker } from '../../harnesses/research-publishing/adapters/x/browser/command-broker.js';
 import { XWeb202608Contract } from '../../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
+import { sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 import { ExecutionStore } from '../../harnesses/research-publishing/core/execution-store.js';
 import { createPublicationPlanV2 } from '../../harnesses/research-publishing/core/publication-plan-v2.js';
+import { createPublicationPlanV2_1 } from '../../harnesses/research-publishing/core/publication-plan-v2-1.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
 const at = '2026-08-19T10:00:00.000Z';
@@ -178,5 +180,55 @@ describe('Browser Adapter adversarial boundary', () => {
         capabilities: ['observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait'], observed_at: at
       } as never
     })).rejects.toMatchObject({ code: 'BROWSER_EXECUTOR_INCOMPATIBLE' });
+  });
+
+  it('rejects forged visual commands and source replacement after command issue', async () => {
+    const { root, workspace, broker } = await fixture();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+    const packageRoot = 'articles/security/package_1';
+    const asset = {
+      asset_id: 'asset_security', relative_path: 'assets/asset_security.png',
+      digest: sha256Bytes(png), mime_type: 'image/png' as const,
+      alt_text: 'Locked security image.', claim_refs: ['claim_security']
+    };
+    const plan = createPublicationPlanV2_1({
+      planId: 'plan_security_visual', runId: 'run_security', targetAccount: '@runtime_ai',
+      mode: 'single', targetPost: null,
+      items: [{ ordinal: 1, text: 'Locked text', attachments: [asset] }],
+      articlePackage: { root: packageRoot, digest: `sha256:${'a'.repeat(64)}` },
+      authorizedAsset: asset, plannedAt: at, provenance: { handoff_id: 'handoff_security' }
+    });
+    await workspace.writeNewBytes(`${packageRoot}/${asset.relative_path}`, png);
+    await workspace.writeNew(`${packageRoot}/package-ref.json`, {
+      root: packageRoot, digest: plan.article_package!.digest,
+      artifacts: [`${packageRoot}/${asset.relative_path}`], warnings: []
+    });
+    await workspace.writeNew('runs/run_security/x/browser/exec_security/publication-plan-2.1.json', plan);
+
+    const base = {
+      execution_id: 'exec_security', run_id: 'run_security', kind: 'upload_attachment' as const,
+      purpose: 'upload_locked_attachment', expected_page_revision: null,
+      allowed_origin: 'https://x.com' as const, side_effect: 'write' as const
+    };
+    await expect(broker.issue({
+      ...base,
+      payload: {
+        kind: 'upload_attachment', target_ordinal: 1, package_root: packageRoot,
+        package_digest: plan.article_package!.digest,
+        asset: { ...asset, digest: `sha256:${'b'.repeat(64)}` }
+      }
+    })).rejects.toMatchObject({ code: 'VISUAL_DIGEST_MISMATCH' });
+
+    const command = await broker.issue({
+      ...base,
+      payload: {
+        kind: 'upload_attachment', target_ordinal: 1, package_root: packageRoot,
+        package_digest: plan.article_package!.digest, asset
+      }
+    });
+    await writeFile(join(root, packageRoot, asset.relative_path), Buffer.concat([png, Buffer.from([0])]));
+    await expect(broker.claim(command.execution_id, command.command_id)).rejects.toMatchObject({
+      code: 'VISUAL_DIGEST_MISMATCH'
+    });
   });
 });

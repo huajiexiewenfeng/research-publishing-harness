@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { access, link, lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises';
+import { access, link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
-import { sha256 } from './digest.js';
+import { sha256, sha256Bytes } from './digest.js';
 import { HarnessError } from './errors.js';
 
 const ALLOWED_TOP_LEVEL = new Set([
@@ -112,6 +112,124 @@ export class WorkspaceStore {
       digest: sha256(serialized),
       bytes
     };
+  }
+
+  async writeNewBytes(relativePath: string, value: Uint8Array): Promise<ArtifactRef> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    const bytes = Buffer.from(value);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    const temporaryPath = `${absolutePath}.${randomUUID()}.tmp`;
+    const handle = await open(temporaryPath, 'wx');
+    try {
+      await handle.writeFile(bytes);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await link(temporaryPath, absolutePath);
+    } catch (error) {
+      await unlink(temporaryPath).catch(() => undefined);
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new HarnessError('ARTIFACT_EXISTS', `artifact already exists: ${normalized}`);
+      }
+      throw error;
+    }
+    await unlink(temporaryPath);
+    return { relative_path: normalized, digest: sha256Bytes(bytes), bytes: bytes.length };
+  }
+
+  async writeNewDirectory(
+    relativeDirectory: string,
+    entries: Readonly<Record<string, string | object | Uint8Array>>
+  ): Promise<void> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativeDirectory);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    try {
+      await lstat(absolutePath);
+      throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
+    } catch (error) {
+      if (error instanceof HarnessError) throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+
+    const temporaryPath = `${absolutePath}.${randomUUID()}.tmp`;
+    await mkdir(temporaryPath);
+    try {
+      for (const [entryPath, value] of Object.entries(entries)) {
+        const portable = entryPath.replaceAll('\\', '/');
+        const segments = portable.split('/');
+        if (
+          portable.length === 0 ||
+          isAbsolute(entryPath) ||
+          segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+        ) {
+          throw new HarnessError('WORKSPACE_PATH_INVALID', `invalid package entry path: ${entryPath}`);
+        }
+        const target = resolve(temporaryPath, portable);
+        const relativeToTemporary = relative(temporaryPath, target);
+        if (
+          relativeToTemporary === '..' ||
+          relativeToTemporary.startsWith(`..${sep}`) ||
+          isAbsolute(relativeToTemporary)
+        ) {
+          throw new HarnessError('WORKSPACE_PATH_INVALID', `package entry escapes staging directory: ${entryPath}`);
+        }
+        await mkdir(dirname(target), { recursive: true });
+        const bytes = value instanceof Uint8Array
+          ? Buffer.from(value)
+          : Buffer.from(typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+        const handle = await open(target, 'wx');
+        try {
+          await handle.writeFile(bytes);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      }
+      try {
+        await rename(temporaryPath, absolutePath);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EPERM') {
+          throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
+        }
+        throw error;
+      }
+    } finally {
+      await rm(temporaryPath, { recursive: true, force: true });
+    }
+  }
+
+  async readBytes(relativePath: string): Promise<Buffer> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    try {
+      return await readFile(absolutePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
+      }
+      throw error;
+    }
+  }
+
+  async resolveRegularFile(relativePath: string): Promise<string> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    const metadata = await lstat(absolutePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
+      }
+      throw error;
+    });
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new HarnessError('VISUAL_PATH_OUTSIDE_PACKAGE', `visual asset is not a regular file: ${normalized}`);
+    }
+    const [realRoot, realFile] = await Promise.all([realpath(this.root), realpath(absolutePath)]);
+    const relativeToRoot = relative(realRoot, realFile);
+    if (relativeToRoot === '..' || relativeToRoot.startsWith(`..${sep}`) || isAbsolute(relativeToRoot)) {
+      throw new HarnessError('VISUAL_PATH_OUTSIDE_PACKAGE', `visual asset escapes workspace: ${normalized}`);
+    }
+    return realFile;
   }
 
   async readJson<T>(relativePath: string): Promise<T> {

@@ -12,7 +12,13 @@ export const CONTRACT_NAMES = [
   'browser-execution-event',
   'browser-command',
   'browser-observation',
-  'publish-receipt-v2'
+  'publish-receipt-v2',
+  'visual-asset-ref',
+  'visual-manifest',
+  'visual-review-report',
+  'publication-plan-v2-1',
+  'approval-v2-1',
+  'publish-receipt-v2-1'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];
@@ -136,4 +142,63 @@ export interface ReviewReport {
   readonly gates: readonly string[];
   readonly findings: readonly Finding[];
   readonly reviewed_at: string;
+}
+
+export interface VisualAssetRef {
+  readonly asset_id: string;
+  readonly relative_path: string;
+  readonly digest: `sha256:${string}`;
+  readonly mime_type: 'image/png' | 'image/jpeg' | 'image/webp';
+  readonly alt_text: string;
+  readonly claim_refs: readonly string[];
+}
+
+export interface VisualSlot {
+  readonly slot_id: string;
+  readonly placement:
+    | { readonly kind: 'cover' }
+    | { readonly kind: 'after_section'; readonly section_id: string };
+  readonly purpose: 'cover' | 'explanation' | 'architecture' | 'evidence';
+  readonly required: boolean;
+  readonly brief: string;
+  readonly claim_refs: readonly string[];
+}
+
+export interface ArticleVisualManifest {
+  readonly schema_version: '1.0';
+  readonly article_run_id: string;
+  readonly bindings: ReadonlyArray<{
+    readonly slot_id: string;
+    readonly asset: VisualAssetRef;
+    readonly placement_ordinal: number;
+    readonly width: number;
+    readonly height: number;
+    readonly byte_size: number;
+    readonly normalization_version: string;
+    readonly provenance: {
+      readonly method: 'deterministic' | 'generated' | 'manual';
+      readonly tool: string | null;
+      readonly source_digest: string | null;
+    };
+    readonly editable_source: {
+      readonly relative_path: string;
+      readonly digest: `sha256:${string}`;
+    } | null;
+  }>;
+  readonly manifest_digest: `sha256:${string}`;
+}
+
+export interface VisualReviewReport {
+  readonly schema_version: '1.0';
+  readonly article_run_id: string;
+  readonly selected_candidates: Readonly<Record<string, string>>;
+  readonly claim_alignment: boolean;
+  readonly boundary_alignment: boolean;
+  readonly mobile_legibility: boolean;
+  readonly single_message: boolean;
+  readonly privacy_review: boolean;
+  readonly reviewed_by: string;
+  readonly reviewed_at: string;
+  readonly passed: boolean;
+  readonly findings: readonly Finding[];
 }

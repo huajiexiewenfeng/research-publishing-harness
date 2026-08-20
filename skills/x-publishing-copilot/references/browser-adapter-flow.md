@@ -1,6 +1,6 @@
 # Browser Adapter Host Flow
 
-Use this reference only after a V2 Browser Plan and its digest-bound Approval exist.
+Use this reference only after a V2.0 or V2.1 Browser Plan and its digest-bound Approval exist.
 
 ```text
 Harness next
@@ -18,3 +18,5 @@ The Host reuses the explicit Chrome Browser binding and its existing login. If t
 `next → claim → execute → report` is the only action loop. Never make a second Submit claim. A claimed Submit with an uncertain result permanently switches the workflow to read-only verification; call `resume-verification` rather than attempting another write.
 
 Execute only the command kind and target reference in the claimed envelope. Reject a changed page revision, non-X origin, unknown command kind, unsupported Browser family, or extra Host payload. When the Chrome binding is unavailable, report `BROWSER_EXECUTOR_UNAVAILABLE` and stop instead of switching surfaces.
+
+For V2.1, the only additional commands are `upload_attachment` and `set_attachment_alt_text`. Re-resolve Package containment, reject directory/symlink/escape, and recompute source digest and MIME before upload. Upload no arbitrary Host path. Re-observe attachment count, ordinal, type, state, Alt Text, and unchanged text before Submit.

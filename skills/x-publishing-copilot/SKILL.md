@@ -10,8 +10,8 @@ Use the repository Harness as the deterministic boundary. The Skill may help sha
 ## Browser Adapter required flow
 
 1. Run `scripts/invoke.mjs doctor --workspace <path> --output json` and stop if the Harness is unavailable or incompatible.
-2. Prepare, accept, and review the X draft, then run `x plan --adapter browser` to create a V2 Browser Plan.
-3. Show a separate Audit block containing the exact target account, mode, Reply target when present, ordered Post text, weighted lengths, link count, Adapter, Approval expiry, and Plan Digest.
+2. Prepare, accept, and review the X draft, then run `x plan --adapter browser`. Text-only uses V2.0. Visual V2.1 requires an Article Handoff that already names one exact `asset_id`; never select an image automatically.
+3. Show the exact account, mode, Reply target, ordered text, Adapter, expiry, and Plan Digest. For V2.1 also show image preview, target ordinal, Alt Text, MIME, asset id, source digest, and Article Package digest.
 4. Ask for one explicit confirmation of `publish_once` for that exact Audit block. This is the content-specific approval; do not combine it with unrelated decisions.
 5. Only after the confirmation, run `x approve` with the unchanged Plan.
 6. Start `x browser start` with an explicit compatible Chrome binding. Never switch to the in-app browser, Edge, or Computer Use.
@@ -19,7 +19,9 @@ Use the repository Harness as the deterministic boundary. The Skill may help sha
 8. Never claim Submit twice. If the outcome is uncertain, use `x browser status` and `x browser resume-verification`; do not submit again.
 9. Return the final status, root URL, ordered Post IDs, and immutable Receipt path. Do not call a toast, handoff, or Host success response public verification.
 
-Any content, account, mode, link, Reply target, or Adapter change invalidates the Approval and requires a new review, Plan, Audit block, and confirmation.
+Any content, account, mode, link, Reply target, Adapter, image bytes, asset id, Alt Text, Claim refs, or attachment ordinal change invalidates Approval.
+
+V2.1 requires `file_upload` and `attachment_alt_text`. Execute only the Package-relative asset in the claimed command. Receipt Source, Composer, and Public evidence are separate; `published_media_unverified` is honest when X hides public fields. Never claim that X-transcoded bytes equal the source digest.
 
 ## Manual explicit fallback
 
