@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-execution-event/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "execution_id", "sequence", "event_type", "occurred_at", "previous_state", "next_state", "draft_id", "command_id"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "previous_state": { "$ref": "#/$defs/state" },
+    "next_state": { "$ref": "#/$defs/state" },
+    "draft_id": { "type": ["string", "null"] },
+    "command_id": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "state": {
+      "enum": ["created", "preflight", "account_verified", "draft_create_armed", "draft_created", "draft_identity_unknown", "content_filling", "content_partially_verified", "content_verified", "preview_verified", "publish_armed", "publish_attempted", "outcome_resolving", "public_verifying", "finalized", "pre_publish_failed", "cancelled_before_publish", "published_unverified", "outcome_unknown", "verification_conflict", "failed_after_publish"]
+    }
+  }
+}
