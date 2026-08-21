@@ -21,7 +21,8 @@ export const CONTRACT_NAMES = [
   'publish-receipt-v2-1',
   'x-article-document',
   'x-article-publication-plan',
-  'x-article-approval'
+  'x-article-approval',
+  'x-article-browser-observation'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

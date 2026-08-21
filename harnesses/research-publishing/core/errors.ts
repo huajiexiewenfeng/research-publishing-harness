@@ -42,7 +42,9 @@ export type ErrorCode =
   | 'X_ALT_TEXT_MISMATCH'
   | 'PUBLIC_MEDIA_UNVERIFIED'
   | 'ARTICLE_FORMAT_UNSUPPORTED'
-  | 'ARTICLE_ASSET_MISMATCH';
+  | 'ARTICLE_ASSET_MISMATCH'
+  | 'ARTICLE_DRAFT_CONFLICT'
+  | 'ARTICLE_PAGE_CONTRACT_UNSUPPORTED';
 
 export class HarnessError extends Error {
   readonly code: ErrorCode;
