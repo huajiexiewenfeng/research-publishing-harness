@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-approval/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "plan_id", "run_id", "plan_digest", "approval_digest", "target_account", "adapter", "audience", "scope", "approved_by", "approved_at", "expires_at"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "approval_id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "plan_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "approval_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "adapter": { "const": "browser" },
+    "audience": { "const": "everyone" },
+    "scope": { "const": "publish_once" },
+    "approved_by": { "type": "string", "minLength": 1 },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-publication-plan/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "run_id", "intent", "plan_digest", "planned_at", "provenance"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "plan_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "planned_at": { "type": "string", "format": "date-time" },
+    "provenance": { "type": "object", "additionalProperties": { "type": "string" } },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "platform", "target_account", "adapter", "audience", "action", "article_package", "document", "visuals"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "platform": { "const": "x" },
+        "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+        "adapter": { "const": "browser" },
+        "audience": { "const": "everyone" },
+        "action": { "const": "publish_once" },
+        "article_package": {
+          "type": "object", "additionalProperties": false,
+          "required": ["root", "digest"],
+          "properties": {
+            "root": { "type": "string", "minLength": 1 },
+            "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          }
+        },
+        "document": { "type": "object" },
+        "visuals": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["asset", "placement"],
+            "properties": {
+              "asset": { "type": "object" },
+              "placement": {
+                "oneOf": [
+                  { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "cover" } } },
+                  { "type": "object", "additionalProperties": false, "required": ["kind", "block_ordinal"], "properties": { "kind": { "const": "block" }, "block_ordinal": { "type": "integer", "minimum": 1 } } }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
