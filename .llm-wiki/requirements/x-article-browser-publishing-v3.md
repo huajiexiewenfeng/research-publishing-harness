@@ -3,7 +3,7 @@
 ## Summary
 
 - title: Add evidence-backed X Articles browser publishing
-- status: design-confirmed
+- status: implemented-local
 - flow_id: `x-article-browser-publishing-v3`
 
 ## Routing
@@ -13,7 +13,7 @@
 - secondary_bridges: `brainstorming`, `writing-plans`, `test-driven-development`, `executing-plans`, `verification-before-completion`, `project-finish`
 - confidence: high
 - reason: 用户已确认独立 `x-article` 分支并要求设计、开发和验证完成。
-- next_gate: write implementation plan
+- next_gate: optional independent review/CI, then action-time approval for the first real Article publication
 
 ## Sources
 
@@ -104,12 +104,12 @@
 |---|---|---|---|
 | source | done | X 官方文档、现有 V2/V2.1 实现、Premium 账号编辑器勘察 | 2026-08-21 |
 | design | done | `docs/superpowers/specs/2026-08-21-x-article-browser-publishing-v3-design.zh-CN.md` | 2026-08-21 |
-| plan | pending | implementation plan 待生成 | 2026-08-21 |
-| development | pending | 未开始 | 2026-08-21 |
-| testing | pending | 未开始 | 2026-08-21 |
-| archive | pending | 待完成验证后生成 handoff | 2026-08-21 |
+| plan | done | `docs/superpowers/plans/2026-08-21-x-article-browser-publishing-v3.md` | 2026-08-21 |
+| development | done | commits `a11adac`–`de58918` plus final integration commit; isolated `x-article` compiler/Plan/Approval/Page Contract/Adapter/CLI/Skill | 2026-08-21 |
+| testing | passed-agent-local | `pnpm check`: 52 test files / 230 tests; offline acceptance includes `x_article_publish_commands:1`; 20-item audit in verification record | 2026-08-21 |
+| archive | done | `.llm-wiki/handoff/x-article-browser-publishing-v3-handoff.md` | 2026-08-21 |
 
 ## Open Questions
 
-- X 是否在所有账号/UI 变体中提供可回读的正文图片 Alt Text；实施时以真实 Page Contract evidence 决定，缺失则首版 fail closed。
+- X 是否在所有账号/UI 变体中提供可回读的正文图片 Alt Text；当前 Fake Host 覆盖协议，真实图片上传仍需动作时确认并验证，缺失则 fail closed。
 - 空草稿 `2090731994279755776` 是设计勘察产生的外部状态，删除需要 Human 单独确认。

@@ -26,3 +26,11 @@
 - 本地 `pnpm check` 通过并由 `.llm-wiki/verification/visual-publishing-v2-1.md` 逐项映射 20 条验收；信任级别 `passed-agent-local`，未冒充外部 CI/Reviewer。
 - 独立复核复现并修复三个 P1 identity-binding 缺口：finalize 前 staged bytes 替换、Approval 未绑定 Article Package、Receipt media evidence 错配。三个真实路径回归均先 RED 后 GREEN。
 - 修复后 fresh `pnpm check` 通过 40 个测试文件 / 191 项测试，manifest 64 个文件，`git diff --check` 通过；下一 Gate 为停止在 `submit_armed` 的受控 Chrome smoke。
+
+## 2026-08-21
+
+- 完成 X Article Browser Publishing V3：独立 compiler/Plan/Approval/Page Contract/Adapter/Public Verifier/Receipt/CLI，并保持 Post `single | thread | reply` 契约不变。
+- 测试完整性：端到端测试走真实 finalized-package、WorkspaceStore、command claim、at-most-once barrier、public verifier 和 Receipt；Fake Host 只替代外部 X UI。
+- fresh `pnpm check` 通过 ESLint、typecheck、build、52 个测试文件 / 230 项测试和离线 acceptance；输出 `x_article:"simulated_complete"`、`network:"unused"`、X Article Publish 命令数 1。
+- 只读 Chrome smoke 复用 `@Glen56121` 登录态，验证 Articles 入口、既有空草稿 ID 和编辑器控件；未输入、上传、创建第二草稿或发布。
+- V3 development 标记 done，testing 标记 `passed-agent-local`，20 条验收证据与 handoff 已归档；未执行 push/PR。

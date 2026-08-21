@@ -74,6 +74,7 @@ export interface XArticleExecutionSnapshotV1 {
   readonly publish_command_count: number;
   readonly latest_command_id: string | null;
   readonly latest_observation_id: string | null;
+  readonly latest_receipt_path: string | null;
   readonly updated_at: string;
 }
 

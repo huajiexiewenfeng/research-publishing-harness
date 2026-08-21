@@ -18,6 +18,8 @@ import {
 } from '../../../core/x-article-publication-plan.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import type { XArticleBrowserObservation } from './article-browser-protocol.js';
+import { verifyPublicXArticle } from './article-public-verifier.js';
+import { createXArticleReceipt } from './article-receipt.js';
 import {
   XArticleCommandBroker,
   type IssueXArticleBrowserCommandInput,
@@ -49,6 +51,8 @@ interface AdapterContext {
   readonly capabilities: XArticleBrowserCapabilityManifestV1;
   readonly snapshot: XArticleExecutionSnapshotV1;
   readonly latest_observation: XArticleBrowserObservation | null;
+  readonly editor_revision: string | null;
+  readonly preview_revision: string | null;
   readonly pending_command: XArticleBrowserCommandV1 | null;
   readonly submit_delivered: boolean;
 }
@@ -58,6 +62,7 @@ interface XArticleBrowserAdapterOptions {
   readonly eventId?: () => string;
   readonly commandId?: () => string;
   readonly attemptId?: () => string;
+  readonly receiptId?: () => string;
   readonly now?: () => Date;
 }
 
@@ -65,6 +70,7 @@ export class XArticleBrowserAdapter {
   private readonly executionId: () => string;
   private readonly eventId: () => string;
   private readonly attemptId: () => string;
+  private readonly receiptId: () => string;
   private readonly now: () => Date;
   private readonly broker: XArticleCommandBroker;
 
@@ -76,6 +82,7 @@ export class XArticleBrowserAdapter {
     this.executionId = options.executionId ?? (() => `x_article_execution_${randomUUID()}`);
     this.eventId = options.eventId ?? (() => `x_article_event_${randomUUID()}`);
     this.attemptId = options.attemptId ?? (() => `x_article_attempt_${randomUUID()}`);
+    this.receiptId = options.receiptId ?? (() => `x_article_receipt_${randomUUID()}`);
     this.now = options.now ?? (() => new Date());
     this.broker = new XArticleCommandBroker(store, {
       ...(options.commandId === undefined ? {} : { commandId: options.commandId }),
@@ -97,11 +104,12 @@ export class XArticleBrowserAdapter {
       schema_version: '1.0', execution_id: executionId, run_id: plan.run_id,
       plan_id: plan.plan_id, state: 'created', sequence: 0, draft_id: null,
       attempt_id: null, publish_command_count: 0, latest_command_id: null,
-      latest_observation_id: null, updated_at: this.now().toISOString()
+      latest_observation_id: null, latest_receipt_path: null, updated_at: this.now().toISOString()
     };
     const context: AdapterContext = {
       schema_version: '1.0', plan, approval, capabilities, snapshot,
-      latest_observation: null, pending_command: null, submit_delivered: false
+      latest_observation: null, editor_revision: null, preview_revision: null,
+      pending_command: null, submit_delivered: false
     };
     await this.store.writeNewDirectory(this.prefix(executionId), {
       'plan.json': plan, 'approval.json': approval, 'capabilities.json': capabilities,
@@ -219,6 +227,18 @@ export class XArticleBrowserAdapter {
       return { snapshot: context.snapshot, command: issued.command };
     }
 
+    if (state === 'publish_attempted' || state === 'outcome_resolving') {
+      if (state === 'publish_attempted') {
+        context = await this.transition(context, 'outcome_resolving', 'article_publish_outcome_resolving');
+      }
+      context = await this.transition(context, 'public_verifying', 'article_public_verification_started');
+      return this.nextPublicVerification(context);
+    }
+
+    if (state === 'public_verifying') {
+      return this.nextPublicVerification(context);
+    }
+
     return { snapshot: context.snapshot, command: null };
   }
 
@@ -256,6 +276,12 @@ export class XArticleBrowserAdapter {
     context = {
       ...context,
       latest_observation: input.observation,
+      editor_revision: input.observation.editor === null
+        ? context.editor_revision
+        : input.observation.page_revision,
+      preview_revision: input.observation.preview === null
+        ? context.preview_revision
+        : input.observation.page_revision,
       pending_command: null,
       snapshot: {
         ...context.snapshot,
@@ -291,6 +317,61 @@ export class XArticleBrowserAdapter {
     if (context.pending_command !== null) context = await this.clearPending(context);
     context = await this.transition(context, 'cancelled_before_publish', 'article_cancelled_before_publish');
     return context.snapshot;
+  }
+
+  private async nextPublicVerification(
+    context: AdapterContext
+  ): Promise<{ readonly snapshot: XArticleExecutionSnapshotV1; readonly command: XArticleBrowserCommandV1 | null }> {
+    const article = context.latest_observation?.public_article ?? null;
+    if (article === null) {
+      return this.issue(context, {
+        execution_id: context.snapshot.execution_id,
+        run_id: context.plan.run_id,
+        draft_id: context.snapshot.draft_id,
+        kind: 'observe_article_page',
+        purpose: 'observe_public_article',
+        expected_page_revision: context.latest_observation?.page_revision ?? null,
+        allowed_origin: 'https://x.com',
+        side_effect: 'read',
+        payload: { kind: 'observe_article_page', scope: 'public_article' }
+      });
+    }
+    if (
+      context.snapshot.draft_id === null ||
+      context.editor_revision === null ||
+      context.preview_revision === null
+    ) {
+      throw new HarnessError('ARTICLE_OUTCOME_UNKNOWN', 'X Article verification lacks editor or Preview evidence');
+    }
+    const verification = verifyPublicXArticle(context.plan, article, this.now());
+    const status = verification.kind === 'full_match'
+      ? 'published'
+      : verification.kind === 'media_unverified'
+        ? 'published_media_unverified'
+        : 'verification_conflict';
+    const receipt = createXArticleReceipt({
+      receiptId: this.receiptId(),
+      executionId: context.snapshot.execution_id,
+      plan: context.plan,
+      status,
+      draftId: context.snapshot.draft_id,
+      editorRevision: context.editor_revision,
+      previewRevision: context.preview_revision,
+      publicVerification: verification,
+      issuedAt: this.now().toISOString(),
+      supersedesReceiptId: null
+    });
+    const receiptPath = `receipts/${receipt.receipt_id}.json`;
+    await this.store.writeNew(receiptPath, receipt);
+    const finalState = verification.kind === 'full_match'
+      ? 'finalized'
+      : verification.kind === 'media_unverified'
+        ? 'published_unverified'
+        : 'verification_conflict';
+    context = await this.transition(context, finalState, 'article_public_verification_completed', {
+      latest_receipt_path: receiptPath
+    });
+    return { snapshot: context.snapshot, command: null };
   }
 
   private async nextEditorCommand(
@@ -349,6 +430,7 @@ export class XArticleBrowserAdapter {
       readonly attempt_id?: string;
       readonly publish_command_count?: number;
       readonly submit_delivered?: boolean;
+      readonly latest_receipt_path?: string;
     } = {}
   ): Promise<AdapterContext> {
     transitionXArticleExecution(context.snapshot.state, nextState);
@@ -369,6 +451,7 @@ export class XArticleBrowserAdapter {
         draft_id: overrides.draft_id ?? context.snapshot.draft_id,
         attempt_id: overrides.attempt_id ?? context.snapshot.attempt_id,
         publish_command_count: overrides.publish_command_count ?? context.snapshot.publish_command_count,
+        latest_receipt_path: overrides.latest_receipt_path ?? context.snapshot.latest_receipt_path,
         updated_at: this.now().toISOString()
       }
     };

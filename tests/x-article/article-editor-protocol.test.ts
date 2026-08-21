@@ -24,7 +24,9 @@ const plan = createXArticlePublicationPlan({
 });
 
 function revise<T extends { readonly page_revision: string }>(value: T): T {
-  const { page_revision: _ignored, ...input } = value;
+  const input = Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== 'page_revision')
+  );
   return { ...input, page_revision: computeXArticlePageRevision(input) } as T;
 }
 

@@ -14,7 +14,7 @@ pnpm check
 Expected Acceptance output:
 
 ```json
-{"ok":true,"article":"complete","manual_x":"complete","network":"unused"}
+{"ok":true,"article":"complete","manual_x":"complete","browser_x":"simulated_complete","visual_v2_1":"simulated_complete","x_article":"simulated_complete","network":"unused","submit_commands":1,"submit_claims":1,"x_article_publish_commands":1}
 ```
 
 Acceptance creates a uniquely named temporary workspace, verifies both workflows and their digests, and removes only that verified temporary directory.

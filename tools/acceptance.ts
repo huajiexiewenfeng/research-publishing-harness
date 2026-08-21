@@ -13,10 +13,21 @@ import type {
 } from '../harnesses/research-publishing/adapters/x/browser/browser-protocol.js';
 import { CommandBroker } from '../harnesses/research-publishing/adapters/x/browser/command-broker.js';
 import { XWeb202608Contract } from '../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
+import {
+  XArticleBrowserAdapter
+} from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import {
+  computeXArticlePageRevision,
+  type XArticleBrowserObservation
+} from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
+import type { XArticleBrowserCommandV1 } from '../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
+import { XArticleWeb2026_08Contract } from '../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { ArticleService, type ArticleDraft } from '../harnesses/research-publishing/branches/article-harness/article-service.js';
+import { XArticleService } from '../harnesses/research-publishing/branches/x-article-harness/x-article-service.js';
 import { XService, type XDraft } from '../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { approvePublication } from '../harnesses/research-publishing/core/approval.js';
 import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
+import { approveXArticlePublication } from '../harnesses/research-publishing/core/x-article-approval.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
@@ -31,8 +42,10 @@ const workspace = await mkdtemp(join(tmpdir(), 'research-publishing-acceptance-'
 let articleComplete = false;
 let manualXComplete = false;
 let browserXComplete = false;
+let xArticleComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
+let xArticlePublishCommands = 0;
 
 const browserAt = '2026-08-18T16:00:00.000Z';
 const browserManifest: BrowserCapabilityManifest = {
@@ -94,6 +107,29 @@ async function browserReport(
   });
 }
 
+function articleObserved(
+  command: XArticleBrowserCommandV1,
+  value: Record<string, unknown>
+): XArticleBrowserObservation {
+  const input = {
+    schema_version: '1.0', observation_id: `obs_${command.command_id}`,
+    execution_id: command.execution_id, command_id: command.command_id,
+    origin: 'https://x.com', observed_at: browserAt, account_handle: '@runtime_ai',
+    controls: [], editor: null, preview: null, publish_review: null, public_article: null,
+    ...value
+  } as const;
+  return { ...input, page_revision: computeXArticlePageRevision(input) } as unknown as XArticleBrowserObservation;
+}
+
+async function articleReport(
+  adapter: XArticleBrowserAdapter,
+  command: XArticleBrowserCommandV1,
+  value: Record<string, unknown>
+): Promise<void> {
+  await adapter.claim(command);
+  await adapter.report({ command, status: 'success', observation: articleObserved(command, value) });
+}
+
 try {
   const store = await WorkspaceStore.open(workspace);
   const packages = new PackageService(store, () => new Date('2026-08-18T13:00:00.000Z'));
@@ -153,6 +189,144 @@ try {
     canonical.artifacts.includes(`${canonical.root}/assets/asset_cover.png`) &&
     articleHandoff.article_digest === canonical.digest &&
     articleHandoff.visual_asset?.asset_id === 'asset_cover';
+
+  const xArticles = new XArticleService(store, {
+    runId: () => 'acceptance_x_article', planId: () => 'plan_acceptance_x_article',
+    now: () => new Date(browserAt)
+  });
+  const xArticlePlan = await xArticles.plan(canonical, '@runtime_ai');
+  const xArticleApproval = approveXArticlePublication(
+    xArticlePlan, 'acceptance-reviewer', 60_000, new Date(browserAt),
+    () => 'approval_acceptance_x_article'
+  );
+  let xArticleEvent = 0;
+  let xArticleCommand = 0;
+  const xArticleAdapter = new XArticleBrowserAdapter(
+    store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'exec_acceptance_x_article',
+      eventId: () => `event_acceptance_x_article_${++xArticleEvent}`,
+      commandId: () => `command_acceptance_x_article_${++xArticleCommand}`,
+      attemptId: () => 'attempt_acceptance_x_article',
+      receiptId: () => 'receipt_acceptance_x_article',
+      now: () => new Date(browserAt)
+    }
+  );
+  const xArticleExecution = await xArticleAdapter.start(xArticlePlan, xArticleApproval, {
+    executor: 'codex-chrome', executor_version: 'acceptance-fake-host', browser_family: 'chrome',
+    capabilities: [
+      'observe_article_page', 'create_article_draft', 'set_article_title',
+      'upload_article_cover', 'insert_article_block', 'insert_article_image',
+      'set_article_image_alt', 'open_article_preview', 'open_publish_review',
+      'publish_article_once'
+    ], observed_at: browserAt
+  });
+  const xArticleDraftId = '2090731994279755776';
+  let xArticleTitle = '';
+  const xArticleBlocks: typeof xArticlePlan.intent.document.blocks[number][] = [];
+  let xArticleVisuals: XArticleBrowserObservation['editor'] extends null
+    ? never
+    : NonNullable<XArticleBrowserObservation['editor']>['visuals'] = [];
+  const editorControls = [
+    { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+    { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+    { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
+    { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }
+  ];
+  while (true) {
+    const step = await xArticleAdapter.next(xArticleExecution.execution_id);
+    if (step.command === null) {
+      if (step.snapshot.state === 'finalized') break;
+      throw new Error(`X Article acceptance stalled in ${step.snapshot.state}`);
+    }
+    const command = step.command;
+    if (command.kind === 'observe_article_page' && command.payload.kind === 'observe_article_page') {
+      if (command.payload.scope === 'index') {
+        await articleReport(xArticleAdapter, command, {
+          canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+          controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+        });
+      } else if (command.payload.scope === 'public_article') {
+        const articleId = '2091000000000000000';
+        const publicVisuals = xArticleVisuals.map((visual) => ({ ...visual, owned_by_execution: false }));
+        await articleReport(xArticleAdapter, command, {
+          canonical_url: `https://x.com/runtime_ai/article/${articleId}`, page_kind: 'public_article',
+          public_article: {
+            article_id: articleId, canonical_url: `https://x.com/runtime_ai/article/${articleId}`,
+            author_handle: '@runtime_ai', title: xArticleTitle, blocks: xArticleBlocks,
+            visuals: publicVisuals, published_at: browserAt
+          }
+        });
+      } else {
+        throw new Error(`unexpected Article observation scope ${command.payload.scope}`);
+      }
+      continue;
+    }
+    if (command.kind === 'create_article_draft') {
+      await articleReport(xArticleAdapter, command, {
+        canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
+        controls: editorControls,
+        editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+      });
+      continue;
+    }
+    if (command.kind === 'set_article_title') xArticleTitle = command.payload.kind === 'set_article_title' ? command.payload.title : xArticleTitle;
+    if (command.kind === 'upload_article_cover' && command.payload.kind === 'upload_article_cover') {
+      xArticleVisuals = [{
+        ref: 'cover_acceptance', asset_id: command.payload.asset.asset_id, kind: 'cover',
+        block_ordinal: null, alt_text: null, status: 'uploaded', owned_by_execution: true
+      }];
+    }
+    if (command.kind === 'set_article_image_alt' && command.payload.kind === 'set_article_image_alt') {
+      const altText = command.payload.alt_text;
+      xArticleVisuals = xArticleVisuals.map((visual) => ({ ...visual, alt_text: altText }));
+    }
+    if (command.kind === 'insert_article_block' && command.payload.kind === 'insert_article_block') {
+      xArticleBlocks.push(command.payload.block);
+    }
+    if (command.kind === 'insert_article_image' && command.payload.kind === 'insert_article_image') {
+      xArticleBlocks.push(xArticlePlan.intent.document.blocks[command.payload.block_ordinal - 1]!);
+      xArticleVisuals = [...xArticleVisuals, {
+        ref: `image_${command.payload.block_ordinal}`, asset_id: command.payload.asset.asset_id,
+        kind: 'inline', block_ordinal: command.payload.block_ordinal, alt_text: command.payload.asset.alt_text,
+        status: 'uploaded', owned_by_execution: true
+      }];
+    }
+    if (command.kind === 'open_article_preview') {
+      await articleReport(xArticleAdapter, command, {
+        canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}/preview`, page_kind: 'article_preview',
+        controls: [{ ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+        preview: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals }
+      });
+      continue;
+    }
+    if (command.kind === 'open_publish_review') {
+      await articleReport(xArticleAdapter, command, {
+        canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}/preview`, page_kind: 'publish_review',
+        controls: [{ ref: 'publish_final', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+        publish_review: { draft_id: xArticleDraftId, audience: 'everyone', final_publish_ref: 'publish_final' }
+      });
+      continue;
+    }
+    if (command.kind === 'publish_article_once') {
+      xArticlePublishCommands += 1;
+      await xArticleAdapter.claim(command);
+      await xArticleAdapter.report({ command, status: 'uncertain', observation: null });
+      await xArticleAdapter.resumeVerification(xArticleExecution.execution_id);
+      continue;
+    }
+    await articleReport(xArticleAdapter, command, {
+      canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
+      controls: editorControls,
+      editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+    });
+  }
+  const xArticleStatus = await xArticleAdapter.status(xArticleExecution.execution_id);
+  const xArticleReceipt = await store.readJson<{ status: string }>(xArticleStatus.latest_receipt_path!);
+  xArticleComplete =
+    xArticleStatus.state === 'finalized' &&
+    xArticleStatus.publish_command_count === 1 &&
+    xArticlePublishCommands === 1 &&
+    xArticleReceipt.status === 'published';
 
   const x = new XService(store, {
     runId: () => 'acceptance_x',
@@ -311,7 +485,7 @@ try {
     visualReceipt.media_evidence.composer_attachment_verified &&
     visualReceipt.media_evidence.public_media_verified;
 
-  if (!articleComplete || !manualXComplete || !browserXComplete) {
+  if (!articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
   process.stdout.write(
@@ -321,9 +495,11 @@ try {
       manual_x: 'complete',
       browser_x: 'simulated_complete',
       visual_v2_1: 'simulated_complete',
+      x_article: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
-      submit_claims: submitClaims
+      submit_claims: submitClaims,
+      x_article_publish_commands: xArticlePublishCommands
     })}\n`
   );
 } finally {

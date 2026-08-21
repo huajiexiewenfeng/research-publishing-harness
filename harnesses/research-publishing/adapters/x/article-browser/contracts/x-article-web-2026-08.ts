@@ -116,7 +116,9 @@ export class XArticleWeb2026_08Contract implements XArticlePageContract {
   private assertObservation(observation: XArticleBrowserObservation): void {
     if ((observation as { origin: string }).origin !== 'https://x.com') this.unsupported('X Article origin is unsupported');
     validateContract<XArticleBrowserObservation>('x-article-browser-observation', observation);
-    const { page_revision: _ignored, ...revisionInput } = observation;
+    const revisionInput = Object.fromEntries(
+      Object.entries(observation).filter(([key]) => key !== 'page_revision')
+    );
     if (observation.page_revision !== sha256(revisionInput)) {
       throw new HarnessError('STALE_PAGE_REVISION', 'X Article observation revision is stale');
     }

@@ -92,8 +92,8 @@ export class XArticleCommandBroker {
     validateContract<XArticleBrowserCommandV1>('x-article-browser-command', command);
     if (await this.store.exists(this.commandPath(command))) {
       const existing = await this.store.readJson<XArticleBrowserCommandV1>(this.commandPath(command));
-      const { issued_at: _existingTime, ...existingStable } = existing;
-      const { issued_at: _newTime, ...newStable } = command;
+      const existingStable = { ...existing, issued_at: null };
+      const newStable = { ...command, issued_at: null };
       if (sha256(existingStable) !== sha256(newStable)) {
         throw new HarnessError('COMMAND_REPLAY_REJECTED', 'deterministic X Article command identity changed payload');
       }
