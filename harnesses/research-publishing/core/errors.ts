@@ -40,7 +40,9 @@ export type ErrorCode =
   | 'X_ATTACHMENT_OUTCOME_UNKNOWN'
   | 'X_ATTACHMENT_MISMATCH'
   | 'X_ALT_TEXT_MISMATCH'
-  | 'PUBLIC_MEDIA_UNVERIFIED';
+  | 'PUBLIC_MEDIA_UNVERIFIED'
+  | 'ARTICLE_FORMAT_UNSUPPORTED'
+  | 'ARTICLE_ASSET_MISMATCH';
 
 export class HarnessError extends Error {
   readonly code: ErrorCode;
