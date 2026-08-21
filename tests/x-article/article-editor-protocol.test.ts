@@ -130,6 +130,50 @@ describe('X Article import observation contract', () => {
       .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
   });
 
+  it.each([
+    {
+      name: 'non-increasing block ordinals',
+      anchors: [
+        {
+          anchor_id: 'anchor_asset_beta_4', asset_id: 'asset_beta', block_ordinal: 4,
+          marker: 'RPH_VISUAL_ANCHOR:asset_beta:4'
+        },
+        {
+          anchor_id: 'anchor_asset_alpha_2', asset_id: 'asset_alpha', block_ordinal: 2,
+          marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+        }
+      ]
+    },
+    {
+      name: 'duplicate anchor IDs with otherwise different fields',
+      anchors: [
+        {
+          anchor_id: 'anchor_shared', asset_id: 'asset_alpha', block_ordinal: 2,
+          marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+        },
+        {
+          anchor_id: 'anchor_shared', asset_id: 'asset_beta', block_ordinal: 4,
+          marker: 'RPH_VISUAL_ANCHOR:asset_beta:4'
+        }
+      ]
+    }
+  ])('rejects editor import state with $name', ({ anchors }) => {
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        import_state: {
+          template_digest: `sha256:${'b'.repeat(64)}`,
+          source_document_digest: `sha256:${'c'.repeat(64)}`,
+          unresolved_anchors: anchors
+        }
+      }
+    });
+
+    expect(() => validateContract('x-article-browser-observation', observation))
+      .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
   it('rejects an editor import state with a malformed template digest', () => {
     const observation = revise({
       ...emptyArticleEditor,

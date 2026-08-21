@@ -3,8 +3,7 @@ import type { ErrorCode } from '../../../core/errors.js';
 import type { XArticlePublicationPlanV1 } from '../../../core/x-article-publication-plan.js';
 import type { XArticleBrowserObservation } from './article-browser-protocol.js';
 import type {
-  IssueXArticleBrowserCommandInput,
-  XArticleBrowserCommandPayload
+  IssueXArticleBrowserCommandInput
 } from './article-command-broker.js';
 import type { XArticlePageContract } from './article-page-contract.js';
 
@@ -17,6 +16,22 @@ export type XArticleEditorDecision =
   | { readonly kind: 'command'; readonly input: IssueXArticleBrowserCommandInput }
   | { readonly kind: 'complete' }
   | { readonly kind: 'blocked'; readonly code: ErrorCode; readonly message: string };
+
+type XArticleCommandBinding = IssueXArticleBrowserCommandInput extends infer Input
+  ? Input extends IssueXArticleBrowserCommandInput
+    ? Pick<Input, 'kind' | 'payload' | 'side_effect'>
+    : never
+  : never;
+
+type XArticleCommandArguments = XArticleCommandBinding extends infer Binding
+  ? Binding extends XArticleCommandBinding
+    ? [
+        kind: Binding['kind'],
+        payload: Binding['payload'],
+        sideEffect?: Binding['side_effect']
+      ]
+    : never
+  : never;
 
 export function nextArticleEditorDecision(
   context: XArticleEditorContext,
@@ -110,9 +125,7 @@ function command(
   context: XArticleEditorContext,
   observation: XArticleBrowserObservation,
   purpose: string,
-  kind: IssueXArticleBrowserCommandInput['kind'],
-  payload: XArticleBrowserCommandPayload,
-  sideEffect: IssueXArticleBrowserCommandInput['side_effect'] = 'write'
+  ...[kind, payload, sideEffect = 'write']: XArticleCommandArguments
 ): XArticleEditorDecision {
   return {
     kind: 'command',
@@ -126,7 +139,7 @@ function command(
       allowed_origin: 'https://x.com',
       side_effect: sideEffect,
       payload
-    }
+    } as IssueXArticleBrowserCommandInput
   };
 }
 

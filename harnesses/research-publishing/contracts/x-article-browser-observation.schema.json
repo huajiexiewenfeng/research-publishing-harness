@@ -62,7 +62,7 @@
       "properties": {
         "template_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "source_document_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-        "unresolved_anchors": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } }
+        "unresolved_anchors": { "type": "array", "orderedUniqueAnchorIds": true, "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } }
       }
     }
   }

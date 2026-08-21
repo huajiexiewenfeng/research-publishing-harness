@@ -19,14 +19,34 @@
     "payload_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "issued_at": { "type": "string", "format": "date-time" }
   },
-  "allOf": [
+  "oneOf": [
     {
-      "if": { "properties": { "kind": { "const": "import_article_document" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/importArticleDocument" } } }
+      "properties": {
+        "kind": { "const": "import_article_document" },
+        "side_effect": { "const": "write" },
+        "payload": { "$ref": "#/$defs/importArticleDocument" }
+      }
     },
     {
-      "if": { "properties": { "kind": { "const": "replace_article_visual_anchor" } } },
-      "then": { "properties": { "payload": { "$ref": "#/$defs/replaceArticleVisualAnchor" } } }
+      "properties": {
+        "kind": { "const": "replace_article_visual_anchor" },
+        "side_effect": { "const": "write" },
+        "payload": { "$ref": "#/$defs/replaceArticleVisualAnchor" }
+      }
+    },
+    {
+      "properties": {
+        "kind": { "enum": ["observe_article_page", "navigate", "create_article_draft", "set_article_title", "upload_article_cover", "insert_article_block", "insert_article_image", "set_article_image_alt", "open_article_preview", "open_publish_review", "publish_article_once"] },
+        "payload": {
+          "not": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": { "enum": ["import_article_document", "replace_article_visual_anchor"] }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -94,7 +114,7 @@
         "schema_version": { "const": "1.0" },
         "source_document_digest": { "$ref": "#/$defs/digest" },
         "blocks": { "type": "array", "items": { "$ref": "#/$defs/importTemplateBlock" } },
-        "anchors": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } },
+        "anchors": { "type": "array", "orderedUniqueAnchorIds": true, "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } },
         "template_digest": { "$ref": "#/$defs/digest" }
       }
     },

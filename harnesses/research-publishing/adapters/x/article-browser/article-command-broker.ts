@@ -41,24 +41,52 @@ export type XArticleBrowserCommandPayload =
   | { readonly kind: 'open_publish_review'; readonly target_ref: string }
   | { readonly kind: 'publish_article_once'; readonly target_ref: string };
 
-export interface IssueXArticleBrowserCommandInput {
+interface XArticleBrowserCommandInputBase {
   readonly execution_id: string;
   readonly run_id: string;
   readonly draft_id: string | null;
-  readonly kind: XArticleBrowserCommandKind;
   readonly purpose: string;
   readonly expected_page_revision: string | null;
   readonly allowed_origin: 'https://x.com';
-  readonly side_effect: 'read' | 'write' | 'submit';
-  readonly payload: XArticleBrowserCommandPayload;
 }
 
-export interface XArticleBrowserCommandV1 extends IssueXArticleBrowserCommandInput {
+type ImportArticleDocumentPayload = Extract<
+  XArticleBrowserCommandPayload,
+  { readonly kind: 'import_article_document' }
+>;
+type ReplaceArticleVisualAnchorPayload = Extract<
+  XArticleBrowserCommandPayload,
+  { readonly kind: 'replace_article_visual_anchor' }
+>;
+type LegacyXArticleBrowserCommandPayload = Exclude<
+  XArticleBrowserCommandPayload,
+  ImportArticleDocumentPayload | ReplaceArticleVisualAnchorPayload
+>;
+
+export type IssueXArticleBrowserCommandInput = XArticleBrowserCommandInputBase & (
+  | {
+      readonly kind: 'import_article_document';
+      readonly side_effect: 'write';
+      readonly payload: ImportArticleDocumentPayload;
+    }
+  | {
+      readonly kind: 'replace_article_visual_anchor';
+      readonly side_effect: 'write';
+      readonly payload: ReplaceArticleVisualAnchorPayload;
+    }
+  | {
+      readonly kind: LegacyXArticleBrowserCommandPayload['kind'];
+      readonly side_effect: 'read' | 'write' | 'submit';
+      readonly payload: LegacyXArticleBrowserCommandPayload;
+    }
+);
+
+export type XArticleBrowserCommandV1 = IssueXArticleBrowserCommandInput & {
   readonly schema_version: '1.0';
   readonly command_id: string;
   readonly payload_digest: string;
   readonly issued_at: string;
-}
+};
 
 export interface XArticleCommandClaimV1 {
   readonly schema_version: '1.0';
