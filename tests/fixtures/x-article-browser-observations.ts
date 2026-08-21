@@ -1,4 +1,5 @@
 import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
+import { sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 
 export const plannedArticleDocument = {
   schema_version: '1.0',
@@ -9,6 +10,51 @@ export const plannedArticleDocument = {
     runs: [{ text: 'Skills own semantics.', marks: [], link: null }]
   }]
 } as const;
+
+export const bulkArticleVisualFixtures = [
+  {
+    slot_id: 'runtime-boundary',
+    bytes: new Uint8Array([1]),
+    asset: {
+      asset_id: 'asset_runtime_boundary', relative_path: 'assets/runtime-boundary.png',
+      digest: sha256Bytes(new Uint8Array([1])), mime_type: 'image/png' as const,
+      alt_text: 'Runtime boundary diagram', claim_refs: ['claim_runtime_boundary']
+    }
+  },
+  {
+    slot_id: 'approval-gate',
+    bytes: new Uint8Array([2]),
+    asset: {
+      asset_id: 'asset_approval_gate', relative_path: 'assets/approval-gate.png',
+      digest: sha256Bytes(new Uint8Array([2])), mime_type: 'image/png' as const,
+      alt_text: 'Approval gate diagram', claim_refs: ['claim_approval_gate']
+    }
+  },
+  {
+    slot_id: 'receipt-boundary',
+    bytes: new Uint8Array([3]),
+    asset: {
+      asset_id: 'asset_receipt_boundary', relative_path: 'assets/receipt-boundary.png',
+      digest: sha256Bytes(new Uint8Array([3])), mime_type: 'image/png' as const,
+      alt_text: 'Receipt boundary diagram', claim_refs: ['claim_receipt_boundary']
+    }
+  }
+] as const;
+
+export const bulkArticleMarkdown = [
+  '# Runtime boundary',
+  '',
+  'Skills own semantics.',
+  '',
+  '![Runtime boundary diagram](assets/runtime-boundary.png)',
+  '',
+  'Approval remains explicit.',
+  '',
+  '![Approval gate diagram](assets/approval-gate.png)',
+  '',
+  '![Receipt boundary diagram](assets/receipt-boundary.png)',
+  ''
+].join('\n');
 
 function observation(overrides: Record<string, unknown> = {}) {
   const input = {
