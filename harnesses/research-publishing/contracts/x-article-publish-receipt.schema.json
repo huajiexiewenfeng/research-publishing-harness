@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-publish-receipt/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "execution_id", "plan_id", "plan_digest", "status", "source_evidence", "editor_evidence", "public_evidence", "issued_at", "supersedes_receipt_id", "receipt_digest"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "plan_digest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["published", "published_media_unverified", "outcome_unknown", "verification_conflict"] },
+    "source_evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["article_package_digest", "document_digest", "asset_digests"],
+      "properties": {
+        "article_package_digest": { "$ref": "#/$defs/digest" },
+        "document_digest": { "$ref": "#/$defs/digest" },
+        "asset_digests": { "type": "array", "items": { "$ref": "#/$defs/digest" } }
+      }
+    },
+    "editor_evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["draft_id", "editor_revision", "preview_revision", "content_match"],
+      "properties": {
+        "draft_id": { "type": "string", "minLength": 1 },
+        "editor_revision": { "$ref": "#/$defs/digest" },
+        "preview_revision": { "$ref": "#/$defs/digest" },
+        "content_match": { "const": true }
+      }
+    },
+    "public_evidence": {
+      "type": "object",
+      "required": ["kind", "article_id", "canonical_url", "author_match", "content_match", "links_match", "media_match", "verified_at"],
+      "properties": {
+        "kind": { "enum": ["full_match", "media_unverified", "conflict"] },
+        "article_id": { "type": "string", "minLength": 1 },
+        "canonical_url": { "type": "string", "format": "uri" },
+        "author_match": { "type": "boolean" },
+        "content_match": { "type": "boolean" },
+        "links_match": { "type": "boolean" },
+        "media_match": { "type": ["boolean", "null"] },
+        "verified_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "supersedes_receipt_id": { "type": ["string", "null"] },
+    "receipt_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}
