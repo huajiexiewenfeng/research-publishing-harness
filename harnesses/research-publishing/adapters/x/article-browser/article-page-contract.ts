@@ -2,6 +2,7 @@ import type { XArticleDocumentV1 } from '../../../branches/x-article-harness/art
 import type {
   XArticleBrowserObservation,
   XArticleControlObservation,
+  XArticleEditorImportStateV1,
   XArticleEditorObservation,
   XArticlePageKind,
   XArticlePreviewObservation,
@@ -29,6 +30,7 @@ export interface XArticlePageContract {
   detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage;
   detectAccount(observation: XArticleBrowserObservation): { readonly handle: string };
   detectEditor(observation: XArticleBrowserObservation): XArticleEditorObservation;
+  readEditorImportState(observation: XArticleBrowserObservation): XArticleEditorImportStateV1 | null;
   readEditorDocument(observation: XArticleBrowserObservation): XArticleDocumentV1;
   detectPreview(observation: XArticleBrowserObservation): XArticlePreviewObservation;
   detectPublishReview(observation: XArticleBrowserObservation): XArticlePublishReviewObservation;

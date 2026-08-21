@@ -54,6 +54,43 @@ async function reportSuccess(
 }
 
 describe('XArticleBrowserAdapter', () => {
+  it('persists bulk import strategy only when both capabilities are advertised', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-capabilities-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_capabilities_1', eventId: () => 'event_capabilities_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const bulkCapabilities = {
+      ...capabilities,
+      capabilities: [
+        ...capabilities.capabilities,
+        'import_article_document',
+        'replace_article_visual_anchor'
+      ]
+    } as const;
+
+    const execution = await adapter.start(plan, approval, bulkCapabilities);
+
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ import_strategy: 'bulk_document' });
+  });
+
+  it.each(['import_article_document', 'replace_article_visual_anchor'] as const)(
+    'rejects a manifest advertising only %s as incompatible',
+    async (capability) => {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-partial-capability-')));
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => 'execution_partial_capability_1', eventId: () => 'event_partial_capability_1',
+        now: () => new Date('2026-08-21T09:01:00.000Z')
+      });
+
+      await expect(adapter.start(plan, approval, {
+        ...capabilities,
+        capabilities: [...capabilities.capabilities, capability]
+      })).rejects.toMatchObject({ code: 'BROWSER_EXECUTOR_INCOMPATIBLE' });
+    }
+  );
+
   it('cancels only before Publish and does not expose verification recovery from a preflight state', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

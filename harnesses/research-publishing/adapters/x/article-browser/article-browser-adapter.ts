@@ -27,7 +27,10 @@ import {
   type XArticleBrowserCommandV1,
   type XArticleCommandClaimV1
 } from './article-command-broker.js';
-import { nextArticleEditorDecision } from './article-editor-protocol.js';
+import {
+  nextArticleEditorDecision,
+  type XArticleImportStrategy
+} from './article-editor-protocol.js';
 import type { XArticlePageContract } from './article-page-contract.js';
 
 export interface XArticleBrowserCapabilityManifestV1 {
@@ -49,6 +52,7 @@ interface AdapterContext {
   readonly plan: XArticlePublicationPlanV1;
   readonly approval: XArticleApprovalV1;
   readonly capabilities: XArticleBrowserCapabilityManifestV1;
+  readonly import_strategy: XArticleImportStrategy;
   readonly snapshot: XArticleExecutionSnapshotV1;
   readonly latest_observation: XArticleBrowserObservation | null;
   readonly editor_revision: string | null;
@@ -97,7 +101,7 @@ export class XArticleBrowserAdapter {
   ): Promise<XArticleExecutionSnapshotV1> {
     assertXArticlePublicationPlan(plan);
     verifyXArticleApproval(plan, approval, this.now());
-    this.verifyCapabilities(plan, capabilities);
+    const importStrategy = this.verifyCapabilities(plan, capabilities);
     const executionId = this.executionId();
     this.assertId(executionId);
     const snapshot: XArticleExecutionSnapshotV1 = {
@@ -107,7 +111,7 @@ export class XArticleBrowserAdapter {
       latest_observation_id: null, latest_receipt_path: null, updated_at: this.now().toISOString()
     };
     const context: AdapterContext = {
-      schema_version: '1.0', plan, approval, capabilities, snapshot,
+      schema_version: '1.0', plan, approval, capabilities, import_strategy: importStrategy, snapshot,
       latest_observation: null, editor_revision: null, preview_revision: null,
       pending_command: null, submit_delivered: false
     };
@@ -382,7 +386,13 @@ export class XArticleBrowserAdapter {
       throw new HarnessError('ARTICLE_DRAFT_IDENTITY_UNKNOWN', 'X Article execution has no draft identity');
     }
     const decision = nextArticleEditorDecision(
-      { plan: context.plan, draft_id: context.snapshot.draft_id }, observation, this.contract
+      {
+        plan: context.plan,
+        draft_id: context.snapshot.draft_id,
+        import_strategy: context.import_strategy
+      },
+      observation,
+      this.contract
     );
     if (decision.kind === 'blocked') throw new HarnessError(decision.code, decision.message);
     if (decision.kind === 'complete') return { snapshot: context.snapshot, command: null };
@@ -463,7 +473,15 @@ export class XArticleBrowserAdapter {
   private verifyCapabilities(
     plan: XArticlePublicationPlanV1,
     manifest: XArticleBrowserCapabilityManifestV1
-  ): void {
+  ): XArticleImportStrategy {
+    const hasDocumentImport = manifest.capabilities.includes('import_article_document');
+    const hasAnchorReplacement = manifest.capabilities.includes('replace_article_visual_anchor');
+    if (hasDocumentImport !== hasAnchorReplacement) {
+      throw new HarnessError(
+        'BROWSER_EXECUTOR_INCOMPATIBLE',
+        'Chrome Host must advertise both X Article bulk-import capabilities'
+      );
+    }
     const required: XArticleBrowserCommandKind[] = [
       'observe_article_page', 'create_article_draft', 'set_article_title',
       'insert_article_block', 'open_article_preview', 'open_publish_review', 'publish_article_once'
@@ -477,6 +495,7 @@ export class XArticleBrowserAdapter {
     ) {
       throw new HarnessError('BROWSER_EXECUTOR_INCOMPATIBLE', 'Chrome Host lacks required X Article capabilities');
     }
+    return hasDocumentImport ? 'bulk_document' : 'incremental_blocks';
   }
 
   private requireObservation(context: AdapterContext): XArticleBrowserObservation {

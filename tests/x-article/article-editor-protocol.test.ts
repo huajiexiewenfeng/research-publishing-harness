@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { XArticleCommandBroker } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { nextArticleEditorDecision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.js';
+import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
@@ -23,6 +24,47 @@ const plan = createXArticlePublicationPlan({
   },
   visuals: [], plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
 });
+const bulkAssets = [
+  {
+    asset_id: 'domain-runtime-boundary', relative_path: 'assets/domain-runtime-boundary.png',
+    digest: `sha256:${'b'.repeat(64)}` as const, mime_type: 'image/png' as const,
+    alt_text: 'Domain and runtime boundary', claim_refs: ['claim_domain_runtime']
+  },
+  {
+    asset_id: 'approval-gate', relative_path: 'assets/approval-gate.png',
+    digest: `sha256:${'c'.repeat(64)}` as const, mime_type: 'image/png' as const,
+    alt_text: 'Approval gate', claim_refs: ['claim_approval']
+  },
+  {
+    asset_id: 'receipt-boundary', relative_path: 'assets/receipt-boundary.png',
+    digest: `sha256:${'d'.repeat(64)}` as const, mime_type: 'image/png' as const,
+    alt_text: 'Receipt boundary', claim_refs: ['claim_receipt']
+  }
+] as const;
+const bulkPlan = createXArticlePublicationPlan({
+  planId: 'plan_editor_bulk_1', runId: 'run_editor_bulk_1', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_bulk_1', digest: `sha256:${'e'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Bulk runtime boundary', cover_asset_id: null,
+    blocks: [
+      ...Array.from({ length: 18 }, (_, index) => ({
+        kind: 'paragraph' as const,
+        runs: [{ text: `Approved paragraph ${index + 1}`, marks: [] as const, link: null }]
+      })),
+      { kind: 'image', asset_id: bulkAssets[0].asset_id, alt_text: bulkAssets[0].alt_text },
+      { kind: 'paragraph', runs: [{ text: 'Between visuals', marks: [], link: null }] },
+      { kind: 'image', asset_id: bulkAssets[1].asset_id, alt_text: bulkAssets[1].alt_text },
+      { kind: 'image', asset_id: bulkAssets[2].asset_id, alt_text: bulkAssets[2].alt_text }
+    ]
+  },
+  visuals: [
+    { asset: bulkAssets[0], placement: { kind: 'block', block_ordinal: 19 } },
+    { asset: bulkAssets[1], placement: { kind: 'block', block_ordinal: 21 } },
+    { asset: bulkAssets[2], placement: { kind: 'block', block_ordinal: 22 } }
+  ],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
+const draftId = '2090731994279755776';
 
 function revise<T extends { readonly page_revision: string }>(value: T): T {
   const input = Object.fromEntries(
@@ -33,21 +75,27 @@ function revise<T extends { readonly page_revision: string }>(value: T): T {
 
 describe('nextArticleEditorDecision', () => {
   it('sets the title before inserting Article blocks', () => {
-    expect(nextArticleEditorDecision({ plan, draft_id: '2090731994279755776' }, emptyArticleEditor, contract))
+    expect(nextArticleEditorDecision(
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, emptyArticleEditor, contract
+    ))
       .toMatchObject({ kind: 'command', input: { purpose: 'set_article_title', payload: { kind: 'set_article_title' } } });
   });
 
-  it('resumes from an exact auto-saved prefix', () => {
+  it('keeps incremental block insertion operational', () => {
     const titleOnly = revise({
       ...emptyArticleEditor,
       editor: { ...emptyArticleEditor.editor!, title: plan.intent.document.title }
     });
-    expect(nextArticleEditorDecision({ plan, draft_id: '2090731994279755776' }, titleOnly, contract))
+    expect(nextArticleEditorDecision(
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, titleOnly, contract
+    ))
       .toMatchObject({ kind: 'command', input: { purpose: 'insert_article_block_1', payload: { kind: 'insert_article_block', block_ordinal: 1 } } });
   });
 
   it('opens Preview only after the full editor document is saved and verified', () => {
-    expect(nextArticleEditorDecision({ plan, draft_id: '2090731994279755776' }, populatedArticleEditor, contract))
+    expect(nextArticleEditorDecision(
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, populatedArticleEditor, contract
+    ))
       .toMatchObject({ kind: 'command', input: { purpose: 'open_article_preview', payload: { kind: 'open_article_preview' } } });
   });
 
@@ -62,8 +110,242 @@ describe('nextArticleEditorDecision', () => {
         }]
       }
     });
-    expect(nextArticleEditorDecision({ plan, draft_id: '2090731994279755776' }, conflict, contract))
+    expect(nextArticleEditorDecision(
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, conflict, contract
+    ))
       .toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it('imports once when a compatible titled draft is empty', () => {
+    const titleOnly = revise({
+      ...emptyArticleEditor,
+      editor: { ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, titleOnly, contract
+    )).toMatchObject({
+      kind: 'command',
+      input: {
+        kind: 'import_article_document',
+        payload: {
+          kind: 'import_article_document',
+          package_root: bulkPlan.intent.article_package.root,
+          package_digest: bulkPlan.intent.article_package.digest,
+          template: createXArticleImportTemplate(bulkPlan.intent.document)
+        }
+      }
+    });
+  });
+
+  it.each([
+    {
+      name: 'body blocks',
+      editor: { blocks: [{ kind: 'paragraph' as const, runs: [{ text: 'Existing', marks: [] as const, link: null }] }] }
+    },
+    {
+      name: 'visuals',
+      editor: {
+        visuals: [{
+          ref: 'human_visual', asset_id: null, kind: 'inline' as const, block_ordinal: 1,
+          alt_text: null, status: 'uploaded' as const, owned_by_execution: false
+        }]
+      }
+    },
+    {
+      name: 'an existing import state',
+      editor: {
+        import_state: {
+          template_digest: `sha256:${'f'.repeat(64)}`,
+          source_document_digest: `sha256:${'0'.repeat(64)}`,
+          unresolved_anchors: []
+        }
+      }
+    }
+  ])('never imports over $name', ({ editor: editorOverride }) => {
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        ...editorOverride
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, observation, contract
+    )).toMatchObject({ kind: 'blocked' });
+  });
+
+  it('resumes by replacing the first unresolved anchor without re-importing', () => {
+    const template = createXArticleImportTemplate(bulkPlan.intent.document);
+    const importedWithThreeAnchors = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        }
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      importedWithThreeAnchors,
+      contract
+    )).toMatchObject({
+      kind: 'command',
+      input: {
+        kind: 'replace_article_visual_anchor',
+        payload: {
+          kind: 'replace_article_visual_anchor',
+          anchor: { block_ordinal: 19 },
+          asset: { asset_id: 'domain-runtime-boundary' }
+        }
+      }
+    });
+  });
+
+  it('blocks an altered or reordered import template', () => {
+    const template = createXArticleImportTemplate(bulkPlan.intent.document);
+    const importedWithWrongAnchorOrder = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks,
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors.map((anchor, index) => ({
+            ...anchor,
+            anchor_id: template.anchors[(index + 1) % template.anchors.length]!.anchor_id
+          }))
+        }
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      importedWithWrongAnchorOrder,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it.each(['template_digest', 'source_document_digest'] as const)(
+    'blocks an imported state with the wrong %s',
+    (digestField) => {
+      const template = createXArticleImportTemplate(bulkPlan.intent.document);
+      const importedWithWrongDigest = revise({
+        ...emptyArticleEditor,
+        editor: {
+          ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+          blocks: bulkPlan.intent.document.blocks,
+          import_state: {
+            template_digest: template.template_digest,
+            source_document_digest: template.source_document_digest,
+            unresolved_anchors: template.anchors,
+            [digestField]: `sha256:${'9'.repeat(64)}`
+          }
+        }
+      });
+
+      expect(nextArticleEditorDecision(
+        { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+        importedWithWrongDigest,
+        contract
+      )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+    }
+  );
+
+  it('resumes an exact replacement prefix at the next unresolved anchor', () => {
+    const template = createXArticleImportTemplate(bulkPlan.intent.document);
+    const firstAnchor = template.anchors[0]!;
+    const afterFirstReplacement = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks.filter((block, index) =>
+          block.kind !== 'image' || index + 1 === firstAnchor.block_ordinal
+        ),
+        visuals: [{
+          ref: 'visual_1', asset_id: bulkAssets[0].asset_id, kind: 'inline' as const,
+          block_ordinal: firstAnchor.block_ordinal, alt_text: bulkAssets[0].alt_text,
+          status: 'uploaded' as const, owned_by_execution: true
+        }],
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors.slice(1)
+        }
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      afterFirstReplacement,
+      contract
+    )).toMatchObject({
+      kind: 'command',
+      input: {
+        kind: 'replace_article_visual_anchor',
+        payload: {
+          anchor: { block_ordinal: 21 },
+          asset: { asset_id: 'approval-gate' }
+        }
+      }
+    });
+  });
+
+  it('never opens Preview while import state remains', () => {
+    const template = createXArticleImportTemplate(bulkPlan.intent.document);
+    const importedWithNoAnchors = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks,
+        visuals: bulkAssets.map((asset, index) => ({
+          ref: `visual_${index + 1}`, asset_id: asset.asset_id, kind: 'inline' as const,
+          block_ordinal: [19, 21, 22][index]!, alt_text: asset.alt_text,
+          status: 'uploaded' as const, owned_by_execution: true
+        })),
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: []
+        }
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      importedWithNoAnchors,
+      contract
+    )).not.toMatchObject({ input: { kind: 'open_article_preview' } });
+  });
+
+  it('opens Preview after exact final document verification and saved autosave state', () => {
+    const finalEditor = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks,
+        visuals: bulkAssets.map((asset, index) => ({
+          ref: `visual_${index + 1}`, asset_id: asset.asset_id, kind: 'inline' as const,
+          block_ordinal: [19, 21, 22][index]!, alt_text: asset.alt_text,
+          status: 'uploaded' as const, owned_by_execution: true
+        })),
+        import_state: null,
+        autosave_state: 'saved' as const
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, finalEditor, contract
+    )).toMatchObject({
+      kind: 'command', input: { kind: 'open_article_preview', payload: { kind: 'open_article_preview' } }
+    });
   });
 });
 
