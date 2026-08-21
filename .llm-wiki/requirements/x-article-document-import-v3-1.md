@@ -1,0 +1,119 @@
+# Change Brief: X Article Document Import V3.1
+
+## Metadata
+
+- flow_id: `x-article-document-import-v3-1`
+- parent_flow_id: `x-article-browser-publishing-v3`
+- status: `design-approved`
+- title: Add digest-bound bulk document import with deterministic visual anchors
+- owner: Research Publishing Harness
+- created: 2026-08-21
+
+## Why
+
+The V3 X Article Browser Adapter inserts one structured block per Browser Command. Real X Article editor behavior can retain the active block style across separate paste operations, which can merge paragraphs into headings or lists even when the approved Article Document is correct. The browser workflow must support one evidence-bound document import while preserving the existing content, visual, Approval, Preview, at-most-once Publish, public verification, and Receipt gates.
+
+## Change
+
+Add an optional `import_article_document` Chrome capability and Browser Command. The command imports a deterministic editor template derived from the approved X Article Document. Inline image blocks are represented during import by unique visual anchors. After the imported template is observed and verified, the Harness issues one command per planned image to replace the corresponding anchor, set the approved alt text, and restore the final Article block order. Preview remains the first place where the final public document must match the approved Article Document digest exactly.
+
+The existing incremental `insert_article_block` path remains available when the Host does not advertise document import.
+
+## Protocol Design
+
+### Import template
+
+- The template is derived only from `plan.intent.document` and `plan.intent.visuals`.
+- Non-image blocks retain their exact structured runs, marks, links, list items, and order.
+- Each inline image block becomes one reserved anchor with the exact form `RPH_VISUAL_ANCHOR:<asset_id>:<block_ordinal>`.
+- The template carries a version and digest. The digest covers the ordered template blocks, anchor identities, target block ordinals, and source Article Document digest.
+- The command payload includes the target editor reference, template, template digest, Article Package root, and Article Package digest.
+
+### Editor observation
+
+- The Article editor observation may report an import state containing the template version, template digest, and ordered unresolved visual anchors.
+- Anchor paragraphs are excluded from the final Article `blocks` projection and are reported separately.
+- The Host must set `has_unknown_content` when it cannot map the editor DOM to the template or final Article Document.
+- Import is permitted only when the new draft has the approved title, zero body blocks, zero visuals, and no unknown content.
+
+### Visual replacement
+
+- After a verified import, the Harness issues `replace_article_visual_anchor` in planned block order.
+- The command is bound to one anchor identity, one package-relative asset, the Package digest, the asset digest, and approved alt text.
+- A successful observation must show that the named anchor disappeared and the owned inline visual appeared at the same final block ordinal.
+- Missing, duplicate, reordered, or additional anchors fail closed with `ARTICLE_ASSET_MISMATCH` or `ARTICLE_CONTENT_MISMATCH`.
+
+### Completion and recovery
+
+- A crash may resume from an exact imported-template observation or an exact prefix of completed anchor replacements.
+- Re-import is never issued when verified imported content or any human/unknown content already exists.
+- Preview opens only when the editor projects the exact approved Article Document, all anchors are gone, all visuals are execution-owned, and autosave is `saved`.
+- The existing Publish Gate, Approval verification, at-most-once `publish_once`, public verification, and immutable Receipt behavior do not change.
+
+## Acceptance Criteria
+
+1. A compatible Chrome Host receives one `import_article_document` command instead of per-block commands for an empty titled draft.
+2. The import command is digest-bound to the approved Article Document and Article Package.
+3. Three planned inline visuals can be replaced at their original block ordinals after the text import.
+4. Exact imported state and partial visual replacement state are resumable without a second import.
+5. Extra content, altered marks or links, wrong anchors, unexpected visuals, asset digest mismatch, and Package digest mismatch fail closed.
+6. Hosts without the new capability continue to use the V3 incremental block protocol unchanged.
+7. Preview and public verification still compare the final Article Document, not the temporary import template.
+8. Existing X Article tests remain green and new unit, contract, integration, security, CLI, and acceptance tests cover the import path.
+
+## Active Scope
+
+- X Article Browser Command types and JSON Schema
+- deterministic import-template compiler and digest
+- Article editor decision protocol
+- Article editor observation and Page Contract projection
+- Browser Adapter capability negotiation and recovery state
+- CLI/doctor capability surface, acceptance fixtures, documentation, and Skill reference
+- focused and full regression tests
+
+## Non-Goals
+
+- No generic Markdown importer for arbitrary websites.
+- No direct `.md` file upload to X; current X accepts media files only.
+- No weakening of Article Package, Plan, Approval, Browser Command, Preview, Publish, verification, or Receipt digests.
+- No automatic deletion of failed or diagnostic X drafts.
+- No change to X single-post, Thread, Reply, or Manual publication protocols.
+- No decorative cover generation or change to approved visual assets.
+
+## Active Sources
+
+- `harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.ts`
+- `harnesses/research-publishing/adapters/x/article-browser/article-command-broker.ts`
+- `harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts`
+- `harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.ts`
+- `harnesses/research-publishing/adapters/x/article-browser/article-page-contract.ts`
+- `harnesses/research-publishing/contracts/x-article-browser-command.schema.json`
+- `tests/x-article/`
+- `tests/integration/x-article-browser-workflow.test.ts`
+- `tests/security/x-article-browser-security.test.ts`
+
+## Verification Plan
+
+- Run each new test first and record the expected failure before production changes.
+- Run focused X Article unit, contract, security, integration, CLI, and acceptance tests after each protocol slice.
+- Run `pnpm test` from a clean worktree before completion.
+- Build `dist`, run Harness doctor against the publishing workspace, and confirm the new contracts and capability are exposed.
+- Execute a pre-publish Chrome smoke test that imports the approved document and three visuals, then stops at the final action-time Publish confirmation.
+
+## Risks
+
+- X editor DOM semantics can change; the Page Contract must fail closed when anchors cannot be uniquely observed.
+- Temporary anchors must never reach Preview or the public Article.
+- Optional capability negotiation must not silently select bulk import on an incompatible Host.
+- A bulk paste can contain more content than one incremental command, so its payload and observed template require their own digest boundary.
+
+## Flow Record
+
+| Stage | Status | Evidence | Next |
+|---|---|---|---|
+| Source / problem reproduction | complete | Live X editor retained block style across separate paste operations on 2026-08-21 | Lock design |
+| Design | approved | User approved formal Harness capability and continued with the recommended anchor design | Review written Change Brief |
+| Implementation plan | pending | — | Write after Change Brief review |
+| Development | pending | — | TDD only after plan approval |
+| Verification | pending | Baseline `pnpm test`: 52 files, 230 tests passed | Add focused and full regression evidence |
+| Archive / finish | pending | — | Project Finish after verified browser smoke test |
