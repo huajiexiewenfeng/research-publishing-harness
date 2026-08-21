@@ -45,7 +45,9 @@ export type ErrorCode =
   | 'ARTICLE_ASSET_MISMATCH'
   | 'ARTICLE_DRAFT_CONFLICT'
   | 'ARTICLE_PAGE_CONTRACT_UNSUPPORTED'
-  | 'ARTICLE_CONTENT_MISMATCH';
+  | 'ARTICLE_CONTENT_MISMATCH'
+  | 'ARTICLE_DRAFT_IDENTITY_UNKNOWN'
+  | 'ARTICLE_PREVIEW_MISMATCH';
 
 export class HarnessError extends Error {
   readonly code: ErrorCode;

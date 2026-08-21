@@ -77,16 +77,28 @@ export class XArticleCommandBroker {
     this.now = options.now ?? (() => new Date());
   }
 
-  async issue(input: IssueXArticleBrowserCommandInput): Promise<XArticleBrowserCommandV1> {
+  async issue(
+    input: IssueXArticleBrowserCommandInput,
+    commandIdOverride?: string
+  ): Promise<XArticleBrowserCommandV1> {
     this.assertId(input.execution_id);
     const command: XArticleBrowserCommandV1 = {
       schema_version: '1.0',
       ...input,
-      command_id: this.commandId(),
+      command_id: commandIdOverride ?? this.commandId(),
       payload_digest: sha256(input.payload),
       issued_at: this.now().toISOString()
     };
     validateContract<XArticleBrowserCommandV1>('x-article-browser-command', command);
+    if (await this.store.exists(this.commandPath(command))) {
+      const existing = await this.store.readJson<XArticleBrowserCommandV1>(this.commandPath(command));
+      const { issued_at: _existingTime, ...existingStable } = existing;
+      const { issued_at: _newTime, ...newStable } = command;
+      if (sha256(existingStable) !== sha256(newStable)) {
+        throw new HarnessError('COMMAND_REPLAY_REJECTED', 'deterministic X Article command identity changed payload');
+      }
+      return existing;
+    }
     await this.store.writeNew(this.commandPath(command), command);
     return command;
   }
