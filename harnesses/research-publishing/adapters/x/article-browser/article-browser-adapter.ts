@@ -271,6 +271,28 @@ export class XArticleBrowserAdapter {
     return (await this.readContext(executionId)).snapshot;
   }
 
+  async resumeVerification(executionId: string): Promise<XArticleExecutionSnapshotV1> {
+    let context = await this.readContext(executionId);
+    if (context.snapshot.state !== 'outcome_unknown' && context.snapshot.state !== 'published_unverified') {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        `X Article verification cannot resume from ${context.snapshot.state}`
+      );
+    }
+    context = await this.transition(context, 'public_verifying', 'article_public_verification_resumed');
+    return context.snapshot;
+  }
+
+  async cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1> {
+    let context = await this.readContext(executionId);
+    if (context.snapshot.publish_command_count > 0 || context.snapshot.state === 'publish_attempted') {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article execution cannot be cancelled after Publish');
+    }
+    if (context.pending_command !== null) context = await this.clearPending(context);
+    context = await this.transition(context, 'cancelled_before_publish', 'article_cancelled_before_publish');
+    return context.snapshot;
+  }
+
   private async nextEditorCommand(
     context: AdapterContext,
     observation: XArticleBrowserObservation

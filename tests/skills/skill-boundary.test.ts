@@ -49,4 +49,20 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/next[\s\S]*claim[\s\S]*execute[\s\S]*report/i);
     expect(reference).toMatch(/never.*second Submit claim/i);
   });
+
+  it('routes long-form X Articles without degrading them to a Thread', async () => {
+    const content = await skill('x-publishing-copilot');
+    expect(content).toContain('Never convert an X Article to a Thread');
+    expect(content).toContain('x-article browser next');
+    expect(content).toContain('x-article browser claim');
+    expect(content).toContain('x-article browser report');
+
+    const reference = await readFile(
+      resolve('skills/x-publishing-copilot/references/x-article-browser-flow.md'),
+      'utf8'
+    );
+    expect(reference).toMatch(/plan[\s\S]*approve[\s\S]*start[\s\S]*next[\s\S]*claim[\s\S]*report/i);
+    expect(reference).toMatch(/action-time approval/i);
+    expect(reference).toMatch(/never.*publish.*twice/i);
+  });
 });

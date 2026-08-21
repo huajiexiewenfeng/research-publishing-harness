@@ -40,7 +40,7 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
 
-The V2.1 Browser Adapter does not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, select images automatically, or support GIF/video/multiple images. CI and automated acceptance never publish to a real X account. A real Chrome smoke requires a separate test-account Plan and Human confirmation and stops at `submit_armed` by default.
+The Browser Adapters do not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, select images automatically, or support GIF/video/multiple images. V3 adds new-publication X Articles through the Premium Chrome editor; editing, deleting, unpublishing, subscriber-only Articles, and arbitrary rich HTML remain out of scope. CI and automated acceptance never publish to a real X account.
 
 ## Architecture
 
@@ -86,6 +86,7 @@ See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, M
 - The Manual Adapter creates copy/paste artifacts only; verification remains explicitly manual.
 - The Browser Adapter accepts semantic, X-origin commands only; it stores no Cookie, token, password, full DOM, timeline, or private-message data.
 - Browser failure never silently switches to Manual; fallback requires a new Plan and Approval.
+- A finalized Article Package can use `x-article plan|approve|browser ...`; it is never silently converted into a Thread.
 
 ## Design and contracts
 
@@ -95,6 +96,8 @@ See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, M
 - [V2 implementation plan](docs/superpowers/plans/2026-08-19-x-browser-adapter-v2.md)
 - [V2.1 Visual Publishing design](docs/superpowers/specs/2026-08-20-visual-publishing-v2-1-design.zh-CN.md)
 - [V2.1 implementation plan](docs/superpowers/plans/2026-08-20-visual-publishing-v2-1.md)
+- [V3 X Article Browser design](docs/superpowers/specs/2026-08-21-x-article-browser-publishing-v3-design.zh-CN.md)
+- [V3 implementation plan](docs/superpowers/plans/2026-08-21-x-article-browser-publishing-v3.md)
 - [JSON contracts](harnesses/research-publishing/contracts)
 - [Synthetic public fixtures](harnesses/research-publishing/examples/synthetic)
 

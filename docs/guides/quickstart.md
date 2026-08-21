@@ -96,7 +96,7 @@ x prepare → accept-draft → review → plan → exact Preview
 ## 7. Use as Skills
 
 - `$article-publishing-copilot`: use for a technical article from a Frozen Package.
-- `$x-publishing-copilot`: use for a Single, Thread, or Reply from a Frozen Package or explicit Article handoff.
+- `$x-publishing-copilot`: use for a Single, Thread, Reply, or finalized long-form X Article.
 
 Both Skills stop if runtime discovery fails, and both delegate enforcement to the same Harness CLI.
 
@@ -124,7 +124,22 @@ For a safe synthetic preview, run `x browser start`, inspect the returned read-o
 
 If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
 
-## 9. V2.1 visual handoff
+## 9. V3 X Article publishing
+
+Keep long-form content as an X Article; do not split it into a Thread merely because the Post branch has older automation.
+
+```text
+x-article plan
+→ exact Article Audit block
+→ one publish_once confirmation
+→ x-article approve
+→ x-article browser start
+→ x-article browser next → claim → one Chrome action → report
+```
+
+Use action-time Human approval before a real file upload and before claiming the final public Publish command. `cancel-before-publish` is valid only before that barrier. After Publish is issued, use `resume-verification`; never issue a second Publish.
+
+## 10. V2.1 visual handoff
 
 ```text
 article handoff-x  # input includes {"asset_id":"asset_cover"}

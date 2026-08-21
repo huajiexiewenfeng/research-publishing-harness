@@ -1,11 +1,13 @@
 ---
 name: x-publishing-copilot
-description: Use when preparing or publishing an evidence-backed X single post, thread, or reply through the Research Publishing Harness.
+description: Use when preparing or publishing an evidence-backed X single post, thread, reply, or long-form X Article through the Research Publishing Harness.
 ---
 
 # X Publishing Copilot
 
 Use the repository Harness as the deterministic boundary. The Skill may help shape the discussion and draft language; the Harness owns character limits, the Publish Gate, state, Approval, Browser Commands, public verification, and Receipts.
+
+Choose the branch from the requested artifact. A Single, Thread, or Reply uses `x ...`. A finalized long-form Article Package uses `x-article ...` and [the X Article Browser flow](references/x-article-browser-flow.md), including `x-article browser next` → `x-article browser claim` → one Chrome action → `x-article browser report`. Never convert an X Article to a Thread.
 
 ## Browser Adapter required flow
 

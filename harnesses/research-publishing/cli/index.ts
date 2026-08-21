@@ -8,11 +8,24 @@ import { BrowserAdapter } from '../adapters/x/browser/browser-adapter.js';
 import type { BrowserActionResultInput, BrowserCapabilityManifest } from '../adapters/x/browser/browser-protocol.js';
 import { CommandBroker } from '../adapters/x/browser/command-broker.js';
 import { XWeb202608Contract } from '../adapters/x/browser/contracts/x-web-2026-08.js';
+import {
+  XArticleBrowserAdapter,
+  type XArticleBrowserCapabilityManifestV1,
+  type XArticleBrowserReportInput
+} from '../adapters/x/article-browser/article-browser-adapter.js';
+import type { XArticleBrowserCommandV1 } from '../adapters/x/article-browser/article-command-broker.js';
+import { XArticleWeb2026_08Contract } from '../adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { ArticleService, type ArticleBrief, type ArticleDraft, type VisualReviewInput, type XHandoff } from '../branches/article-harness/article-service.js';
+import { XArticleService } from '../branches/x-article-harness/x-article-service.js';
 import { XService, type PublicationPlan, type XBrief, type XDraft } from '../branches/x-harness/x-service.js';
 import { approvePublication, type Approval } from '../core/approval.js';
 import { approvePublicationV2, type ApprovalV2 } from '../core/approval-v2.js';
 import { approvePublicationV2_1, type ApprovalV2_1 } from '../core/approval-v2-1.js';
+import {
+  approveXArticlePublication,
+  type XArticleApprovalV1
+} from '../core/x-article-approval.js';
+import type { XArticlePublicationPlanV1 } from '../core/x-article-publication-plan.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
 import { PackageService } from '../core/package-service.js';
@@ -220,6 +233,78 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     if (operation === 'article handoff-x') {
       const value = articleInput as unknown as { asset_id?: string } | undefined;
       return { ok: true, operation, artifact: await article.createXHandoff(runId, value?.asset_id), state: 'finalized' };
+    }
+  }
+
+  if (operation.startsWith('x-article ')) {
+    const input = articleInput;
+    if (operation === 'x-article plan') {
+      const value = input as unknown as {
+        package_ref: Parameters<XArticleService['plan']>[0];
+        target_account: string;
+      };
+      const artifact = await new XArticleService(store).plan(value.package_ref, value.target_account);
+      return { ok: true, operation, artifact, state: 'approval_pending' };
+    }
+    if (operation === 'x-article approve') {
+      const value = input as unknown as {
+        plan: XArticlePublicationPlanV1;
+        approved_by: string;
+        ttl_ms: number;
+      };
+      const artifact = approveXArticlePublication(
+        value.plan, value.approved_by, value.ttl_ms
+      );
+      await store.writeNew(`approvals/${artifact.approval_id}.json`, artifact);
+      return { ok: true, operation, artifact, state: 'approved' };
+    }
+
+    const executionId = options.executionId ?? (input as { execution_id?: string } | undefined)?.execution_id;
+    const browser = new XArticleBrowserAdapter(
+      store,
+      new XArticleWeb2026_08Contract(),
+      operation === 'x-article browser start' && executionId !== undefined
+        ? { executionId: () => executionId }
+        : {}
+    );
+    if (operation === 'x-article browser start') {
+      const value = input as unknown as {
+        execution_id: string;
+        plan: XArticlePublicationPlanV1;
+        approval: XArticleApprovalV1;
+        capability_manifest: XArticleBrowserCapabilityManifestV1;
+      };
+      const artifact = await browser.start(value.plan, value.approval, value.capability_manifest);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser next') {
+      const artifact = await browser.next(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.snapshot.state };
+    }
+    if (operation === 'x-article browser claim') {
+      const id = requiredExecutionId(options);
+      const commandId = requiredCommandId(options);
+      const command = await store.readJson<XArticleBrowserCommandV1>(
+        `runs/${id}/x-article/browser/commands/${commandId}/command.json`
+      );
+      const artifact = await browser.claim(command);
+      return { ok: true, operation, artifact, state: (await browser.status(id)).state };
+    }
+    if (operation === 'x-article browser report') {
+      const artifact = await browser.report(input as unknown as XArticleBrowserReportInput);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser status') {
+      const artifact = await browser.status(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser resume-verification') {
+      const artifact = await browser.resumeVerification(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser cancel-before-publish') {
+      const artifact = await browser.cancelBeforePublish(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
     }
   }
 

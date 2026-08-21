@@ -54,6 +54,20 @@ async function reportSuccess(
 }
 
 describe('XArticleBrowserAdapter', () => {
+  it('cancels only before Publish and does not expose verification recovery from a preflight state', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cancel_1', eventId: () => 'event_cancel_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.start(plan, approval, capabilities);
+
+    await expect(adapter.resumeVerification(execution.execution_id))
+      .rejects.toMatchObject({ code: 'STATE_TRANSITION_INVALID' });
+    await expect(adapter.cancelBeforePublish(execution.execution_id))
+      .resolves.toMatchObject({ state: 'cancelled_before_publish', publish_command_count: 0 });
+  });
+
   it('drives a verified draft to exactly one final Publish command', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-adapter-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
+import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { publicationPlanV2Fixture } from '../fixtures/publication-plan-v2.js';
 import { publicationPlanV2_1Fixture } from '../fixtures/publication-plan-v2-1.js';
@@ -236,5 +237,96 @@ describe('research-publish CLI', () => {
         target_account: '@runtime_ai', plan_digest: publicationPlanV2_1Fixture().plan_digest
       }
     });
+  });
+
+  it('plans, approves, starts, and reports status for an X Article publication', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-x-article-'));
+    const workspace = join(parent, 'workspace');
+    const store = await WorkspaceStore.open(workspace);
+    const root = 'articles/runtime-boundary/article_cli';
+    const manifestBase = { schema_version: '1.0', article_run_id: 'article_cli', bindings: [] };
+    const files = {
+      'article.md': '# Runtime boundary\n\nSkills own semantics.\n',
+      'visual-manifest.json': { ...manifestBase, manifest_digest: sha256(manifestBase) },
+      'draft-candidate.json': {
+        schema_version: '1.0', run_id: 'article_cli', title: 'Runtime boundary',
+        summary: 'Skills own semantics.', language: 'en', sections: [{
+          section_id: 'boundary', heading: 'Boundary', markdown: 'Skills own semantics.',
+          claim_refs: [], source_refs: []
+        }], visual_slots: [], open_questions: []
+      }
+    };
+    const digest = sha256(Object.entries(files)
+      .map(([path, value]) => ({ path, digest: sha256(value) }))
+      .sort((left, right) => left.path.localeCompare(right.path)));
+    const packageRef = {
+      root, digest, artifacts: Object.keys(files).map((path) => `${root}/${path}`), warnings: []
+    };
+    await store.writeNewDirectory(root, { ...files, 'package-ref.json': packageRef });
+
+    const planInput = join(parent, 'plan.json');
+    await writeFile(planInput, JSON.stringify({ package_ref: packageRef, target_account: '@Glen56121' }));
+    const planned = run([
+      'x-article', 'plan', '--workspace', workspace, '--input', planInput, '--output', 'json'
+    ]);
+    expect(planned.status).toBe(0);
+    const planResult = JSON.parse(planned.stdout) as { artifact: Record<string, unknown> };
+    expect(planResult).toMatchObject({
+      ok: true, operation: 'x-article plan', state: 'approval_pending',
+      artifact: { schema_version: '1.0', intent: { action: 'publish_once', adapter: 'browser' } }
+    });
+
+    const approveInput = join(parent, 'approve.json');
+    await writeFile(approveInput, JSON.stringify({
+      plan: planResult.artifact, approved_by: 'human', ttl_ms: 600_000
+    }));
+    const approved = run([
+      'x-article', 'approve', '--workspace', workspace, '--input', approveInput, '--output', 'json'
+    ]);
+    expect(approved.status).toBe(0);
+    const approval = JSON.parse(approved.stdout).artifact;
+    expect(approval).toMatchObject({ scope: 'publish_once', target_account: '@Glen56121' });
+
+    const startInput = join(parent, 'start.json');
+    await writeFile(startInput, JSON.stringify({
+      execution_id: 'exec_cli_x_article', plan: planResult.artifact, approval,
+      capability_manifest: {
+        executor: 'codex-chrome', executor_version: '26.818.31338', browser_family: 'chrome',
+        capabilities: [
+          'observe_article_page', 'create_article_draft', 'set_article_title',
+          'insert_article_block', 'open_article_preview', 'open_publish_review',
+          'publish_article_once'
+        ], observed_at: new Date().toISOString()
+      }
+    }));
+    const started = run([
+      'x-article', 'browser', 'start', '--workspace', workspace, '--input', startInput, '--output', 'json'
+    ]);
+    expect(started.status).toBe(0);
+    expect(JSON.parse(started.stdout)).toMatchObject({
+      operation: 'x-article browser start',
+      artifact: { execution_id: 'exec_cli_x_article' }, state: 'created'
+    });
+
+    const status = run([
+      'x-article', 'browser', 'status', '--workspace', workspace,
+      '--execution-id', 'exec_cli_x_article', '--output', 'json'
+    ]);
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      operation: 'x-article browser status', artifact: { state: 'created' }, state: 'created'
+    });
+
+    for (const operation of ['resume-verification', 'cancel-before-publish']) {
+      const missing = run([
+        'x-article', 'browser', operation, '--workspace', workspace,
+        '--execution-id', 'missing_execution', '--output', 'json'
+      ]);
+      expect(missing.status).toBe(5);
+      expect(JSON.parse(missing.stdout)).toMatchObject({
+        ok: false, operation: `x-article browser ${operation}`,
+        error: { code: 'ARTIFACT_NOT_FOUND' }
+      });
+    }
   });
 });

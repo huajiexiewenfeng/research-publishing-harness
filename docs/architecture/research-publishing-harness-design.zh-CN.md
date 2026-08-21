@@ -459,4 +459,12 @@ CLI 默认 `dry-run`，输出稳定 JSON 和 Error Code。V1 采用 TypeScript +
 
 V2.1 将 Canonical Markdown Article Package 定义为静态视觉资产的事实源。Core 只增加最小 `VisualAssetRef`；Article Harness 管理 Slot、候选、Visual Review、Manifest 和 Package Digest；X Harness 只通过显式 `asset_id` Handoff 复用一个资产。Browser Host 只能上传锁定 Package 内、路径受限且 Digest/MIME 匹配的 PNG、JPEG 或静态 WebP。
 
-V2.1 不改变 V2 write-ahead Submit Barrier、Host consumed-command、at-most-once 或公开只读恢复。Receipt 分别记录 Source Asset、Composer Attachment 和 Public Media 证据；不声称 X 转码后的公开媒体与源文件字节相同。动态图、GIF、视频、多图、X Articles、自动选图和 LLM Wiki 动态接入均不在本版本范围内。
+V2.1 不改变 V2 write-ahead Submit Barrier、Host consumed-command、at-most-once 或公开只读恢复。Receipt 分别记录 Source Asset、Composer Attachment 和 Public Media 证据；不声称 X 转码后的公开媒体与源文件字节相同。动态图、GIF、视频、多图、自动选图和 LLM Wiki 动态接入均不在本版本范围内。X Articles 已由后续 V3 独立分支支持，不属于 V2.1 Post 契约。
+
+## X Article Browser Publishing V3 增量
+
+V3 新增与 Post 分支并列的 `x-article-harness`，只接受已经 Finalize 的 Article Package。Canonical Markdown 会先编译成受限、版本化的 Article Document；Plan 与一次 Approval 锁定账号、`everyone`、完整文档、视觉资产、Browser Adapter 与 `publish_once`。现有 `single | thread | reply` 契约不增加 `article` 枚举值。
+
+Chrome Host 逐条执行语义命令：观察 Articles 页、创建并识别自动保存 Draft、填充标题和正文、上传 Package 内锁定图片、验证 Preview、打开 Publish Review，最后经过 write-ahead barrier 只签发一次 `publish_article_once`。真实文件上传与最终公开发布仍需要动作时 Human 确认；发布命令一旦签发，恢复路径只读，禁止再次 Publish 或降级成 Thread。
+
+公开验证分别比较作者、标题、块顺序与文本、展开链接以及可观察的图片/Alt 证据，并生成不可变 Receipt。V3 不支持编辑、删除或取消发布既有 Article、订阅者可见、GIF/视频、嵌入 Post、排程和任意 HTML。
