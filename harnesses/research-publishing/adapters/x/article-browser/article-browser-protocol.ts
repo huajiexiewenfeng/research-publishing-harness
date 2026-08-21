@@ -1,5 +1,6 @@
 import { sha256 } from '../../../core/digest.js';
 import type { XArticleBlockV1 } from '../../../branches/x-article-harness/article-document.js';
+import type { XArticleVisualAnchorV1 } from './article-import-template.js';
 
 export type XArticlePageKind =
   | 'articles_index'
@@ -28,11 +29,18 @@ export interface XArticleVisualObservation {
   readonly owned_by_execution: boolean;
 }
 
+export interface XArticleEditorImportStateV1 {
+  readonly template_digest: string;
+  readonly source_document_digest: string;
+  readonly unresolved_anchors: readonly XArticleVisualAnchorV1[];
+}
+
 export interface XArticleEditorObservation {
   readonly draft_id: string;
   readonly title: string;
   readonly blocks: readonly XArticleBlockV1[];
   readonly visuals: readonly XArticleVisualObservation[];
+  readonly import_state: XArticleEditorImportStateV1 | null;
   readonly has_unknown_content: boolean;
   readonly autosave_state: 'saving' | 'saved' | 'failed';
 }

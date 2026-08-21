@@ -9,7 +9,7 @@
     "execution_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "run_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "draft_id": { "type": ["string", "null"] },
-    "kind": { "enum": ["observe_article_page", "navigate", "create_article_draft", "set_article_title", "upload_article_cover", "insert_article_block", "insert_article_image", "set_article_image_alt", "open_article_preview", "open_publish_review", "publish_article_once"] },
+    "kind": { "enum": ["observe_article_page", "navigate", "create_article_draft", "set_article_title", "upload_article_cover", "import_article_document", "insert_article_block", "insert_article_image", "replace_article_visual_anchor", "set_article_image_alt", "open_article_preview", "open_publish_review", "publish_article_once"] },
     "purpose": { "type": "string", "minLength": 1 },
     "expected_page_revision": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
     "allowed_origin": { "const": "https://x.com" },
@@ -18,5 +18,120 @@
     "command_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "payload_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "issued_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "import_article_document" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/importArticleDocument" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "replace_article_visual_anchor" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/replaceArticleVisualAnchor" } } }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "packageRoot": {
+      "type": "string", "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)[A-Za-z0-9._/-]+$",
+      "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+    },
+    "runs": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["text", "marks", "link"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "marks": { "type": "array", "uniqueItems": true, "items": { "enum": ["bold", "italic"] } },
+          "link": { "type": ["string", "null"], "format": "uri", "pattern": "^https://" }
+        }
+      }
+    },
+    "importTemplateBlock": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "runs"],
+          "properties": {
+            "kind": { "enum": ["heading", "subheading", "paragraph", "quote"] },
+            "runs": { "$ref": "#/$defs/runs" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "items"],
+          "properties": {
+            "kind": { "enum": ["bullet_list", "ordered_list"] },
+            "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/runs" } }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "anchor_id", "marker"],
+          "properties": {
+            "kind": { "const": "visual_anchor" },
+            "anchor_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+            "marker": { "type": "string", "pattern": "^RPH_VISUAL_ANCHOR:[A-Za-z0-9_-]+:[1-9][0-9]*$" }
+          }
+        }
+      ]
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["anchor_id", "asset_id", "block_ordinal", "marker"],
+      "properties": {
+        "anchor_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "asset_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "block_ordinal": { "type": "integer", "minimum": 1 },
+        "marker": { "type": "string", "pattern": "^RPH_VISUAL_ANCHOR:[A-Za-z0-9_-]+:[1-9][0-9]*$" }
+      }
+    },
+    "template": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "source_document_digest", "blocks", "anchors", "template_digest"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "source_document_digest": { "$ref": "#/$defs/digest" },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/importTemplateBlock" } },
+        "anchors": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } },
+        "template_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_id", "relative_path", "digest", "mime_type", "alt_text", "claim_refs"],
+      "properties": {
+        "asset_id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+$" },
+        "relative_path": { "type": "string", "pattern": "^assets/[A-Za-z0-9._/-]+$", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        "digest": { "$ref": "#/$defs/digest" },
+        "mime_type": { "enum": ["image/png", "image/jpeg", "image/webp"] },
+        "alt_text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "claim_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "importArticleDocument": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "target_ref", "package_root", "package_digest", "template"],
+      "properties": {
+        "kind": { "const": "import_article_document" },
+        "target_ref": { "type": "string", "minLength": 1 },
+        "package_root": { "$ref": "#/$defs/packageRoot" },
+        "package_digest": { "$ref": "#/$defs/digest" },
+        "template": { "$ref": "#/$defs/template" }
+      }
+    },
+    "replaceArticleVisualAnchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "target_ref", "anchor", "package_root", "package_digest", "asset"],
+      "properties": {
+        "kind": { "const": "replace_article_visual_anchor" },
+        "target_ref": { "type": "string", "minLength": 1 },
+        "anchor": { "$ref": "#/$defs/anchor" },
+        "package_root": { "$ref": "#/$defs/packageRoot" },
+        "package_digest": { "$ref": "#/$defs/digest" },
+        "asset": { "$ref": "#/$defs/asset" }
+      }
+    }
   }
 }

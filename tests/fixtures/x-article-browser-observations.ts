@@ -29,7 +29,7 @@ function observation(overrides: Record<string, unknown> = {}) {
     ],
     editor: {
       draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
-      has_unknown_content: false, autosave_state: 'saved'
+      import_state: null, has_unknown_content: false, autosave_state: 'saved'
     },
     preview: null,
     publish_review: null,
@@ -48,6 +48,7 @@ export const populatedArticleEditor = observation({
     title: plannedArticleDocument.title,
     blocks: plannedArticleDocument.blocks,
     visuals: [],
+    import_state: null,
     has_unknown_content: false,
     autosave_state: 'saved'
   },
@@ -63,6 +64,6 @@ export const unknownArticleDraft = observation({
   observation_id: 'article_obs_3',
   editor: {
     draft_id: '2090731994279755776', title: 'Human draft', blocks: [], visuals: [],
-    has_unknown_content: true, autosave_state: 'saved'
+    import_state: null, has_unknown_content: true, autosave_state: 'saved'
   }
 });

@@ -9,6 +9,7 @@ import { computeXArticlePageRevision } from '../../harnesses/research-publishing
 import { nextArticleEditorDecision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
+import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { emptyArticleEditor, populatedArticleEditor } from '../fixtures/x-article-browser-observations.js';
 
@@ -79,5 +80,70 @@ describe('XArticleCommandBroker', () => {
     });
     await expect(broker.claim(command)).resolves.toMatchObject({ claimed: true, command_id: 'command_1' });
     await expect(broker.claim(command)).rejects.toMatchObject({ code: 'COMMAND_REPLAY_REJECTED' });
+  });
+});
+
+describe('X Article import observation contract', () => {
+  it('accepts an editor import state with ordered unique anchors', () => {
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        import_state: {
+          template_digest: `sha256:${'b'.repeat(64)}`,
+          source_document_digest: `sha256:${'c'.repeat(64)}`,
+          unresolved_anchors: [
+            {
+              anchor_id: 'anchor_asset_alpha_2', asset_id: 'asset_alpha', block_ordinal: 2,
+              marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+            },
+            {
+              anchor_id: 'anchor_asset_beta_4', asset_id: 'asset_beta', block_ordinal: 4,
+              marker: 'RPH_VISUAL_ANCHOR:asset_beta:4'
+            }
+          ]
+        }
+      }
+    });
+
+    expect(validateContract('x-article-browser-observation', observation)).toEqual(observation);
+  });
+
+  it('rejects an editor import state with duplicate anchors', () => {
+    const duplicateAnchor = {
+      anchor_id: 'anchor_asset_alpha_2', asset_id: 'asset_alpha', block_ordinal: 2,
+      marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+    };
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        import_state: {
+          template_digest: `sha256:${'b'.repeat(64)}`,
+          source_document_digest: `sha256:${'c'.repeat(64)}`,
+          unresolved_anchors: [duplicateAnchor, duplicateAnchor]
+        }
+      }
+    });
+
+    expect(() => validateContract('x-article-browser-observation', observation))
+      .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it('rejects an editor import state with a malformed template digest', () => {
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        import_state: {
+          template_digest: 'not-a-digest',
+          source_document_digest: `sha256:${'c'.repeat(64)}`,
+          unresolved_anchors: []
+        }
+      }
+    });
+
+    expect(() => validateContract('x-article-browser-observation', observation))
+      .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
   });
 });

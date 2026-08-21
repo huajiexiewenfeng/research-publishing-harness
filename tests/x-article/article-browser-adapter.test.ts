@@ -93,7 +93,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
       ],
-      editor: { draft_id: '2090731994279755776', title: '', blocks: [], visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: '', blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);
@@ -106,7 +106,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
       ],
-      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: [], visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);
@@ -119,7 +119,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }
       ],
-      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: plan.intent.document.blocks, visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: plan.intent.document.blocks, visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);
