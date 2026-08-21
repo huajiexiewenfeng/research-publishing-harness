@@ -53,6 +53,7 @@ interface AdapterContext {
   readonly approval: XArticleApprovalV1;
   readonly capabilities: XArticleBrowserCapabilityManifestV1;
   readonly import_strategy: XArticleImportStrategy;
+  readonly bulk_import_issued: boolean;
   readonly snapshot: XArticleExecutionSnapshotV1;
   readonly latest_observation: XArticleBrowserObservation | null;
   readonly editor_revision: string | null;
@@ -112,6 +113,7 @@ export class XArticleBrowserAdapter {
     };
     const context: AdapterContext = {
       schema_version: '1.0', plan, approval, capabilities, import_strategy: importStrategy, snapshot,
+      bulk_import_issued: false,
       latest_observation: null, editor_revision: null, preview_revision: null,
       pending_command: null, submit_delivered: false
     };
@@ -389,7 +391,8 @@ export class XArticleBrowserAdapter {
       {
         plan: context.plan,
         draft_id: context.snapshot.draft_id,
-        import_strategy: context.import_strategy
+        import_strategy: context.import_strategy,
+        bulk_import_issued: context.bulk_import_issued
       },
       observation,
       this.contract
@@ -402,6 +405,9 @@ export class XArticleBrowserAdapter {
       context = await this.transition(context, 'content_partially_verified', 'article_editor_prefix_verified');
     } else {
       context = await this.transition(context, 'content_filling', 'article_content_filling_resumed');
+    }
+    if (decision.input.kind === 'import_article_document') {
+      context = { ...context, bulk_import_issued: true };
     }
     return this.issue(context, decision.input);
   }

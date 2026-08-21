@@ -64,6 +64,21 @@ const bulkPlan = createXArticlePublicationPlan({
   ],
   plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
 });
+const bulkCoverAsset = {
+  asset_id: 'bulk-cover', relative_path: 'assets/bulk-cover.png',
+  digest: `sha256:${'6'.repeat(64)}` as const, mime_type: 'image/png' as const,
+  alt_text: 'Bulk Article cover', claim_refs: ['claim_cover']
+};
+const bulkCoverPlan = createXArticlePublicationPlan({
+  planId: 'plan_editor_bulk_cover_1', runId: 'run_editor_bulk_cover_1', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_bulk_cover_1', digest: `sha256:${'7'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Bulk cover boundary', cover_asset_id: bulkCoverAsset.asset_id,
+    blocks: [{ kind: 'paragraph', runs: [{ text: 'Cover must finish uploading.', marks: [], link: null }] }]
+  },
+  visuals: [{ asset: bulkCoverAsset, placement: { kind: 'cover' } }],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
 const draftId = '2090731994279755776';
 
 function revise<T extends { readonly page_revision: string }>(value: T): T {
@@ -136,6 +151,22 @@ describe('nextArticleEditorDecision', () => {
         }
       }
     });
+  });
+
+  it('fails closed when a non-empty document is still empty after bulk import was issued', () => {
+    const emptyAfterIssuedImport = revise({
+      ...emptyArticleEditor,
+      editor: { ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
+      emptyAfterIssuedImport,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
   });
 
   it.each([
@@ -346,6 +377,61 @@ describe('nextArticleEditorDecision', () => {
     )).toMatchObject({
       kind: 'command', input: { kind: 'open_article_preview', payload: { kind: 'open_article_preview' } }
     });
+  });
+
+  it('waits while an exact planned bulk cover is still processing', () => {
+    const processingCover = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkCoverPlan.intent.document.title,
+        blocks: bulkCoverPlan.intent.document.blocks,
+        visuals: [{
+          ref: 'cover_1', asset_id: bulkCoverAsset.asset_id, kind: 'cover' as const,
+          block_ordinal: null, alt_text: bulkCoverAsset.alt_text,
+          status: 'processing' as const, owned_by_execution: true
+        }],
+        import_state: null,
+        autosave_state: 'saved' as const
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkCoverPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
+      processingCover,
+      contract
+    )).toMatchObject({
+      kind: 'command',
+      input: { kind: 'observe_article_page', payload: { kind: 'observe_article_page', scope: 'editor' } }
+    });
+  });
+
+  it('fails closed when an exact planned bulk cover upload has failed', () => {
+    const failedCover = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkCoverPlan.intent.document.title,
+        blocks: bulkCoverPlan.intent.document.blocks,
+        visuals: [{
+          ref: 'cover_1', asset_id: bulkCoverAsset.asset_id, kind: 'cover' as const,
+          block_ordinal: null, alt_text: bulkCoverAsset.alt_text,
+          status: 'failed' as const, owned_by_execution: true
+        }],
+        import_state: null,
+        autosave_state: 'saved' as const
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkCoverPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
+      failedCover,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_ASSET_MISMATCH' });
   });
 });
 

@@ -21,6 +21,7 @@ export interface XArticleEditorContext {
   readonly plan: XArticlePublicationPlanV1;
   readonly draft_id: string;
   readonly import_strategy: XArticleImportStrategy;
+  readonly bulk_import_issued?: boolean;
 }
 
 export type XArticleEditorDecision =
@@ -91,13 +92,21 @@ function nextBulkDocumentDecision(
   const importState = contract.readEditorImportState(observation);
 
   if (importState === null && editor.blocks.length === 0 && editor.visuals.length === 0) {
-    return command(context, observation, 'import_article_document', 'import_article_document', {
-      kind: 'import_article_document',
-      target_ref: contract.detectControl(observation, 'body').ref,
-      package_root: context.plan.intent.article_package.root,
-      package_digest: context.plan.intent.article_package.digest,
-      template
-    });
+    if (context.bulk_import_issued !== true) {
+      return command(context, observation, 'import_article_document', 'import_article_document', {
+        kind: 'import_article_document',
+        target_ref: contract.detectControl(observation, 'body').ref,
+        package_root: context.plan.intent.article_package.root,
+        package_digest: context.plan.intent.article_package.digest,
+        template
+      });
+    }
+    if (document.blocks.length > 0) {
+      return blocked(
+        'ARTICLE_CONTENT_MISMATCH',
+        'issued X Article import produced an empty editor for a non-empty Plan document'
+      );
+    }
   }
 
   if (importState !== null) {
@@ -246,6 +255,14 @@ function nextCoverDecision(
   if (coverBinding !== undefined && observedCover !== undefined) {
     if (!observedCover.owned_by_execution || observedCover.asset_id !== coverBinding.asset.asset_id) {
       return blocked('ARTICLE_ASSET_MISMATCH', 'editor cover differs from the Plan');
+    }
+    if (observedCover.status === 'failed') {
+      return blocked('ARTICLE_ASSET_MISMATCH', 'planned Article cover upload failed');
+    }
+    if (observedCover.status === 'processing') {
+      return command(context, observation, 'wait_for_article_cover_upload', 'observe_article_page', {
+        kind: 'observe_article_page', scope: 'editor'
+      }, 'read');
     }
     if (observedCover.alt_text !== coverBinding.asset.alt_text) {
       return command(context, observation, 'set_cover_alt_text', 'set_article_image_alt', {
