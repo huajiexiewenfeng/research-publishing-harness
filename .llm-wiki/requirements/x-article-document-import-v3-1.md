@@ -113,7 +113,7 @@ The existing incremental `insert_article_block` path remains available when the 
 |---|---|---|---|
 | Source / problem reproduction | complete | Live X editor retained block style across separate paste operations on 2026-08-21 | Lock design |
 | Design | approved | User approved formal Harness capability and continued with the recommended anchor design | Review written Change Brief |
-| Implementation plan | pending | — | Write after Change Brief review |
+| Implementation plan | complete | `.llm-wiki/working-context/x-article-document-import-v3-1-execution-plan.md` | Select execution mode |
 | Development | pending | — | TDD only after plan approval |
 | Verification | pending | Baseline `pnpm test`: 52 files, 230 tests passed | Add focused and full regression evidence |
 | Archive / finish | pending | — | Project Finish after verified browser smoke test |
