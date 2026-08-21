@@ -73,3 +73,32 @@ Focused Task 3 tests are GREEN at 26/26; typecheck, lint, and diff checks are cl
 - Adapter-level title-only import proves the issued marker is persisted before reporting success, survives construction of a new Adapter instance, and advances to Preview without issuing a second import.
 - Protocol-level regression proves a nonzero expected document still observed empty after issuance fails closed.
 - Protocol-level cover regressions prove `processing` waits/observes and `failed` blocks before Preview.
+
+## Remaining Important re-review fix addendum
+
+### Status
+
+`DONE`
+
+### Fixes
+
+- Made `bulk_import_issued` required on `XArticleEditorContext` and gated every bulk post-import transition on an exact true value.
+- Before issuance, only an otherwise empty editor can advance through title setting and then emit `import_article_document`; any observed import state, body block, or visual now blocks with `ARTICLE_CONTENT_MISMATCH`.
+- Preserved marker-true import resume, ordered anchor replacement, zero-block completion, cover handling, autosave waiting, and Preview behavior.
+
+### TDD and verification evidence
+
+- Initial focused invocation inside the sandbox reached a Vite `spawn EPERM` startup error; it was rerun outside the sandbox with the worktree-local `node_modules/.bin` on `PATH`.
+- First RED: 2 files ran; 3 expected regressions failed and 30 existing tests passed. Exact marker-false imported, nonzero final, and zero-block final-with-cover observations returned commands instead of blocking.
+- Second RED: after the post-import guard, 1 expected regression failed and 33 tests passed. A marker-false populated untitled observation still returned `set_article_title` instead of blocking.
+- GREEN: the focused invocation passed 2 files and 34/34 tests.
+- `pnpm typecheck`: exit 0.
+- `pnpm lint`: exit 0.
+- `git diff --check`: exit 0; only existing LF-to-CRLF working-copy warnings were printed.
+
+### Regression coverage
+
+- Marker-false exact imported state cannot issue `replace_article_visual_anchor`.
+- Marker-false exact nonzero final state and exact zero-block final state with an uploaded cover cannot issue `open_article_preview`.
+- Marker-false populated untitled state blocks before title mutation, closing the pre-import gate for every populated observation.
+- Existing marker-true tests continue to cover anchor resume, final Preview, processing/failed covers, and the Adapter's persisted one-import path.

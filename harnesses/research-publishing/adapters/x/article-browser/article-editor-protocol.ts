@@ -21,7 +21,7 @@ export interface XArticleEditorContext {
   readonly plan: XArticlePublicationPlanV1;
   readonly draft_id: string;
   readonly import_strategy: XArticleImportStrategy;
-  readonly bulk_import_issued?: boolean;
+  readonly bulk_import_issued: boolean;
 }
 
 export type XArticleEditorDecision =
@@ -60,6 +60,15 @@ export function nextArticleEditorDecision(
     if (editor.title !== '' && editor.title !== document.title) {
       return blocked('ARTICLE_CONTENT_MISMATCH', 'X Article title differs from the Plan');
     }
+    if (context.import_strategy === 'bulk_document' && context.bulk_import_issued !== true) {
+      const importState = contract.readEditorImportState(observation);
+      if (importState !== null || editor.blocks.length > 0 || editor.visuals.length > 0) {
+        return blocked(
+          'ARTICLE_CONTENT_MISMATCH',
+          'X Article editor contains content before bulk import issuance'
+        );
+      }
+    }
     if (editor.title === '') {
       return command(context, observation, 'set_article_title', 'set_article_title', {
         kind: 'set_article_title',
@@ -91,8 +100,8 @@ function nextBulkDocumentDecision(
   const template = createXArticleImportTemplate(document);
   const importState = contract.readEditorImportState(observation);
 
-  if (importState === null && editor.blocks.length === 0 && editor.visuals.length === 0) {
-    if (context.bulk_import_issued !== true) {
+  if (context.bulk_import_issued !== true) {
+    if (importState === null && editor.blocks.length === 0 && editor.visuals.length === 0) {
       return command(context, observation, 'import_article_document', 'import_article_document', {
         kind: 'import_article_document',
         target_ref: contract.detectControl(observation, 'body').ref,
@@ -101,6 +110,13 @@ function nextBulkDocumentDecision(
         template
       });
     }
+    return blocked(
+      'ARTICLE_CONTENT_MISMATCH',
+      'X Article editor contains content before bulk import issuance'
+    );
+  }
+
+  if (importState === null && editor.blocks.length === 0 && editor.visuals.length === 0) {
     if (document.blocks.length > 0) {
       return blocked(
         'ARTICLE_CONTENT_MISMATCH',

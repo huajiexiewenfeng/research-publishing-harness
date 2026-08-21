@@ -79,6 +79,17 @@ const bulkCoverPlan = createXArticlePublicationPlan({
   visuals: [{ asset: bulkCoverAsset, placement: { kind: 'cover' } }],
   plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
 });
+const zeroBlockBulkCoverPlan = createXArticlePublicationPlan({
+  planId: 'plan_editor_zero_block_bulk_cover_1', runId: 'run_editor_zero_block_bulk_cover_1',
+  targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_zero_block_bulk_cover_1', digest: `sha256:${'8'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Zero-block bulk cover boundary', cover_asset_id: bulkCoverAsset.asset_id,
+    blocks: []
+  },
+  visuals: [{ asset: bulkCoverAsset, placement: { kind: 'cover' } }],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
 const draftId = '2090731994279755776';
 
 function revise<T extends { readonly page_revision: string }>(value: T): T {
@@ -91,7 +102,8 @@ function revise<T extends { readonly page_revision: string }>(value: T): T {
 describe('nextArticleEditorDecision', () => {
   it('sets the title before inserting Article blocks', () => {
     expect(nextArticleEditorDecision(
-      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, emptyArticleEditor, contract
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks', bulk_import_issued: false },
+      emptyArticleEditor, contract
     ))
       .toMatchObject({ kind: 'command', input: { purpose: 'set_article_title', payload: { kind: 'set_article_title' } } });
   });
@@ -102,14 +114,16 @@ describe('nextArticleEditorDecision', () => {
       editor: { ...emptyArticleEditor.editor!, title: plan.intent.document.title }
     });
     expect(nextArticleEditorDecision(
-      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, titleOnly, contract
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks', bulk_import_issued: false },
+      titleOnly, contract
     ))
       .toMatchObject({ kind: 'command', input: { purpose: 'insert_article_block_1', payload: { kind: 'insert_article_block', block_ordinal: 1 } } });
   });
 
   it('opens Preview only after the full editor document is saved and verified', () => {
     expect(nextArticleEditorDecision(
-      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, populatedArticleEditor, contract
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks', bulk_import_issued: false },
+      populatedArticleEditor, contract
     ))
       .toMatchObject({ kind: 'command', input: { purpose: 'open_article_preview', payload: { kind: 'open_article_preview' } } });
   });
@@ -126,7 +140,8 @@ describe('nextArticleEditorDecision', () => {
       }
     });
     expect(nextArticleEditorDecision(
-      { plan, draft_id: draftId, import_strategy: 'incremental_blocks' }, conflict, contract
+      { plan, draft_id: draftId, import_strategy: 'incremental_blocks', bulk_import_issued: false },
+      conflict, contract
     ))
       .toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
   });
@@ -138,7 +153,11 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, titleOnly, contract
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      titleOnly, contract
     )).toMatchObject({
       kind: 'command',
       input: {
@@ -165,6 +184,105 @@ describe('nextArticleEditorDecision', () => {
         bulk_import_issued: true
       },
       emptyAfterIssuedImport,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it('blocks an exact imported state before bulk import issuance', () => {
+    const template = createXArticleImportTemplate(bulkPlan.intent.document);
+    const importedWithThreeAnchors = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        }
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      importedWithThreeAnchors,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it('blocks populated untitled content before bulk import issuance', () => {
+    const populatedUntitledEditor = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        blocks: [{
+          kind: 'paragraph' as const,
+          runs: [{ text: 'Unexpected content', marks: [] as const, link: null }]
+        }]
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      populatedUntitledEditor,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it('blocks an exact nonzero final document before bulk import issuance', () => {
+    const finalEditor = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: bulkPlan.intent.document.title,
+        blocks: bulkPlan.intent.document.blocks,
+        visuals: bulkAssets.map((asset, index) => ({
+          ref: `visual_${index + 1}`, asset_id: asset.asset_id, kind: 'inline' as const,
+          block_ordinal: [19, 21, 22][index]!, alt_text: asset.alt_text,
+          status: 'uploaded' as const, owned_by_execution: true
+        })),
+        import_state: null,
+        autosave_state: 'saved' as const
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      finalEditor,
+      contract
+    )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
+  });
+
+  it('blocks an exact zero-block final document with cover before bulk import issuance', () => {
+    const finalEditor = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!, title: zeroBlockBulkCoverPlan.intent.document.title,
+        blocks: [],
+        visuals: [{
+          ref: 'cover_1', asset_id: bulkCoverAsset.asset_id, kind: 'cover' as const,
+          block_ordinal: null, alt_text: bulkCoverAsset.alt_text,
+          status: 'uploaded' as const, owned_by_execution: true
+        }],
+        import_state: null,
+        autosave_state: 'saved' as const
+      }
+    });
+
+    expect(nextArticleEditorDecision(
+      {
+        plan: zeroBlockBulkCoverPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      finalEditor,
       contract
     )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
   });
@@ -203,7 +321,11 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, observation, contract
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: false
+      },
+      observation, contract
     )).toMatchObject({ kind: 'blocked' });
   });
 
@@ -223,7 +345,10 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
       importedWithThreeAnchors,
       contract
     )).toMatchObject({
@@ -258,7 +383,10 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
       importedWithWrongAnchorOrder,
       contract
     )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
@@ -283,7 +411,10 @@ describe('nextArticleEditorDecision', () => {
       });
 
       expect(nextArticleEditorDecision(
-        { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+        {
+          plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+          bulk_import_issued: true
+        },
         importedWithWrongDigest,
         contract
       )).toMatchObject({ kind: 'blocked', code: 'ARTICLE_CONTENT_MISMATCH' });
@@ -314,7 +445,10 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
       afterFirstReplacement,
       contract
     )).toMatchObject({
@@ -350,7 +484,10 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' },
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
       importedWithNoAnchors,
       contract
     )).not.toMatchObject({ input: { kind: 'open_article_preview' } });
@@ -373,7 +510,11 @@ describe('nextArticleEditorDecision', () => {
     });
 
     expect(nextArticleEditorDecision(
-      { plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document' }, finalEditor, contract
+      {
+        plan: bulkPlan, draft_id: draftId, import_strategy: 'bulk_document',
+        bulk_import_issued: true
+      },
+      finalEditor, contract
     )).toMatchObject({
       kind: 'command', input: { kind: 'open_article_preview', payload: { kind: 'open_article_preview' } }
     });
