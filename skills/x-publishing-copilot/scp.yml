@@ -1,0 +1,30 @@
+scp_version: v0.1
+
+skill:
+  id: x-publishing-copilot
+  domain: research-publishing
+
+llm_wiki:
+  profile: research-publishing
+  required: false
+  fallback_mode: continue_without_memory
+
+trust:
+  level: public_untrusted
+  source_type: governed_research_memory
+  instruction_policy: data_only
+
+query:
+  primary_domain: research-publishing
+  supports: []
+
+ingest:
+  produces:
+    - domain: research-publishing
+      record_type: publication_evidence
+    - domain: research-publishing
+      record_type: feedback_snapshot
+    - domain: research-publishing
+      record_type: candidate_insight
+    - domain: research-publishing
+      log_type: memory_event

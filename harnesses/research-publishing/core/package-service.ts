@@ -1,6 +1,7 @@
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
 import { runEvidenceGate, runPrivacyGate, runResearchGate } from './gates.js';
+import { validatePackageMemoryBinding } from './memory-package.js';
 import { validateContract } from './schema-validator.js';
 import type { Candidate, ResearchContentPackage, ReviewReport } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
@@ -56,11 +57,11 @@ export class PackageService {
     if (packageValue.status !== 'draft') {
       throw new HarnessError('STATE_TRANSITION_INVALID', 'a new package must begin in draft state');
     }
-    const valid = validateContract<ResearchContentPackage>('research-content-package', {
+    const valid = validatePackageMemoryBinding(validateContract<ResearchContentPackage>('research-content-package', {
       ...packageValue,
       status: 'evidence_ready',
       updated_at: this.now().toISOString()
-    });
+    }));
     const research = runResearchGate(valid);
     if (!research.passed) {
       throw new HarnessError('RESEARCH_GATE_BLOCKED', 'research gate blocked package', research.findings);
@@ -76,6 +77,7 @@ export class PackageService {
     if (packageValue.status !== 'evidence_ready') {
       throw new HarnessError('STATE_TRANSITION_INVALID', 'only an evidence-ready package may be reviewed');
     }
+    validatePackageMemoryBinding(packageValue);
     const gates = [
       runResearchGate(packageValue),
       runEvidenceGate(packageValue),
@@ -84,12 +86,12 @@ export class PackageService {
     const findings = gates.flatMap((gate) => gate.findings);
     const passed = gates.every((gate) => gate.passed);
     const reviewedAt = this.now().toISOString();
-    const nextPackage = validateContract<ResearchContentPackage>('research-content-package', {
+    const nextPackage = validatePackageMemoryBinding(validateContract<ResearchContentPackage>('research-content-package', {
       ...packageValue,
       version: packageValue.version + 1,
       status: 'reviewed',
       updated_at: reviewedAt
-    });
+    }));
     const report = validateContract<ReviewReport>('review-report', {
       schema_version: '1.0',
       run_id: `package:${packageValue.package_id}:v${nextPackage.version}`,
@@ -121,12 +123,13 @@ export class PackageService {
     if (packageValue.status !== 'reviewed') {
       throw new HarnessError('STATE_TRANSITION_INVALID', 'only a reviewed package may freeze');
     }
-    const frozen = validateContract<ResearchContentPackage>('research-content-package', {
+    validatePackageMemoryBinding(packageValue);
+    const frozen = validatePackageMemoryBinding(validateContract<ResearchContentPackage>('research-content-package', {
       ...packageValue,
       version: packageValue.version + 1,
       status: 'frozen',
       updated_at: this.now().toISOString()
-    });
+    }));
     const digest = sha256(frozen);
     await this.store.writeNew(this.packagePath(frozen), frozen);
     await this.store.writeNew(this.digestPath(frozen), `${digest}\n`);

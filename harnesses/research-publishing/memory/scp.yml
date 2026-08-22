@@ -1,0 +1,34 @@
+scp_version: v0.1
+
+skill:
+  id: research-publishing-harness-memory
+  domain: research-publishing
+
+llm_wiki:
+  profile: research-publishing
+  required: true
+  fallback_mode: fail_closed
+
+trust:
+  level: internal_sensitive
+  source_type: harness_generated
+  instruction_policy: data_only
+
+query:
+  primary_domain: research-publishing
+  supports: []
+
+ingest:
+  produces:
+    - domain: research-publishing
+      record_type: publication_evidence
+    - domain: research-publishing
+      record_type: feedback_snapshot
+    - domain: research-publishing
+      record_type: candidate_insight
+    - domain: research-publishing
+      artifact_type: publication_receipt
+    - domain: research-publishing
+      artifact_type: memory_ingest_receipt
+    - domain: research-publishing
+      log_type: memory_event

@@ -1,0 +1,48 @@
+profile:
+  id: research-publishing
+  version: v0.1
+  display_name: Research Publishing Memory
+  scope_type: research_workspace
+  privacy_default: sensitive_local
+
+layout:
+  directories:
+    - domains/research-publishing/tracks
+    - sources/originals/research-publishing
+    - artifacts
+    - logs
+
+write_rules:
+  records:
+    publication_evidence:
+      path: domains/research-publishing/tracks/{research_track}/publications/{publication_id}.md
+      mode: create_only
+      required_vars: [research_track, publication_id]
+      required_refs: [source_id]
+    feedback_snapshot:
+      path: domains/research-publishing/tracks/{research_track}/feedback/{feedback_id}.md
+      mode: create_only
+      required_vars: [research_track, feedback_id]
+      required_refs: [source_id, publication_id]
+    candidate_insight:
+      path: domains/research-publishing/tracks/{research_track}/insights/{insight_id}.md
+      mode: create_only
+      required_vars: [research_track, insight_id]
+      required_refs: [source_id, feedback_id]
+
+logs:
+  types:
+    memory_event:
+      path: logs/research-publishing-memory-event.jsonl
+      mode: append_only
+
+read_rules:
+  context_pack:
+    include: [domains/research-publishing/**]
+    exclude: [sources/originals/**, .meta/**]
+    order: path_asc
+    max_files: 30
+    max_chars_per_file: 4000
+
+artifacts:
+  types: [publication_receipt, memory_ingest_receipt]

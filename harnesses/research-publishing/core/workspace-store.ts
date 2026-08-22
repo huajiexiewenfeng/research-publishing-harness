@@ -11,6 +11,7 @@ const ALLOWED_TOP_LEVEL = new Set([
   'candidates',
   'exports',
   'feedback',
+  'memory',
   'packages',
   'receipts',
   'reviews',
@@ -230,6 +231,47 @@ export class WorkspaceStore {
       throw new HarnessError('VISUAL_PATH_OUTSIDE_PACKAGE', `visual asset escapes workspace: ${normalized}`);
     }
     return realFile;
+  }
+
+  async resolveExistingArtifact(
+    relativePath: string
+  ): Promise<ArtifactRef & { readonly absolute_path: string }> {
+    const { absolutePath, normalized } = this.resolveAllowed(relativePath);
+    const segments = normalized.split('/');
+    let current = this.root;
+    for (const segment of segments) {
+      current = resolve(current, segment);
+      const metadata = await lstat(current).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') {
+          throw new HarnessError('ARTIFACT_NOT_FOUND', `artifact not found: ${normalized}`);
+        }
+        throw error;
+      });
+      if (metadata.isSymbolicLink()) {
+        throw new HarnessError('WORKSPACE_PATH_INVALID', `artifact path contains a link: ${normalized}`);
+      }
+    }
+
+    const metadata = await lstat(absolutePath);
+    if (!metadata.isFile()) {
+      throw new HarnessError('WORKSPACE_PATH_INVALID', `artifact is not a regular file: ${normalized}`);
+    }
+    const [realRoot, realFile] = await Promise.all([realpath(this.root), realpath(absolutePath)]);
+    const relativeToRoot = relative(realRoot, realFile);
+    if (
+      relativeToRoot === '..' ||
+      relativeToRoot.startsWith(`..${sep}`) ||
+      isAbsolute(relativeToRoot)
+    ) {
+      throw new HarnessError('WORKSPACE_PATH_INVALID', `artifact escapes workspace: ${normalized}`);
+    }
+    const bytes = await readFile(realFile);
+    return {
+      relative_path: normalized,
+      absolute_path: realFile,
+      digest: sha256Bytes(bytes),
+      bytes: bytes.length
+    };
   }
 
   async readJson<T>(relativePath: string): Promise<T> {

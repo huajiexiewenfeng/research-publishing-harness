@@ -1,0 +1,13 @@
+mapping:
+  id: research-publishing-memory
+  version: v0.1
+  domain: research-publishing
+  owner_skill_id: research-publishing-harness-memory
+  source_types: [publication_checkpoint, feedback_insight]
+  instruction_ref: docs/guides/memory-loop.md
+
+produces:
+  - record_type: publication_evidence
+  - record_type: feedback_snapshot
+  - record_type: candidate_insight
+  - log_type: memory_event

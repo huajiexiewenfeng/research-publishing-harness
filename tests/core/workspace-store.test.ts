@@ -1,6 +1,6 @@
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +8,44 @@ import type { HarnessError } from '../../harnesses/research-publishing/core/erro
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
 describe('WorkspaceStore', () => {
+  it('contains memory artifacts but never exposes .llm-wiki', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'rph-memory-boundary-'));
+    const store = await WorkspaceStore.open(root);
+
+    await expect(store.writeNew('memory/queries/q1/plan.json', { ok: true })).resolves.toMatchObject({
+      relative_path: 'memory/queries/q1/plan.json'
+    });
+    await expect(store.writeNew('.llm-wiki/domains/research-publishing/x.md', 'forbidden'))
+      .rejects.toMatchObject({ code: 'WORKSPACE_PATH_INVALID' });
+
+    const artifact = await store.resolveExistingArtifact('memory/queries/q1/plan.json');
+    expect(artifact).toMatchObject({
+      relative_path: 'memory/queries/q1/plan.json',
+      absolute_path: resolve(root, 'memory/queries/q1/plan.json')
+    });
+    expect(artifact.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(artifact.bytes).toBeGreaterThan(0);
+  });
+
+  it('refuses to resolve missing, directory, or linked memory artifacts', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-memory-resolve-'));
+    const root = join(parent, 'workspace');
+    const store = await WorkspaceStore.open(root);
+    const outside = join(parent, 'outside');
+    await mkdir(outside);
+    await writeFile(join(outside, 'source.json'), '{}', 'utf8');
+    await symlink(outside, join(root, 'memory', 'outside-link'), 'junction');
+
+    await expect(store.resolveExistingArtifact('memory/missing.json')).rejects.toMatchObject({
+      code: 'ARTIFACT_NOT_FOUND'
+    });
+    await expect(store.resolveExistingArtifact('memory')).rejects.toMatchObject({
+      code: 'WORKSPACE_PATH_INVALID'
+    });
+    await expect(store.resolveExistingArtifact('memory/outside-link/source.json')).rejects.toMatchObject({
+      code: 'WORKSPACE_PATH_INVALID'
+    });
+  });
   it('installs a complete directory atomically and refuses replacement or traversal', async () => {
     const root = await mkdtemp(join(tmpdir(), 'rph-workspace-directory-'));
     const store = await WorkspaceStore.open(root);

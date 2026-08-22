@@ -27,6 +27,10 @@ interface ResearchPackageLike {
   readonly claims: readonly ClaimLike[];
   readonly evidence: readonly EvidenceLike[];
   readonly sources: readonly SourceLike[];
+  readonly memory_context?: {
+    readonly status: string;
+    readonly context_refs: readonly string[];
+  };
 }
 
 interface PublicationRequestLike {
@@ -130,13 +134,16 @@ export function runEvidenceGate(packageValue: ResearchPackageLike): GateResult {
         continue;
       }
       const source = sourceById.get(evidence.source_ref);
-      if (source === undefined) {
+      const isAppliedMemory =
+        packageValue.memory_context?.status === 'applied' &&
+        packageValue.memory_context.context_refs.includes(evidence.source_ref);
+      if (source === undefined && !isAppliedMemory) {
         findings.push({
           code: 'SOURCE_REFERENCE_INVALID',
           severity: 'error',
           message: `evidence ${evidenceRef} references missing source ${evidence.source_ref}`
         });
-      } else if (source.publication_policy === 'internal_only') {
+      } else if (source?.publication_policy === 'internal_only') {
         findings.push({
           code: 'INTERNAL_ONLY_CLAIM',
           severity: 'error',
