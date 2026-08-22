@@ -34,3 +34,9 @@
 - fresh `pnpm check` 通过 ESLint、typecheck、build、52 个测试文件 / 230 项测试和离线 acceptance；输出 `x_article:"simulated_complete"`、`network:"unused"`、X Article Publish 命令数 1。
 - 只读 Chrome smoke 复用 `@Glen56121` 登录态，验证 Articles 入口、既有空草稿 ID 和编辑器控件；未输入、上传、创建第二草稿或发布。
 - V3 development 标记 done，testing 标记 `passed-agent-local`，20 条验收证据与 handoff 已归档；未执行 push/PR。
+
+## 2026-08-22
+
+- 用户批准 V2.2 LLM Wiki Memory Adapter 完整规格，并明确要求按设计完成开发。
+- 通过只读跨项目边界检查核对 `llm-wiki-runtime` 0.2.0 的 JSON CLI、Profile、SCP 与 Mapping 契约；远端源码 commit 为 `1ebcb04b9cb6ecd129af0386f59e469a2f2853ac`。
+- 手工登记 source-verified dependency `edge-001`，并创建 cross-ref `llm-wiki-runtime`；未修改远端项目。

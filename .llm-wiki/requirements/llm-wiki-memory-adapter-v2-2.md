@@ -3,7 +3,7 @@
 ## Summary
 
 - title: Design controlled research-memory loop through llm-wiki-runtime
-- status: design-approved
+- status: executing
 - flow_id: `llm-wiki-memory-adapter-v2-2`
 
 ## Routing
@@ -13,7 +13,7 @@
 - secondary_bridges: `brainstorming`, `llm-wiki-core`, `project-graph-human-edge`
 - confidence: high
 - reason: V2.1 已明确预留 SCP Query/Ingest 连接点；用户确认下一阶段优先设计 LLM Wiki Memory Adapter，并要求形成 Skill + Harness + Runtime 的可持续 RSI 闭环。
-- next_gate: 实施计划需要用户另行明确授权
+- next_gate: 按已确认实施计划执行 Task 1 的 RED/GREEN
 
 ## Sources
 
@@ -21,7 +21,7 @@
 - `docs/superpowers/specs/2026-08-20-visual-publishing-v2-1-design.zh-CN.md`
 - `docs/superpowers/specs/2026-08-21-x-article-browser-publishing-v3-design.zh-CN.md`
 - `docs/architecture/research-publishing-harness-design.zh-CN.md`
-- source-verified local runtime: `D:/tmp/github/llm-wiki-runtime`
+- source-verified runtime project: `llm-wiki-runtime` via `edge-001`
 - runtime contracts: `llm-wiki-profile.yml`, `scp.yml`, `ingest-mapping.yml` and the `llm-wiki` JSON CLI
 
 ## Requirement Summary
@@ -86,6 +86,12 @@
 - 不自动抓取、回复、编辑、删除或重新发布 X 内容。
 - 不在首版提供跨设备、团队或云端记忆。
 
+## Plan
+
+- active_plan: `docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md`
+- status: confirmed
+- evidence: 用户明确要求“按照设计文档，开发完成 V2.2 版本”；计划已按批准规格和 source-verified `edge-001` 自审。
+
 ## Verification Plan
 
 - Contract：Research Content Package 1.0/1.1 version dispatch，以及 Query Plan、Context Snapshot、Feedback Snapshot、Candidate Insight、Ingest Plan/Approval/Receipt 的 schema、digest 和兼容验证。
@@ -99,10 +105,16 @@
 
 ## External Dependencies
 
-- cross-project runtime: `llm-wiki-runtime`
-- relationship: `research-publishing-harness` consumes the stable JSON CLI and Profile/SCP/Mapping contracts; it does not copy runtime storage logic.
-- evidence: 依赖已经从本地源仓库核对，但 Project Graph edge/pin/registry 仍应在规格确认或实施前正式登记。
-- version policy: 实施计划必须选择兼容范围或固定版本，并增加 runtime doctor/preflight；不能默默使用任意 PATH 中同名程序。
+- project-id: `llm-wiki-runtime`
+- edge_id: `edge-001`
+- dependency_type: `dependency`
+- required_contract: Runtime `0.2.0` JSON CLI commands plus Profile/SCP/Mapping `v0.1`; Harness does not copy runtime storage logic.
+- evidence: current-project approved V2.2 design plus remote `pyproject.toml`, `llm_wiki_runtime/cli.py`, examples and guides at commit `1ebcb04b9cb6ecd129af0386f59e469a2f2853ac`.
+- verification_status: `source-verified`
+- derived_staleness: `fresh`
+- impact_on_change: Runtime executable discovery, version/capability preflight, Query and Ingest orchestration must conform to the verified command surface.
+- fallback_or_handoff: Query may report `memory_unavailable`; Ingest fails closed. Remote project changes require a separate handoff and are outside this Flow.
+- version policy: implementation locks expected runtime version `0.2.0` and command allow-list; it never silently uses an arbitrary same-named program from PATH.
 
 ## Flow Record
 
@@ -110,12 +122,11 @@
 |---|---|---|---|
 | source | done | V2.1 section 24、V3 基线及本地 llm-wiki-runtime 源码契约 | 2026-08-22 |
 | design | done-approved | 用户于 2026-08-22 确认；`docs/superpowers/specs/2026-08-22-llm-wiki-memory-adapter-v2-2-design.zh-CN.md` | 2026-08-22 |
-| plan | not-started | 必须等待用户确认书面规格 | 2026-08-22 |
-| development | not-started | 无 | 2026-08-22 |
+| plan | done | `docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md` | 2026-08-22 |
+| development | active | Task 1: Contracts and Package 1.1 | 2026-08-22 |
 | testing | not-started | 规格中已定义验证矩阵 | 2026-08-22 |
 | archive | not-started | 实施和验证完成后生成 handoff | 2026-08-22 |
 
 ## Open Questions
 
-- 进入实施前，是否立即登记 `research-publishing-harness -> llm-wiki-runtime` Project Graph dependency edge。
 - 第一版真实 Publishing Workspace 的位置应由用户显式选择；不得默认使用源码仓库根目录。
