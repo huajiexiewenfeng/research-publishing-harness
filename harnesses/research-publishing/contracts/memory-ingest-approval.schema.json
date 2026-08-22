@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/memory-ingest-approval/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "ingest_plan_digest", "workspace_identity_digest", "target_domain", "target_profile", "approved_action", "approved_by", "approved_at", "expires_at", "approval_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-ingest-approval/v1" }, "approval_id": { "$ref": "#/$defs/text" }, "ingest_plan_digest": { "$ref": "#/$defs/digest" }, "workspace_identity_digest": { "$ref": "#/$defs/digest" },
+    "target_domain": { "const": "research-publishing" }, "target_profile": { "const": "research-publishing" }, "approved_action": { "const": "ingest_confirmed" }, "approved_by": { "$ref": "#/$defs/text" },
+    "approved_at": { "type": "string", "format": "date-time" }, "expires_at": { "type": "string", "format": "date-time" }, "approval_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": { "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }
+}

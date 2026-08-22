@@ -25,7 +25,14 @@ export const CONTRACT_NAMES = [
   'x-article-browser-observation',
   'x-article-browser-command',
   'x-article-execution-event',
-  'x-article-publish-receipt'
+  'x-article-publish-receipt',
+  'memory-query-plan',
+  'context-snapshot',
+  'publication-feedback-snapshot',
+  'candidate-insight-proposal',
+  'memory-ingest-plan',
+  'memory-ingest-approval',
+  'memory-ingest-receipt'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];
@@ -87,8 +94,7 @@ export interface Candidate {
   readonly captured_at: string;
 }
 
-export interface ResearchContentPackage {
-  readonly schema_version: '1.0';
+interface ResearchContentPackageBase {
   readonly package_id: string;
   readonly version: number;
   readonly status: PackageState;
@@ -141,6 +147,17 @@ export interface ResearchContentPackage {
   readonly created_at: string;
   readonly updated_at: string;
 }
+
+export interface ResearchContentPackageV1_0 extends ResearchContentPackageBase {
+  readonly schema_version: '1.0';
+}
+
+export interface ResearchContentPackageV1_1 extends ResearchContentPackageBase {
+  readonly schema_version: '1.1';
+  readonly memory_context: import('./memory-types.js').MemoryContextV1;
+}
+
+export type ResearchContentPackage = ResearchContentPackageV1_0 | ResearchContentPackageV1_1;
 
 export interface ReviewReport {
   readonly schema_version: '1.0';

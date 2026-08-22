@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/memory-ingest-plan/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "ingest_id", "ingest_kind", "research_track", "source_publication_receipt_digest", "source_feedback_snapshot_digest", "candidate_insight_digests", "target_domain", "target_profile", "workspace_identity_digest", "runtime_version", "record_operations", "source_artifact", "artifact_operation", "log_event", "mapping_digest", "profile_digest", "scp_digest", "action", "plan_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-ingest-plan/v1" }, "ingest_id": { "$ref": "#/$defs/text" }, "ingest_kind": { "enum": ["publication_checkpoint", "feedback_insight"] }, "research_track": { "$ref": "#/$defs/text" },
+    "source_publication_receipt_digest": { "$ref": "#/$defs/digest" }, "source_feedback_snapshot_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] }, "candidate_insight_digests": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } },
+    "target_domain": { "const": "research-publishing" }, "target_profile": { "const": "research-publishing" }, "workspace_identity_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "const": "0.2.0" },
+    "record_operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/recordOperation" } }, "source_artifact": { "$ref": "#/$defs/artifactRef" },
+    "artifact_operation": { "type": "object", "additionalProperties": false, "required": ["artifact_type", "artifact_id"], "properties": { "artifact_type": { "enum": ["publication_receipt", "memory_ingest_receipt"] }, "artifact_id": { "$ref": "#/$defs/text" } } },
+    "log_event": { "type": "object", "additionalProperties": false, "required": ["log_type", "event_id"], "properties": { "log_type": { "const": "memory_event" }, "event_id": { "$ref": "#/$defs/text" } } },
+    "mapping_digest": { "$ref": "#/$defs/digest" }, "profile_digest": { "$ref": "#/$defs/digest" }, "scp_digest": { "$ref": "#/$defs/digest" }, "action": { "const": "ingest_confirmed" }, "plan_digest": { "$ref": "#/$defs/digest" }
+  },
+  "allOf": [
+    { "if": { "properties": { "ingest_kind": { "const": "publication_checkpoint" } } }, "then": { "properties": { "source_feedback_snapshot_digest": { "type": "null" }, "candidate_insight_digests": { "type": "array", "maxItems": 0 } } } },
+    { "if": { "properties": { "ingest_kind": { "const": "feedback_insight" } } }, "then": { "properties": { "source_feedback_snapshot_digest": { "$ref": "#/$defs/digest" }, "candidate_insight_digests": { "type": "array", "minItems": 1 } } } }
+  ],
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["relative_path", "digest"], "properties": { "relative_path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "recordOperation": { "type": "object", "additionalProperties": false, "required": ["operation_id", "record_type", "variables", "refs", "content_artifact"], "properties": { "operation_id": { "$ref": "#/$defs/text" }, "record_type": { "enum": ["publication_evidence", "feedback_snapshot", "candidate_insight"] }, "variables": { "$ref": "#/$defs/stringMap" }, "refs": { "$ref": "#/$defs/stringMap" }, "content_artifact": { "$ref": "#/$defs/artifactRef" } } }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/context-snapshot/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "query_plan_digest", "runtime_version", "status", "items", "excluded_count", "truncated_count", "total_chars", "snapshot_digest"],
+  "properties": {
+    "schema_version": { "const": "context-snapshot/v1" },
+    "snapshot_id": { "type": "string", "minLength": 1 },
+    "query_plan_digest": { "$ref": "#/$defs/digest" },
+    "runtime_version": { "enum": ["0.2.0", null] },
+    "status": { "enum": ["loaded", "empty", "unavailable", "failed"] },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "excluded_count": { "type": "integer", "minimum": 0 },
+    "truncated_count": { "type": "integer", "minimum": 0 },
+    "total_chars": { "type": "integer", "minimum": 0 },
+    "snapshot_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordinal", "context_ref", "relative_path", "content_checksum", "excerpt_checksum", "excerpt", "classification", "sanitized", "risk_flags"],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1 }, "context_ref": { "type": "string", "minLength": 1 }, "relative_path": { "type": "string", "minLength": 1 },
+        "content_checksum": { "$ref": "#/$defs/digest" }, "excerpt_checksum": { "$ref": "#/$defs/digest" }, "excerpt": { "type": "string" },
+        "classification": { "const": "data_only" }, "sanitized": { "type": "boolean" },
+        "risk_flags": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

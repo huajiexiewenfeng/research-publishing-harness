@@ -61,7 +61,7 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(normalize(value, new Set<object>()));
 }
 
-export function sha256(value: unknown): string {
+export function sha256(value: unknown): `sha256:${string}` {
   return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
 }
 

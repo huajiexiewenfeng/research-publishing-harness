@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/publication-feedback-snapshot/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "feedback_snapshot_id", "publication_receipt_id", "publication_receipt_digest", "publication_kind", "public_url", "account", "observed_at", "selection_actor", "selection_reason", "entries", "snapshot_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-feedback-snapshot/v1" }, "feedback_snapshot_id": { "$ref": "#/$defs/text" }, "publication_receipt_id": { "$ref": "#/$defs/text" }, "publication_receipt_digest": { "$ref": "#/$defs/digest" },
+    "publication_kind": { "enum": ["x_single", "x_thread", "x_reply", "x_article", "article"] }, "public_url": { "type": "string", "format": "uri" }, "account": { "$ref": "#/$defs/text" }, "observed_at": { "type": "string", "format": "date-time" },
+    "selection_actor": { "$ref": "#/$defs/text" }, "selection_reason": { "$ref": "#/$defs/text" }, "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }, "snapshot_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "entry": { "type": "object", "additionalProperties": false, "required": ["ordinal", "public_url", "platform_id", "author", "observed_text", "observed_text_checksum", "observed_metrics", "data_classification"],
+      "properties": { "ordinal": { "type": "integer", "minimum": 1 }, "public_url": { "type": "string", "format": "uri" }, "platform_id": { "$ref": "#/$defs/text" }, "author": { "$ref": "#/$defs/text" }, "observed_text": { "$ref": "#/$defs/text" }, "observed_text_checksum": { "$ref": "#/$defs/digest" }, "observed_metrics": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } }, "data_classification": { "const": "data_only" } }
+    }
+  }
+}

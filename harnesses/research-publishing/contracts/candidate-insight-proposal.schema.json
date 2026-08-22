@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/candidate-insight-proposal/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "proposal_id", "research_track", "insight_type", "proposition", "source_refs", "affected_claim_refs", "evidence_strength", "confidence", "boundary_note", "alternative_explanations", "recommended_disposition", "created_by_skill", "proposal_digest"],
+  "properties": {
+    "schema_version": { "const": "candidate-insight-proposal/v1" }, "proposal_id": { "$ref": "#/$defs/text" }, "research_track": { "$ref": "#/$defs/text" },
+    "insight_type": { "enum": ["counterexample", "research_question", "claim_candidate", "audience_signal", "format_signal", "visual_signal"] }, "proposition": { "$ref": "#/$defs/text" },
+    "source_refs": { "$ref": "#/$defs/textArray" }, "affected_claim_refs": { "$ref": "#/$defs/textArray" }, "evidence_strength": { "enum": ["anecdotal", "repeated_observation", "reproducible"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }, "boundary_note": { "$ref": "#/$defs/text" }, "alternative_explanations": { "$ref": "#/$defs/textArray" },
+    "recommended_disposition": { "enum": ["investigate", "preserve_as_signal", "reject", "defer"] }, "created_by_skill": { "enum": ["article-publishing-copilot", "x-publishing-copilot"] }, "proposal_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": { "text": { "type": "string", "minLength": 1 }, "textArray": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }
+}

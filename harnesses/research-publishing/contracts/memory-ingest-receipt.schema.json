@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "rph://contracts/memory-ingest-receipt/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "ingest_plan_digest", "approval_digest", "runtime_version", "status", "steps", "records", "log_event_ref", "resume_cursor", "receipt_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-ingest-receipt/v1" }, "receipt_id": { "$ref": "#/$defs/text" }, "ingest_plan_digest": { "$ref": "#/$defs/digest" }, "approval_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "const": "0.2.0" },
+    "status": { "enum": ["succeeded", "already_exists", "partial", "failed"] }, "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }, "records": { "type": "array", "items": { "$ref": "#/$defs/artifactRef" } },
+    "log_event_ref": { "type": ["string", "null"] }, "resume_cursor": { "anyOf": [{ "$ref": "#/$defs/stepName" }, { "type": "null" }] }, "receipt_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "stepName": { "enum": ["validate_mapping", "copy_source", "write_records", "register_artifact", "append_log"] },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["relative_path", "digest"], "properties": { "relative_path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "step": { "type": "object", "additionalProperties": false, "required": ["name", "status", "artifact_ref", "checksum", "error_code"], "properties": { "name": { "$ref": "#/$defs/stepName" }, "status": { "enum": ["pending", "succeeded", "already_exists", "failed"] }, "artifact_ref": { "type": ["string", "null"] }, "checksum": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] }, "error_code": { "type": ["string", "null"] } } }
+  }
+}

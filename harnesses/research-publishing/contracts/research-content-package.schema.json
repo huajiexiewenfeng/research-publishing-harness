@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "rph://contracts/research-content-package/1.0",
+  "$id": "rph://contracts/research-content-package/1.1",
   "title": "Research Content Package",
   "type": "object",
   "additionalProperties": false,
@@ -25,7 +25,7 @@
     "updated_at"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "enum": ["1.0", "1.1"] },
     "package_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
     "version": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["draft", "evidence_ready", "reviewed", "frozen"] },
@@ -42,9 +42,75 @@
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "privacy": { "$ref": "#/$defs/privacy" },
     "created_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time" }
+    "updated_at": { "type": "string", "format": "date-time" },
+    "memory_context": { "$ref": "#/$defs/memoryContext" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "schema_version": { "const": "1.0" } }, "required": ["schema_version"] },
+      "then": { "properties": { "memory_context": false } }
+    },
+    {
+      "if": { "properties": { "schema_version": { "const": "1.1" } }, "required": ["schema_version"] },
+      "then": { "properties": { "memory_context": { "$ref": "#/$defs/memoryContext" } }, "required": ["memory_context"] }
+    }
+  ],
   "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "memoryContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_plan_digest", "context_snapshot_digest", "context_refs", "status", "reviewer", "reviewed_at"],
+      "properties": {
+        "query_plan_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "context_snapshot_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "context_refs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "status": { "enum": ["applied", "reviewed_not_applied", "memory_unavailable", "not_configured"] },
+        "reviewer": { "type": ["string", "null"] },
+        "reviewed_at": { "anyOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }] }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "status": { "const": "applied" },
+            "query_plan_digest": { "$ref": "#/$defs/digest" },
+            "context_snapshot_digest": { "$ref": "#/$defs/digest" },
+            "context_refs": { "type": "array", "minItems": 1 },
+            "reviewer": { "type": "string", "minLength": 1 },
+            "reviewed_at": { "type": "string", "format": "date-time" }
+          }
+        },
+        {
+          "properties": {
+            "status": { "const": "reviewed_not_applied" },
+            "query_plan_digest": { "$ref": "#/$defs/digest" },
+            "context_snapshot_digest": { "$ref": "#/$defs/digest" },
+            "context_refs": { "type": "array", "maxItems": 0 },
+            "reviewer": { "type": "string", "minLength": 1 },
+            "reviewed_at": { "type": "string", "format": "date-time" }
+          }
+        },
+        {
+          "properties": {
+            "status": { "const": "memory_unavailable" },
+            "context_snapshot_digest": { "type": "null" },
+            "context_refs": { "type": "array", "maxItems": 0 },
+            "reviewer": { "type": "string", "minLength": 1 },
+            "reviewed_at": { "type": "string", "format": "date-time" }
+          }
+        },
+        {
+          "properties": {
+            "status": { "const": "not_configured" },
+            "query_plan_digest": { "type": "null" },
+            "context_snapshot_digest": { "type": "null" },
+            "context_refs": { "type": "array", "maxItems": 0 },
+            "reviewer": { "type": "null" },
+            "reviewed_at": { "type": "null" }
+          }
+        }
+      ]
+    },
     "claimStatus": {
       "enum": ["verified", "observed", "inferred", "hypothesis", "planned"]
     },

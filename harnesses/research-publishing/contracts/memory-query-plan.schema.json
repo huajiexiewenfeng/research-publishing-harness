@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/memory-query-plan/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "query_id", "run_id", "action", "research_track", "purpose", "primary_domain", "allowed_paths", "query_terms", "context_budget", "ordering_policy", "profile_digest", "scp_digest", "runtime_requirement", "created_at", "plan_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-query-plan/v1" },
+    "query_id": { "$ref": "#/$defs/id" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "action": { "const": "query_once" },
+    "research_track": { "type": "string", "minLength": 1 },
+    "purpose": { "enum": ["candidate_enrichment", "feedback_followup"] },
+    "primary_domain": { "const": "research-publishing" },
+    "allowed_paths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "query_terms": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "context_budget": {
+      "type": "object", "additionalProperties": false, "required": ["max_items", "max_chars", "max_item_chars"],
+      "properties": { "max_items": { "type": "integer", "minimum": 1 }, "max_chars": { "type": "integer", "minimum": 1 }, "max_item_chars": { "type": "integer", "minimum": 1 } }
+    },
+    "ordering_policy": { "const": "path_asc" },
+    "profile_digest": { "$ref": "#/$defs/digest" },
+    "scp_digest": { "$ref": "#/$defs/digest" },
+    "runtime_requirement": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version"],
+      "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "const": "0.2.0" } }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "plan_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": { "id": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }
+}
