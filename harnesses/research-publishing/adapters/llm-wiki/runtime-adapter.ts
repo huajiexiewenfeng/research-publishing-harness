@@ -91,6 +91,18 @@ function statusFailure(command: string, result: RuntimeEnvelope): HarnessError {
   );
 }
 
+function normalizedDigest(value: unknown): `sha256:${string}` | null {
+  if (typeof value !== 'string') return null;
+  if (/^sha256:[a-f0-9]{64}$/.test(value)) return value as `sha256:${string}`;
+  if (/^[a-f0-9]{64}$/.test(value)) return `sha256:${value}`;
+  return null;
+}
+
+function normalizeEnvelopeChecksum(result: RuntimeEnvelope): RuntimeEnvelope {
+  const checksum = normalizedDigest(result.checksum);
+  return checksum === null ? result : { ...result, checksum };
+}
+
 export class LLMWikiRuntimeAdapter {
   private readonly runner: RuntimeProcessRunner;
   private readonly prefix: readonly string[];
@@ -211,7 +223,7 @@ export class LLMWikiRuntimeAdapter {
         }
         const item = raw as Record<string, unknown>;
         if (
-          typeof item.path !== 'string' || typeof item.checksum !== 'string' ||
+          typeof item.path !== 'string' || normalizedDigest(item.checksum) === null ||
           typeof item.content !== 'string' || item.instruction_policy !== 'data_only' ||
           typeof item.sanitized !== 'boolean' || !Array.isArray(item.risk_flags) ||
           !item.risk_flags.every((flag) => typeof flag === 'string')
@@ -220,7 +232,7 @@ export class LLMWikiRuntimeAdapter {
         }
         return {
           path: item.path,
-          checksum: item.checksum as `sha256:${string}`,
+          checksum: normalizedDigest(item.checksum)!,
           content: item.content,
           instruction_policy: 'data_only' as const,
           sanitized: item.sanitized,
@@ -250,7 +262,7 @@ export class LLMWikiRuntimeAdapter {
       '--profile-path', this.config.profile_path
     ]);
     if (result.status !== 'ok') throw statusFailure('validate-mapping', result);
-    return result;
+    return normalizeEnvelopeChecksum(result);
   }
 
   async copySource(input: RuntimeCopySourceInput): Promise<RuntimeEnvelope> {
@@ -264,7 +276,7 @@ export class LLMWikiRuntimeAdapter {
       '--metadata-json', JSON.stringify(input.metadata)
     ]);
     if (!INGEST_SUCCESS.has(result.status)) throw statusFailure('copy-source', result);
-    return result;
+    return normalizeEnvelopeChecksum(result);
   }
 
   async writeRecord(input: RuntimeWriteRecordInput): Promise<RuntimeEnvelope> {
@@ -279,7 +291,7 @@ export class LLMWikiRuntimeAdapter {
       '--content-file', input.content_file
     ]);
     if (!INGEST_SUCCESS.has(result.status)) throw statusFailure('write-record', result);
-    return result;
+    return normalizeEnvelopeChecksum(result);
   }
 
   async registerArtifact(record: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope> {

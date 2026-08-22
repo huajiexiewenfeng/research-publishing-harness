@@ -16,8 +16,8 @@
   "files": [
     {
       "path": "harnesses/research-publishing/adapters/llm-wiki/runtime-adapter.ts",
-      "sha256": "ff8c89d3805d0a6b539b1e942b5e14d4c4f3ef2d06734bda9af46048a0216694",
-      "bytes": 12861
+      "sha256": "3826d3dfc2cfe49f1b771c46c675b8d0efd176ac87f4269928ad2b361a2a94dc",
+      "bytes": 13421
     },
     {
       "path": "harnesses/research-publishing/adapters/llm-wiki/runtime-process.ts",

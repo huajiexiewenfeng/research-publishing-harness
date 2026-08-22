@@ -46,3 +46,8 @@
 - fresh `pnpm check` 通过：69 个测试文件 / 296 项测试通过，1 个显式真实 Runtime 测试默认跳过；离线 acceptance 的四个 Memory 闭环信号全部完成且 `network: unused`。
 - 显式本地 `llm-wiki-runtime` 0.2.0 integration 在临时 Workspace 1/1 通过；manifest 112 个文件；`git diff --check` 通过。
 - 22 项验收证据和 handoff 已归档，信任级别 `passed-agent-local`；未写用户真实 Wiki、未访问真实 X、未 push/PR。
+- 初始化持久 Publishing Workspace `D:\workspaces\research-publishing`；Runtime resolve 与 Harness `memory doctor` 均为 healthy。
+- 首次 Query 正确返回 `empty`；用户确认精确 checkpoint Plan 后，真实 Ingest 在 `write_records` 因裸 SHA-256/规范 Digest 不一致诚实停为 partial。
+- 根因定位在 Adapter wire normalization；增加 raw SHA-256 → `sha256:<hex>` 规范化及 unit/real integration 断言。同一 Approval 从 `write_records` 恢复，已完成 source copy 未重放，record 返回 `already_exists` 并安全完成 register/log。
+- 后续真实 Query 返回 `loaded`，读取到首篇 Thread 的 `publication_evidence`，分类保持 `data_only` 且未提升 `manual_recorded` 的公开验证等级。
+- 修复后 fresh `pnpm check`：69 个测试文件 / 297 项测试通过，离线 acceptance 通过；显式 Runtime integration 1/1 通过。

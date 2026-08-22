@@ -124,10 +124,10 @@
 | design | done-approved | 用户于 2026-08-22 确认；`docs/superpowers/specs/2026-08-22-llm-wiki-memory-adapter-v2-2-design.zh-CN.md` | 2026-08-22 |
 | plan | done | `docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md` | 2026-08-22 |
 | development | done | commits `f8cc624`–`76992a7` 加 Task 8 closeout；完整 Query/Package/Feedback/Insight/Ingest/CLI/Skill surface | 2026-08-22 |
-| testing | passed-agent-local | `pnpm check`: 69 files / 296 tests passed，1 real-runtime test opt-in skipped；显式 Runtime 0.2.0 integration 1/1 passed | 2026-08-22 |
+| testing | passed-agent-local | `pnpm check`: 69 files / 297 tests passed，1 real-runtime test opt-in skipped；显式 Runtime 0.2.0 integration 1/1 与持久 Workspace partial/resume/next-query smoke 通过 | 2026-08-22 |
 | archive | done | `.llm-wiki/verification/llm-wiki-memory-adapter-v2-2.md` 与 `.llm-wiki/handoff/llm-wiki-memory-adapter-v2-2-handoff.md` | 2026-08-22 |
 
 ## Open Questions
 
-- 第一版真实 Publishing Workspace 的位置应由用户显式选择；不得默认使用源码仓库根目录。
+- 第一版真实 Publishing Workspace 已由用户确认并初始化为 `D:\workspaces\research-publishing`，与源码仓库隔离。
 - Runtime 0.2.0 的 `register-artifact` 尚无 idempotency key；该命令结果不确定的进程崩溃窗口会 fail-closed 为 `MEMORY_INGEST_RECONCILIATION_REQUIRED`，需先人工核对 artifact index。

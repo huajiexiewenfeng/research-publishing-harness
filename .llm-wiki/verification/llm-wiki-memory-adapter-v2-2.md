@@ -6,19 +6,20 @@
 - authority: agent-local, not CI and not an independent reviewer
 - trust_level: `passed-agent-local`
 - complete command: `pnpm check`
-- result: exit 0; ESLint, TypeScript, build, 69 Vitest files / 296 tests and offline acceptance passed; one opt-in real Runtime test skipped in the default suite
+- result: exit 0; ESLint, TypeScript, build, 69 Vitest files / 297 tests and offline acceptance passed; one opt-in real Runtime test skipped in the default suite
 - real dependency command: explicit `LLM_WIKI_RUNTIME_PYTHON` and `LLM_WIKI_RUNTIME_SOURCE`, then `vitest run tests/integration/llm-wiki-runtime.integration.test.ts`
 - real dependency result: 1 file / 1 test passed against local `llm-wiki-runtime` 0.2.0 in a temporary Workspace
 - acceptance output: Memory Query, Publication Checkpoint, Feedback Insight and Resume all `simulated_complete`; `network:"unused"`
 - additional checks: deterministic manifest 112 files; `git diff --check` exit 0
-- user Wiki/X side effects: none
+- external side effects: no real X action; one exact Human-approved checkpoint written by Runtime to the dedicated persistent Publishing Workspace
+- persistent Workspace smoke: first empty Query, exact approved checkpoint Ingest with honest partial/resume, then loaded next Query; no direct Wiki edit
 
 ## Test Integrity
 
 - Production contracts, Runtime Adapter, Query/Feedback/Insight/Ingest services and tests changed together; assertions were reviewed after fresh full-suite execution.
 - Fake Runtime replaces only the external process boundary. Digests, immutable WorkspaceStore writes, Plan/Approval checks, state transitions, recovery and Receipts execute through production code.
 - The full-loop integration uses real Harness services from seed Context through Package 1.1, synthetic terminal Receipt, both Ingest kinds, Human selection/review, partial failure/resume and the next Query.
-- The real integration uses the actual Node process runner and pinned Python JSON CLI for init, doctor, query and write commands. It exposed and drove fixes for controlled source metadata and Runtime-derived `source_id` binding.
+- The real integration uses the actual Node process runner and pinned Python JSON CLI for init, doctor, query and write commands. It exposed controlled source metadata, Runtime-derived `source_id`, and raw-checksum normalization requirements.
 - No assertion was removed or weakened to hide a failure. Default CI skips only the explicit-path real Runtime test; the same test was run separately and passed.
 
 ## Acceptance Audit
@@ -43,8 +44,8 @@
 | 16 | pass | exact `already_exists` accepted; partial remains partial; `runtime-adapter.test.ts`, `memory-ingest-service.test.ts`, real Runtime duplicate calls |
 | 17 | pass | completed steps skipped on resume; persisted interruption recovery tested; uncertain `register_artifact` returns `MEMORY_INGEST_RECONCILIATION_REQUIRED` without replay |
 | 18 | pass | adapter allow-list fixes Domain and validates track paths; cross-Domain/path/argv injection tests in `memory-runtime-security.test.ts` |
-| 19 | pass | fresh full `pnpm check` covers legacy Article, Post Browser, Visual V2.1 and X Article V3 suites: 69 files / 296 tests passed |
-| 20 | pass | unit, contract, fake process, security, full-loop and explicit real Runtime integration all executed; command evidence above |
+| 19 | pass | fresh full `pnpm check` covers legacy Article, Post Browser, Visual V2.1 and X Article V3 suites: 69 files / 297 tests passed |
+| 20 | pass | unit, contract, fake process, security, full-loop, explicit real Runtime integration and persistent Workspace partial/resume/next-query smoke all executed |
 | 21 | pass | offline acceptance uses temporary Workspace/Fake Browser/Fake Runtime and reports `network:"unused"`; real test uses only a temporary Workspace |
 | 22 | pass | README, Quickstart, Chinese architecture, both Skill memory references/SCPs, registry capabilities and 112-file manifest synchronized |
 
@@ -56,7 +57,7 @@
 
 ## Final Command Record
 
-- `pnpm check`: exit 0; 69 test files / 296 tests passed; 1 opt-in real Runtime test skipped; offline acceptance exit 0.
+- `pnpm check`: exit 0; 69 test files / 297 tests passed; 1 opt-in real Runtime test skipped; offline acceptance exit 0.
 - explicit local Runtime integration: exit 0; 1 file / 1 test passed.
 - acceptance: `memory_query`, `publication_checkpoint`, `feedback_insight`, `memory_resume` all `simulated_complete`; `network:"unused"`.
 - `tools/build-manifest.ts`: 112 files.

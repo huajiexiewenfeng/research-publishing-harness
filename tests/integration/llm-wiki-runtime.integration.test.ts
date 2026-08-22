@@ -69,6 +69,7 @@ describe.skipIf(!realRuntimeConfigured)('llm-wiki-runtime 0.2.0 integration', ()
         metadata: {}
       });
       expect(copied.status).toBe('ok');
+      expect(copied.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
       const written = await adapter.writeRecord({
         record_type: 'publication_evidence',
         variables: {
@@ -79,16 +80,19 @@ describe.skipIf(!realRuntimeConfigured)('llm-wiki-runtime 0.2.0 integration', ()
         content_file: recordFile
       });
       expect(written.status).toBe('ok');
-      await expect(adapter.query({
+      expect(written.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
+      const queried = await adapter.query({
         allowed_paths: ['domains/research-publishing/tracks/enterprise-agent-runtime/**'],
         excluded_paths: ['sources/originals/**', '.meta/**'],
         max_items: 8,
         max_item_chars: 4_000,
         ordering_policy: 'path_asc'
-      })).resolves.toMatchObject({
+      });
+      expect(queried).toMatchObject({
         status: 'loaded', runtime_version: '0.2.0',
         items: [{ path: 'domains/research-publishing/tracks/enterprise-agent-runtime/publications/publication_real_001.md' }]
       });
+      expect(queried.items[0]!.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
       await expect(adapter.registerArtifact({
         artifact_id: 'publication_real_001', artifact_type: 'publication_receipt'
       })).resolves.toMatchObject({ status: 'ok' });

@@ -38,7 +38,7 @@
 
 ## Completion Evidence
 
-- `pnpm check`: exit 0; lint/typecheck/build, 69 test files / 296 tests passed, one opt-in real Runtime test skipped, offline acceptance passed.
+- `pnpm check`: exit 0; lint/typecheck/build, 69 test files / 297 tests passed, one opt-in real Runtime test skipped, offline acceptance passed.
 - explicit Runtime integration: Python module mode against `llm-wiki-runtime` 0.2.0 source, isolated temporary Workspace, 1/1 passed.
 - acceptance: Query, publication checkpoint, feedback insight and resume all `simulated_complete`; `network: unused`.
 - deterministic manifest: 112 files; `git diff --check` exit 0.
@@ -47,4 +47,4 @@
 ## Residual Boundary
 
 - Runtime 0.2.0 `register-artifact` is not idempotent. If interruption leaves that step active with no confirmed result, Harness stops with `MEMORY_INGEST_RECONCILIATION_REQUIRED` and never blindly replays it.
-- A real persistent Publishing Workspace has not been chosen or initialized; this remains a separate Human-authorized action.
+- Persistent Workspace is now `D:\workspaces\research-publishing`; the first checkpoint and next Query succeeded after checksum normalization. See `.llm-wiki/bugs/2026-08-22-runtime-checksum-normalization.md`.

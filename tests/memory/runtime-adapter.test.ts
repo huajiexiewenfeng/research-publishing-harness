@@ -118,4 +118,21 @@ describe('LLMWikiRuntimeAdapter', () => {
       content_file: resolve(paths().workspace, 'memory/staging/p1.md')
     })).resolves.toMatchObject({ status: 'already_exists' });
   });
+
+  it('normalizes Runtime 0.2.0 raw SHA-256 values at the Adapter boundary', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'ok', path: 'domains/research-publishing/tracks/x/publications/p1.md',
+      checksum: 'a'.repeat(64)
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.writeRecord({
+      record_type: 'publication_evidence',
+      variables: { research_track: 'x', publication_id: 'p1' },
+      refs: { source_id: 'src-aaaaaaaaaaaa' },
+      content_file: resolve(paths().workspace, 'memory/staging/p1.md')
+    })).resolves.toMatchObject({ checksum: `sha256:${'a'.repeat(64)}` });
+  });
 });
