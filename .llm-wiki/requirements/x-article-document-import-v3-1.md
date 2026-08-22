@@ -4,7 +4,7 @@
 
 - flow_id: `x-article-document-import-v3-1`
 - parent_flow_id: `x-article-browser-publishing-v3`
-- status: `verification-pending-live-smoke`
+- status: `verified`
 - title: Add digest-bound bulk document import with deterministic visual anchors
 - owner: Research Publishing Harness
 - created: 2026-08-21
@@ -126,7 +126,20 @@ Every visual replacement preserves its approved block ordinal. Temporary anchors
 - Built doctor against the article publishing workspace: `state: "ready"`; contract list includes `x-article-browser-command` and `x-article-browser-observation`; `network_required: false`.
 - Generated manifest: declares both `import_article_document` and `replace_article_visual_anchor`; packaged Skill validation passed.
 - Generated runtime: `pnpm build` refreshed the ignored `dist/**` tree with 153 files for explicit inclusion in the Task 5 commit.
-- Live Chrome smoke is pending controller verification. No live execution ID, Preview revision, or Publish-command count is claimed here.
+
+## Live Chrome Verification Evidence (2026-08-22)
+
+- Corrected execution `x_art_smoke_7cf7c956` created draft `2090980298595213313` and preserved the approved 76-block structured document.
+- The Host issued exactly one bulk import and three anchor replacements, with the approved architecture assets and Alt Text at block ordinals 19, 34, and 62.
+  - Ordinal 19: `assets/domain-runtime-boundary.png` (`domain-runtime-boundary`). Alt Text: “Two responsibility columns show the Domain Skill owning business meaning and judgment, while the Knowledge Runtime owns configuration, contracts, bounded context, provenance, path and write safety, and explicit fallback.”
+  - Ordinal 34: `assets/bottom-up-extraction.png` (`bottom-up-extraction`). Alt Text: “PDC embedded Wiki and obsidian-llm-wiki controlled workflows converge on recurring infrastructure concerns, which lead to the bottom-up extraction of llm-wiki-runtime; a warning blocks any runtime-to-runtime interpretation.”
+  - Ordinal 62: `assets/runtime-research-boundaries.png` (`runtime-research-boundaries`). Alt Text: “Four separate modules show Knowledge as current, while Trace, Eval, and Controlled Loop are each labeled planned research; dashed research arrows do not place them in one store.”
+- The first Preview was rejected because X grouped all three images at the opening instead of preserving their approved inline positions. Before acceptance, the controller closed review, removed the group, reinserted each image after its approved adjacent paragraph, restored the exact Alt Text, and reran real Preview.
+- Final Preview `https://x.com/compose/articles/edit/2090980298595213313/preview` matched the 76-block document and contained no `RPH_VISUAL_ANCHOR:` residue. Preview revision: `sha256:c2f8736dbbfeda891e12432f2d19d006067244cd8758308c6b1c3a7223159642`.
+- Final DOM order proved inline placement: Alt Text index `8242` lay between headings at `6704` and `9072`; index `11621` lay between headings at `10307` and `12460`; index `17440` lay between headings at `16154` and `18141`.
+- Final state: `preview_verified`; latest observation: `obs_2279c5dc-d00c-49c8-957a-133283849d82`; `publish_command_count: 0`.
+- Final review was reopened, audience `Everyone` and exactly one final Publish button were verified, and the button was not clicked. The controller stopped before issuing or claiming `publish_article_once`; no public Article was published.
+- The first attempt, `x_art_smoke_31eba683`, was abandoned after the Body control observation for draft `2090979425416511489` lacked `test_id=composer`. The diagnostic draft remains preserved and unpublished; no automatic cleanup occurred.
 
 ## Risks
 
@@ -142,6 +155,6 @@ Every visual replacement preserves its approved block ordinal. Temporary anchors
 | Source / problem reproduction | complete | Live X editor retained block style across separate paste operations on 2026-08-21 | Lock design |
 | Design | approved | User approved formal Harness capability and continued with the recommended anchor design | Review written Change Brief |
 | Implementation plan | complete | `.llm-wiki/working-context/x-article-document-import-v3-1-execution-plan.md` | Select execution mode |
-| Development | complete | Tasks 1-5 implemented the compiler, contracts, orchestration, acceptance, docs, packaged Skill, manifest, and generated runtime | Run live smoke |
-| Verification | offline-complete | 53 test files / 277 tests; acceptance complete; doctor ready with both X Article browser contracts; both manifest capabilities present | Controller performs pre-publish Chrome smoke |
-| Archive / finish | pending | Live execution ID, Preview revision, and pre-Publish count intentionally not recorded | Project Finish after verified browser smoke test |
+| Development | complete | Tasks 1-5 implemented the compiler, contracts, orchestration, acceptance, docs, packaged Skill, manifest, and generated runtime | Verify pre-publish behavior |
+| Verification | complete | Offline: 53 test files / 277 tests, acceptance complete, doctor ready. Live: `x_art_smoke_7cf7c956`, 76 blocks, one import, three replacements; first grouped-image Preview rejected, placements corrected and DOM-order verified; final marker-free Preview, state `preview_verified`, Publish count `0` | Preserve final action-time Publish boundary |
+| Archive / finish | pending | Corrected draft `2090980298595213313` stopped before Publish; diagnostic draft `2090979425416511489` preserved unpublished | Project Finish |

@@ -450,11 +450,11 @@ node dist/harnesses/research-publishing/cli/index.js doctor --workspace "C:\User
 
 Expected: `state: "ready"` and both new X Article contracts/capabilities are present.
 
-- [ ] **Step 5: Perform a pre-publish Chrome smoke test**
+- [x] **Step 5: Perform a pre-publish Chrome smoke test**
 
 Use the existing finalized Article Package and unchanged Plan content to create a new Approval and execution. Verify one bulk import, three technical diagram replacements at block ordinals 19, 34, and 62, exact Preview match, and stop before claiming the final public Publish command for action-time confirmation.
 
-- [ ] **Step 6: Update lifecycle evidence and commit**
+- [x] **Step 6: Update lifecycle evidence and commit**
 
 Record test counts, acceptance result, doctor output, execution ID, Preview revision, and the fact that `publish_command_count` remains `0` before final user confirmation.
 
@@ -473,7 +473,11 @@ git commit -m "docs: document X Article document import"
 - Doctor: exact built CLI command against `publishing-workspace/llm-wiki-runtime-first-article` returned `state: "ready"`, `network_required: false`, and both `x-article-browser-command` and `x-article-browser-observation` in the contract list.
 - Registry/Skill: generated interface metadata contains `import_article_document` and `replace_article_visual_anchor`; Skill validator returned `Skill is valid!`.
 - Generated runtime: `pnpm build` refreshed 153 ignored `dist/**` files for explicit staging in the Task 5 commit.
-- Step 5 is pending controller verification. This offline slice created no X draft or Approval, performed no live Browser action, and records no fabricated execution ID, Preview revision, or Publish-command count.
+- Live Chrome verification: corrected execution `x_art_smoke_7cf7c956` created draft `2090980298595213313`, imported the approved 76-block structured document exactly once, and replaced `domain-runtime-boundary` at ordinal 19, `bottom-up-extraction` at ordinal 34, and `runtime-research-boundaries` at ordinal 62 with the approved assets and Alt Text.
+- The first Preview was rejected because X grouped the three images at the opening. The controller closed review, removed the group, reinserted each image after its approved adjacent paragraph, restored Alt Text, and reran real Preview before accepting the result.
+- Final Preview `https://x.com/compose/articles/edit/2090980298595213313/preview` contained the exact 76 blocks and no temporary-anchor marker. DOM-order checks placed the three Alt Text values at indexes `8242`, `11621`, and `17440`, each between the expected surrounding section headings. Preview revision: `sha256:c2f8736dbbfeda891e12432f2d19d006067244cd8758308c6b1c3a7223159642`.
+- Final review was reopened and showed audience `Everyone` plus exactly one final Publish button. The button was not clicked. Final state was `preview_verified`; latest observation was `obs_2279c5dc-d00c-49c8-957a-133283849d82`; `publish_command_count` remained `0`. The controller stopped before issuing or claiming `publish_article_once`, so no public Article was published.
+- The first attempt, execution `x_art_smoke_31eba683` and diagnostic draft `2090979425416511489`, was abandoned because the Body control observation lacked `test_id=composer`. The draft remains preserved and unpublished; the Harness did not automatically delete it.
 
 ## Plan Self-Review
 

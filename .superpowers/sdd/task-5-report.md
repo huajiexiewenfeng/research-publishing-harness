@@ -2,9 +2,9 @@
 
 ## Status
 
-DONE_WITH_CONCERNS
+DONE
 
-The authorized offline Task 5 slice is complete. The real-Chrome pre-publish smoke remains pending controller verification and is the only release-level concern.
+Task 5 is complete. The offline gates and real-Chrome pre-publish smoke are verified, and the smoke stopped at the required action-time boundary without issuing or claiming the final public Publish command.
 
 ## Scope and path correction
 
@@ -95,13 +95,41 @@ Result:
 
 Doctor verifies the built contract set; the deterministic generated manifest and focused CLI assertion verify both bulk capability names.
 
-## Pending live-smoke handoff
+## Verified live-Chrome smoke
 
-The controller must perform Step 5 using real Chrome and the existing finalized Article Package and unchanged Plan. Required evidence remains:
+The controller completed the pre-publish smoke with the existing finalized Article Package and unchanged Plan:
 
-- one bulk import
-- three technical-diagram replacements at block ordinals 19, 34, and 62
-- exact Preview match with zero unresolved anchors
-- stop for action-time confirmation before the final public `publish_once` claim
+- Execution: `x_art_smoke_7cf7c956`
+- Draft: `2090980298595213313`
+- Approved structured document: 76 ordered blocks
+- Import strategy: `bulk_document`
+- `import_article_document`: exactly 1 command
+- `replace_article_visual_anchor`: exactly 3 commands
+- Preview URL: `https://x.com/compose/articles/edit/2090980298595213313/preview`
+- Preview observation: `obs_5b165234-ab6e-4f12-9d19-99352063bd5c`
+- Preview revision: `sha256:c2f8736dbbfeda891e12432f2d19d006067244cd8758308c6b1c3a7223159642`
+- The first Preview was rejected: X had grouped all three images at the opening instead of preserving their approved inline positions.
+- The controller closed review, removed the incorrect three-image group, reinserted each image after its approved adjacent paragraph, restored the exact Alt Text, and reran real Preview.
+- The final Preview contained all 76 structured blocks and no `RPH_VISUAL_ANCHOR:` marker residue.
+- Final Harness state: `preview_verified`
+- Latest observation: `obs_2279c5dc-d00c-49c8-957a-133283849d82`
+- `publish_command_count`: `0`
+- `publish_article_once` commands: `0`
 
-This offline implementation slice did not control Chrome, create an X draft, create a live Approval or execution, or perform a public Publish. No execution ID, Preview revision, or Publish-command count is fabricated or claimed. Diagnostic drafts were not deleted.
+The three exact architecture replacements were:
+
+1. `assets/domain-runtime-boundary.png` (`domain-runtime-boundary`) at block ordinal 19. Alt Text: “Two responsibility columns show the Domain Skill owning business meaning and judgment, while the Knowledge Runtime owns configuration, contracts, bounded context, provenance, path and write safety, and explicit fallback.”
+2. `assets/bottom-up-extraction.png` (`bottom-up-extraction`) at block ordinal 34. Alt Text: “PDC embedded Wiki and obsidian-llm-wiki controlled workflows converge on recurring infrastructure concerns, which lead to the bottom-up extraction of llm-wiki-runtime; a warning blocks any runtime-to-runtime interpretation.”
+3. `assets/runtime-research-boundaries.png` (`runtime-research-boundaries`) at block ordinal 62. Alt Text: “Four separate modules show Knowledge as current, while Trace, Eval, and Controlled Loop are each labeled planned research; dashed research arrows do not place them in one store.”
+
+Final real-Preview DOM order confirmed the corrected inline placements:
+
+- First Alt Text index `8242`, between `The real boundary is ownership` at `6704` and `“Deterministic” does not describe the model` at `9072`.
+- Second Alt Text index `11621`, between `The architecture was extracted, not declared` at `10307` and `What the current Runtime actually does` at `12460`.
+- Third Alt Text index `17440`, between `Do not turn knowledge into a trace dump` at `16154` and `The next decision is an evidence decision` at `18141`.
+
+After accepting the corrected Preview, the controller reopened final review, verified audience `Everyone` and exactly one final Publish button, and did not click it. The Harness remained `preview_verified` with `publish_command_count: 0`. The controller stopped before issuing or claiming the final `publish_article_once` command; no public Article was published.
+
+## Preserved diagnostic attempt
+
+The first attempt, execution `x_art_smoke_31eba683` with diagnostic draft `2090979425416511489`, was abandoned in favor of the corrected execution because the observed Body control lacked `test_id=composer`. The Harness had not issued the bulk import and its `publish_command_count` remained `0`. The draft is preserved for diagnosis and was not published or automatically deleted.
