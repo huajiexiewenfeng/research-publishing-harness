@@ -10,6 +10,7 @@
   "files": [
     "dist/",
     "harnesses/research-publishing/contracts/",
+    "harnesses/research-publishing/memory/",
     "skills/",
     "registry/",
     "README.md",

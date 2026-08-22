@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { ManualAdapter, type ManualPublicResult, type PublishReceipt } from '../adapters/x/manual/manual-adapter.js';
+import { createLLMWikiRuntimeAdapter, type LLMWikiRuntimeAdapter } from '../adapters/llm-wiki/runtime-adapter.js';
 import { BrowserAdapter } from '../adapters/x/browser/browser-adapter.js';
 import type { BrowserActionResultInput, BrowserCapabilityManifest } from '../adapters/x/browser/browser-protocol.js';
 import { CommandBroker } from '../adapters/x/browser/command-broker.js';
@@ -28,6 +29,12 @@ import {
 import type { XArticlePublicationPlanV1 } from '../core/x-article-publication-plan.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
+import { sha256Bytes } from '../core/digest.js';
+import { MemoryFeedbackService, type CaptureFeedbackInput } from '../core/memory-feedback-service.js';
+import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpointInput } from '../core/memory-ingest-service.js';
+import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-insight-service.js';
+import { MemoryQueryService } from '../core/memory-query-service.js';
+import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memory-types.js';
 import { PackageService } from '../core/package-service.js';
 import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
@@ -44,6 +51,8 @@ interface CliOptions {
   readonly executionId?: string;
   readonly commandId?: string;
   readonly adapter?: 'manual' | 'browser';
+  readonly runtimeExecutable?: string;
+  readonly runtimeLauncher?: 'console-script' | 'python-module';
   readonly output: string;
 }
 
@@ -80,6 +89,16 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
   if (adapter !== undefined && adapter !== 'manual' && adapter !== 'browser') {
     throw new HarnessError('CONTRACT_INVALID', '--adapter must be manual or browser');
   }
+  const runtimeLauncher = values['runtime-launcher'];
+  if (
+    runtimeLauncher !== undefined &&
+    runtimeLauncher !== 'console-script' && runtimeLauncher !== 'python-module'
+  ) {
+    throw new HarnessError(
+      'MEMORY_RUNTIME_INVALID_CONFIG',
+      '--runtime-launcher must be console-script or python-module'
+    );
+  }
   return {
     positional,
     options: {
@@ -89,9 +108,110 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
       ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
       ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
       ...(adapter === undefined ? {} : { adapter }),
+      ...(values['runtime-executable'] === undefined
+        ? {}
+        : { runtimeExecutable: values['runtime-executable'] }),
+      ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
       output: values['output'] ?? 'json'
     }
   };
+}
+
+interface PackagedMemoryAssets {
+  readonly profilePath: string;
+  readonly mappingPath: string;
+  readonly harnessScpPath: string;
+  readonly articleScpPath: string;
+  readonly xScpPath: string;
+}
+
+async function packagedMemoryAssets(): Promise<PackagedMemoryAssets> {
+  const candidates = [
+    resolve(import.meta.dirname, '../../..'),
+    resolve(import.meta.dirname, '../../../..')
+  ];
+  let root: string | null = null;
+  for (const candidate of candidates) {
+    try {
+      await access(resolve(candidate, 'registry/harnesses.json'));
+      root = candidate;
+      break;
+    } catch {
+      // Continue to the installed-package layout.
+    }
+  }
+  if (root === null) {
+    throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', 'packaged Memory Domain assets are unavailable');
+  }
+  return {
+    profilePath: resolve(root, 'harnesses/research-publishing/memory/llm-wiki-profile.yml'),
+    mappingPath: resolve(root, 'harnesses/research-publishing/memory/ingest-mapping.yml'),
+    harnessScpPath: resolve(root, 'harnesses/research-publishing/memory/scp.yml'),
+    articleScpPath: resolve(root, 'skills/article-publishing-copilot/scp.yml'),
+    xScpPath: resolve(root, 'skills/x-publishing-copilot/scp.yml')
+  };
+}
+
+async function configuredMemoryRuntime(
+  options: CliOptions,
+  assets: PackagedMemoryAssets
+): Promise<LLMWikiRuntimeAdapter | null> {
+  if (options.runtimeExecutable === undefined && options.runtimeLauncher === undefined) return null;
+  if (options.runtimeExecutable === undefined || options.runtimeLauncher === undefined) {
+    throw new HarnessError(
+      'MEMORY_RUNTIME_INVALID_CONFIG',
+      '--runtime-executable and --runtime-launcher must be supplied together'
+    );
+  }
+  return createLLMWikiRuntimeAdapter({
+    launcher: options.runtimeLauncher,
+    executable: options.runtimeExecutable,
+    expected_version: '0.2.0',
+    workspace: options.workspace,
+    profile_path: assets.profilePath,
+    mapping_path: assets.mappingPath,
+    scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+  });
+}
+
+const unavailableQueryRuntime = {
+  async query(): Promise<RuntimeContextResult> {
+    return {
+      status: 'unavailable', runtime_version: null, items: [],
+      excluded_count: 0, truncated_count: 0
+    };
+  }
+};
+
+const unavailableIngestRuntime = {
+  async version(): Promise<'0.2.0'> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async validateMapping(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async copySource(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async writeRecord(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async registerArtifact(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async appendLog(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  }
+};
+
+function requireMemoryRuntime(runtime: LLMWikiRuntimeAdapter | null): LLMWikiRuntimeAdapter {
+  if (runtime === null) {
+    throw new HarnessError(
+      'MEMORY_RUNTIME_INVALID_CONFIG',
+      'Memory Ingest requires explicit --runtime-executable and --runtime-launcher'
+    );
+  }
+  return runtime;
 }
 
 function requiredExecutionId(options: CliOptions): string {
@@ -178,6 +298,144 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const input = await readInput<{ package: ResearchContentPackage }>(options);
     const artifact = await packages.freezePackage(input.package);
     return { ok: true, operation, artifact, state: artifact.package.status };
+  }
+
+  if (operation.startsWith('memory ')) {
+    const assets = await packagedMemoryAssets();
+    const runtime = await configuredMemoryRuntime(options, assets);
+    const query = new MemoryQueryService(store, runtime ?? unavailableQueryRuntime);
+    const feedback = new MemoryFeedbackService(store);
+    const insight = new MemoryInsightService(store);
+    const ingest = new MemoryIngestService(
+      store,
+      (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryIngestService>[1],
+      {
+        profile_path: assets.profilePath,
+        mapping_path: assets.mappingPath,
+        scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+      }
+    );
+
+    if (operation === 'memory doctor') {
+      const artifact = runtime === null
+        ? {
+            status: 'not_configured', configured: false,
+            runtime_version: null, profile: 'research-publishing'
+          }
+        : await runtime.doctor();
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory query plan') {
+      const input = await readInput<{
+        research_track: string;
+        purpose: 'candidate_enrichment' | 'feedback_followup';
+        query_terms: readonly string[];
+        context_budget: { max_items: number; max_chars: number; max_item_chars: number };
+        skill: 'article' | 'x';
+      }>(options);
+      const [profileBytes, scpBytes] = await Promise.all([
+        readFile(assets.profilePath),
+        readFile(input.skill === 'x' ? assets.xScpPath : assets.articleScpPath)
+      ]);
+      const artifact = await query.planQuery({
+        research_track: input.research_track,
+        purpose: input.purpose,
+        query_terms: input.query_terms,
+        context_budget: input.context_budget,
+        profile_digest: sha256Bytes(profileBytes),
+        scp_digest: sha256Bytes(scpBytes)
+      });
+      return { ok: true, operation, artifact, state: 'query_planned' };
+    }
+    if (operation === 'memory query execute') {
+      const input = await readInput<{ query_id: string }>(options);
+      const artifact = await query.executeQuery(input.query_id);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory query status') {
+      const input = await readInput<{ query_id: string }>(options);
+      const artifact = await query.queryStatus(input.query_id);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory query bind-package') {
+      const input = await readInput<{
+        query_id: string;
+        package: Extract<ResearchContentPackage, { schema_version: '1.1' }>;
+        selected_refs: readonly string[];
+        reviewed_by: string;
+        reviewed_at: string;
+      }>(options);
+      await query.reviewContext(input.query_id, {
+        selected_refs: input.selected_refs,
+        reviewed_by: input.reviewed_by,
+        reviewed_at: new Date(input.reviewed_at)
+      });
+      const artifact = await query.bindPackage(input.query_id, input.package);
+      return { ok: true, operation, artifact, state: artifact.memory_context.status };
+    }
+    if (operation === 'memory feedback capture') {
+      const raw = await readInput<Omit<CaptureFeedbackInput, 'observed_at'> & { observed_at: string }>(options);
+      const artifact = await feedback.capture({ ...raw, observed_at: new Date(raw.observed_at) });
+      return { ok: true, operation, artifact, state: 'feedback_captured' };
+    }
+    if (operation === 'memory feedback review') {
+      const input = await readInput<{ feedback_snapshot_id: string }>(options);
+      const artifact = await store.readJson(`feedback/${input.feedback_snapshot_id}/snapshot.json`);
+      return { ok: true, operation, artifact, state: 'feedback_captured' };
+    }
+    if (operation === 'memory insight propose') {
+      const artifact = await insight.propose(await readInput<ProposeInsightInput>(options));
+      return { ok: true, operation, artifact, state: 'insight_proposed' };
+    }
+    if (operation === 'memory insight review') {
+      const input = await readInput<{
+        proposal_id: string;
+        reviewed_by: string;
+        accepted: boolean;
+        reason: string;
+        reviewed_at: string;
+      }>(options);
+      const artifact = await insight.reviewInsight(input.proposal_id, {
+        reviewed_by: input.reviewed_by,
+        accepted: input.accepted,
+        reason: input.reason,
+        reviewed_at: new Date(input.reviewed_at)
+      });
+      return { ok: true, operation, artifact, state: 'evidence_reviewed' };
+    }
+    if (operation === 'memory ingest plan') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<
+        ({ ingest_kind: 'publication_checkpoint' } & PublicationCheckpointInput) |
+        ({ ingest_kind: 'feedback_insight' } & FeedbackInsightInput)
+      >(options);
+      const artifact = input.ingest_kind === 'feedback_insight'
+        ? await ingest.planFeedbackInsight(input)
+        : await ingest.planPublicationCheckpoint(input);
+      return { ok: true, operation, artifact, state: 'ingest_previewed' };
+    }
+    if (operation === 'memory ingest approve') {
+      const input = await readInput<{ ingest_id: string; approved_by: string; ttl_ms: number }>(options);
+      const artifact = await ingest.approve(input.ingest_id, input.approved_by, input.ttl_ms);
+      return { ok: true, operation, artifact, state: 'ingest_approved' };
+    }
+    if (operation === 'memory ingest execute') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ ingest_id: string; approval: MemoryIngestApprovalV1 }>(options);
+      const artifact = await ingest.execute(input.ingest_id, input.approval);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory ingest status') {
+      const input = await readInput<{ ingest_id: string }>(options);
+      const artifact = await ingest.status(input.ingest_id);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory ingest resume') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ ingest_id: string; approval: MemoryIngestApprovalV1 }>(options);
+      const artifact = await ingest.resume(input.ingest_id, input.approval);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
   }
 
   const articleInput = options.input === undefined ? undefined : await readInput<Record<string, unknown>>(options);

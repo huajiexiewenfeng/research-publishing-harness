@@ -30,5 +30,16 @@ describe('canonicalManifestBytes', () => {
     expect(paths).toContain(
       'skills/x-publishing-copilot/references/x-article-browser-flow.md'
     );
+    expect(paths).toEqual(expect.arrayContaining([
+      'harnesses/research-publishing/core/memory-query-service.ts',
+      'harnesses/research-publishing/core/memory-ingest-service.ts',
+      'harnesses/research-publishing/memory/llm-wiki-profile.yml',
+      'harnesses/research-publishing/memory/ingest-mapping.yml',
+      'harnesses/research-publishing/memory/scp.yml',
+      'skills/article-publishing-copilot/scp.yml',
+      'skills/article-publishing-copilot/references/memory-loop.md',
+      'skills/x-publishing-copilot/scp.yml',
+      'skills/x-publishing-copilot/references/memory-loop.md'
+    ]));
   });
 });

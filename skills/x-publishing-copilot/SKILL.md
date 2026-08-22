@@ -7,6 +7,8 @@ description: Use when preparing or publishing an evidence-backed X single post, 
 
 Use the repository Harness as the deterministic boundary. The Skill may help shape the discussion and draft language; the Harness owns character limits, the Publish Gate, state, Approval, Browser Commands, public verification, and Receipts.
 
+For research context and Human-selected discussion feedback, follow [the governed Memory loop](references/memory-loop.md). It applies equally to Single, Thread, Reply, and X Article branches.
+
 Choose the branch from the requested artifact. A Single, Thread, or Reply uses `x ...`. A finalized long-form Article Package uses `x-article ...` and [the X Article Browser flow](references/x-article-browser-flow.md), including `x-article browser next` → `x-article browser claim` → one Chrome action → `x-article browser report`. Never convert an X Article to a Thread.
 
 ## Browser Adapter required flow

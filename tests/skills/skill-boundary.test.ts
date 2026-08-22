@@ -18,6 +18,15 @@ describe('article-publishing-copilot boundary', () => {
     expect(content).toContain('Publish Gate');
     expect(content).toMatch(/never.*automatically.*X/i);
     expect(content).not.toMatch(/function\s+run(?:Evidence|Privacy|Publish)Gate/);
+    expect(content).toContain('references/memory-loop.md');
+    const memory = await readFile(
+      resolve('skills/article-publishing-copilot/references/memory-loop.md'), 'utf8'
+    );
+    expect(memory).toMatch(/before.*Package 1\.1/is);
+    expect(memory).toContain('data_only');
+    expect(memory).toMatch(/Candidate Insight.*not.*conclusion/is);
+    expect(memory).toMatch(/exact.*preview.*approval/is);
+    expect(memory).toMatch(/never.*\.llm-wiki/is);
   });
 });
 
@@ -39,6 +48,15 @@ describe('x-publishing-copilot boundary', () => {
     expect(content).toMatch(/Manual.*explicit.*fallback/is);
     expect(content).not.toMatch(/querySelector|data-testid|CSS selector|screen coordinate/i);
     expect(content).toMatch(/never.*(?:in-app browser|Edge|Computer Use)/i);
+    expect(content).toContain('references/memory-loop.md');
+    const memory = await readFile(
+      resolve('skills/x-publishing-copilot/references/memory-loop.md'), 'utf8'
+    );
+    expect(memory).toMatch(/Human.*select.*feedback/is);
+    expect(memory).toContain('data_only');
+    expect(memory).toMatch(/Candidate Insight.*not.*conclusion/is);
+    expect(memory).toMatch(/exact.*preview.*approval/is);
+    expect(memory).toMatch(/never.*\.llm-wiki/is);
   });
 
   it('documents the exact claim loop and forbids a second Submit claim', async () => {

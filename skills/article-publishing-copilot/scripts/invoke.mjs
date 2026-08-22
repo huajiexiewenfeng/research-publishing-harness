@@ -29,8 +29,22 @@ function discoverCli() {
   throw new Error('No compatible research-publishing Harness CLI was found.');
 }
 
+function forwardedArgs() {
+  const args = [...process.argv.slice(2)];
+  if (args[0] !== 'memory') return args;
+  const executable = process.env.LLM_WIKI_RUNTIME_EXECUTABLE;
+  const launcher = process.env.LLM_WIKI_RUNTIME_LAUNCHER;
+  if (executable && !args.includes('--runtime-executable')) {
+    args.push('--runtime-executable', executable);
+  }
+  if (launcher && !args.includes('--runtime-launcher')) {
+    args.push('--runtime-launcher', launcher);
+  }
+  return args;
+}
+
 try {
-  const result = spawnSync(process.execPath, [discoverCli(), ...process.argv.slice(2)], {
+  const result = spawnSync(process.execPath, [discoverCli(), ...forwardedArgs()], {
     stdio: 'inherit',
     windowsHide: true
   });

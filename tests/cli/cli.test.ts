@@ -20,6 +20,62 @@ function run(args: readonly string[]) {
 }
 
 describe('research-publish CLI', () => {
+  it('exposes the V2.2 Memory command surface with JSON-only routing', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
+    const workspace = join(parent, 'workspace');
+    const input = join(parent, 'input.json');
+    await writeFile(input, '{}', 'utf8');
+    const operations = [
+      'memory doctor', 'memory query plan', 'memory query execute', 'memory query status',
+      'memory query bind-package', 'memory feedback capture', 'memory feedback review',
+      'memory insight propose', 'memory insight review', 'memory ingest plan',
+      'memory ingest approve', 'memory ingest execute', 'memory ingest status', 'memory ingest resume'
+    ];
+    for (const operation of operations) {
+      const result = run([
+        ...operation.split(' '), '--workspace', workspace, '--input', input, '--output', 'json'
+      ]);
+      const payload = JSON.parse(result.stdout) as { operation: string; error?: { message: string } };
+      expect(payload.operation).toBe(operation);
+      expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
+    }
+  }, 20_000);
+
+  it('plans and degrades a Memory Query without configured Runtime', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-query-'));
+    const workspace = join(parent, 'workspace');
+    const planInput = join(parent, 'plan.json');
+    await writeFile(planInput, JSON.stringify({
+      research_track: 'enterprise-agent-runtime', purpose: 'candidate_enrichment',
+      query_terms: ['runtime boundary'],
+      context_budget: { max_items: 4, max_chars: 8000, max_item_chars: 2000 },
+      skill: 'article'
+    }));
+    const planned = run([
+      'memory', 'query', 'plan', '--workspace', workspace, '--input', planInput, '--output', 'json'
+    ]);
+    expect(planned.status).toBe(0);
+    const plan = JSON.parse(planned.stdout) as { artifact: { query_id: string } };
+    const executeInput = join(parent, 'execute.json');
+    await writeFile(executeInput, JSON.stringify({ query_id: plan.artifact.query_id }));
+    const executed = run([
+      'memory', 'query', 'execute', '--workspace', workspace, '--input', executeInput, '--output', 'json'
+    ]);
+    expect(JSON.parse(executed.stdout)).toMatchObject({
+      ok: true, operation: 'memory query execute', artifact: { status: 'unavailable' }
+    });
+  });
+
+  it('accepts only explicit absolute Runtime launcher configuration', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'rph-cli-memory-options-'));
+    const invalid = run([
+      'memory', 'doctor', '--workspace', workspace,
+      '--runtime-executable', 'python', '--runtime-launcher', 'python-module', '--output', 'json'
+    ]);
+    expect(JSON.parse(invalid.stdout)).toMatchObject({
+      ok: false, operation: 'memory doctor', error: { code: 'MEMORY_RUNTIME_INVALID_CONFIG' }
+    });
+  });
   it('returns JSON-only doctor output', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'rph-cli-doctor-'));
     const result = run(['doctor', '--workspace', workspace, '--output', 'json']);

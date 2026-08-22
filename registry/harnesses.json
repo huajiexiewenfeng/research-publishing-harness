@@ -8,7 +8,10 @@
       "manifest": "manifests/research-publishing.json",
       "contracts": "../harnesses/research-publishing/contracts",
       "skills": ["article-publishing-copilot", "x-publishing-copilot"],
-      "capabilities": ["article", "x-post", "x-article-browser"]
+      "capabilities": ["article", "x-post", "x-article-browser", "memory-query", "memory-ingest"],
+      "runtime_dependencies": [
+        { "id": "llm-wiki-runtime", "version": "0.2.0", "configuration": "explicit" }
+      ]
     }
   ]
 }

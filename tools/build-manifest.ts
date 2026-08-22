@@ -50,7 +50,8 @@ const manifest = {
   harness: { id: 'research-publishing', version: '0.1.0-alpha.0' },
   compatibility: {
     node: '>=20.19',
-    contracts: '1.0',
+    contracts: '1.1',
+    llm_wiki_runtime: '0.2.0',
     skills: ['article-publishing-copilot', 'x-publishing-copilot']
   },
   files

@@ -7,6 +7,8 @@ description: Use when turning an evidence-backed Research Content Package into a
 
 Use the repository Harness as the deterministic boundary. The agent may help shape the brief and draft prose; it does not reproduce validation, state, privacy, or publication logic.
 
+For durable research context and post-publication learning, follow [the governed Memory loop](references/memory-loop.md). Memory Query is optional and degradable; Memory Ingest is approval-gated and fail-closed.
+
 ## Required flow
 
 1. Locate a compatible runtime with `scripts/invoke.mjs doctor --workspace <path> --output json`. If discovery or compatibility fails, stop and report it.
