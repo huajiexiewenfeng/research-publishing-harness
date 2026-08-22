@@ -150,6 +150,7 @@ V2.3 不做：
 | Runtime 边界 | Harness/Skill 永不直接写 `.llm-wiki` |
 | 人工门 | 每次语义晋升一次确认 |
 | 反馈 | 只接收人工选择，默认 `data_only` |
+| Track 策略 | `enterprise-agent-runtime` 是默认主线；`agent-skills`、`thinking-skills` 可作为支线 |
 
 ## 6. 方案比较
 
@@ -301,6 +302,8 @@ inc_enterprise_agent_runtime_memory_boundary
 `revision` 是不可变内容版本，例如 `1`、`2`。
 
 所有进入路径模板的 ID 必须是 Harness 生成或校验的 ASCII safe ID，满足 `[a-z0-9][a-z0-9_-]{0,95}`。不得把标题、URL、平台文本或用户输入原样拼入路径。
+
+每个 Research Increment 必须且只能声明一个 primary `track_id`。跨 Track 影响通过显式 `informed_by/refines/...` Edge 表达，不复制同一 Increment，也不把支线记录静默混入 `enterprise-agent-runtime` 的 Mainline Index。
 
 以下变化必须产生新 revision：
 
@@ -1516,8 +1519,54 @@ V2.3 依赖 Runtime 0.2.x 的：
 34. CI 不访问用户真实 Wiki、Chrome 或 X。
 35. Harness 和 Skills 永不直接写 `.llm-wiki`。
 36. Lifecycle Events 使用单调 sequence 和 previous-event chain，发布、取代或撤回不修改 immutable revision。
+37. 系统可以提出下一轮问题和 Delta，但不得自动修改研究代码、Skills、claim status 或绕过既有发布/晋升确认门。
+38. 默认主研究 Track 是 `enterprise-agent-runtime`；Skills/Thinking Skills 支线拥有独立 Index，跨 Track 关系必须显式。
 
-## 25. 完整性结论
+## 25. 需求—设计—验收追踪
+
+| ID | 已确认需求 | 设计落点 | 验收证据 |
+| --- | --- | --- | --- |
+| R1 | 研究数据飞轮 North Star，而不是发布计数器 | 第 2、3、22 节 | AC 1–3、31 |
+| R2 | Canonical Local Package 是事实源 | 第 5、8、11 节 | AC 1、3–5 |
+| R3 | Evidence 完整归档，Semantic Memory 紧凑可查 | 第 7、10、11 节 | AC 3–9 |
+| R4 | Research Increment 是第一等聚合单位 | 第 8、9、10.3 节 | AC 2、11、17 |
+| R5 | Working/Accepted/Published 分区 | 第 9、12、13.3 节 | AC 10–11、18 |
+| R6 | immutable revision + 显式演进和撤回 | 第 8.2、9.4、10.7、10.15 节 | AC 17–18、36 |
+| R7 | 文章、X、Gist、GitHub 是同一研究的不同表达 | 第 10.8、16 节 | AC 12–14、33 |
+| R8 | intended content 与 observed content 分离 | 第 10.8、16.2 节 | AC 12–13 |
+| R9 | 保存全文、本地路径、图片和来源，但 Query 不膨胀 | 第 10.1、10.14、11、13 节 | AC 3–5、22–25 |
+| R10 | `llm-wiki-runtime` 的摘要索引式渐进检索 | 第 3.3、12、13 节 | AC 20–25 |
+| R11 | Skill 有语义，Harness 有治理，Runtime 有确定性访问 | 第 7、17 节 | AC 19–21、35 |
+| R12 | Semantic Memory 经一次 Human Confirmation 晋升 | 第 10.9–10.12、14.3 节 | AC 8–9、28 |
+| R13 | 人工筛选反馈，互动指标不是真值 | 第 10.8、16.3、19 节 | AC 15–16 |
+| R14 | 原子可见、stale、幂等、resume 和 reconciliation | 第 15 节 | AC 26–30 |
+| R15 | 首篇母稿和 6 条 Thread 进入首个真实 Increment | 第 20.2 节 | AC 33 |
+| R16 | Loop 具有研究自我改进能力，但不是无人监督自修改 | 第 7.5、14、16.3 节 | AC 37 |
+| R17 | Enterprise Agent Runtime 是主线，Skills/Thinking Skills 是独立支线 | 第 1、5、8.2、12 节 | AC 38 |
+
+### 25.1 有意留到实现计划的参数
+
+以下项目不改变架构语义，可在实现计划中根据现有 Runtime 限制和测试数据确定具体数值：
+
+- `max_chars_per_chunk`；
+- `max_chars_per_index_record`；
+- `max_shards_per_query`；
+- `max_semantic_records_per_query`；
+- `max_document_chunks_per_query`；
+- Shard 的 entry/byte threshold；
+- V2.3 实现实际锁定的 Runtime patch version。
+
+约束已经确定：
+
+- 所有数值进入版本化 Policy、Plan digest 和测试；
+- 超预算必须 fail-closed；
+- 不允许以“数值尚未确定”为由回退到整目录正文加载；
+- Runtime patch version 变化会使旧 Approval stale；
+- 参数只能影响性能和召回范围，不能改变生命周期、证据等级、权限或 Human Gate。
+
+除这些实现期参数外，本规格没有尚未选择的架构分支。
+
+## 26. 完整性结论
 
 本设计把 V2.2 的“可审计发布记忆”扩展为 V2.3 的“研究数据飞轮”，同时守住四条边界：
 
