@@ -31,7 +31,29 @@ describe('research-publish CLI', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, operation: 'doctor' });
+    const doctor = JSON.parse(result.stdout) as {
+      artifact: { contracts: string[] };
+    };
+    expect(doctor).toMatchObject({ ok: true, operation: 'doctor', state: 'ready' });
+    expect(doctor.artifact.contracts).toEqual(expect.arrayContaining([
+      'x-article-browser-command',
+      'x-article-browser-observation'
+    ]));
+  });
+
+  it('packages both X Article bulk-import capabilities in the manifest and Host reference', async () => {
+    const [manifestText, reference] = await Promise.all([
+      readFile(resolve('registry/manifests/research-publishing.json'), 'utf8'),
+      readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8')
+    ]);
+    const manifest = JSON.parse(manifestText) as {
+      interfaces: { x_article_browser: { capabilities: Record<string, string> } };
+    };
+
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('import_article_document');
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('replace_article_visual_anchor');
+    expect(reference).toContain('import_article_document');
+    expect(reference).toContain('replace_article_visual_anchor');
   });
 
   it('captures a Candidate only below the selected workspace', async () => {

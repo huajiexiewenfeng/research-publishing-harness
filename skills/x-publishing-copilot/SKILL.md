@@ -9,6 +9,8 @@ Use the repository Harness as the deterministic boundary. The Skill may help sha
 
 Choose the branch from the requested artifact. A Single, Thread, or Reply uses `x ...`. A finalized long-form Article Package uses `x-article ...` and [the X Article Browser flow](references/x-article-browser-flow.md), including `x-article browser next` → `x-article browser claim` → one Chrome action → `x-article browser report`. Never convert an X Article to a Thread.
 
+For X Articles, use bulk import only when the bound Host advertises both `import_article_document` and `replace_article_visual_anchor`. The observed editor has no `.md` upload path: execute the claimed digest-bound structured-document import once, verify its template digest and ordered temporary anchors, then replace each approved anchor at its planned block ordinal. Never paste raw or unplanned Markdown, reimport during recovery, switch to incremental insertion after bulk import starts, or open Preview while an anchor remains. Hosts without both capabilities use the existing incremental `insert_article_block` path from the start. Action-time confirmation before real asset upload and the final `publish_once` command is unchanged.
+
 ## Browser Adapter required flow
 
 1. Run `scripts/invoke.mjs doctor --workspace <path> --output json` and stop if the Harness is unavailable or incompatible.

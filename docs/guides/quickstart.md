@@ -139,6 +139,21 @@ x-article plan
 
 Use action-time Human approval before a real file upload and before claiming the final public Publish command. `cancel-before-publish` is valid only before that barrier. After Publish is issued, use `resume-verification`; never issue a second Publish.
 
+For a Host advertising both `import_article_document` and `replace_article_visual_anchor`, the V3.1 bulk path is:
+
+```text
+Harness import command
+→ Host pastes the digest-bound structured document once
+→ Harness verifies template digest and ordered anchors
+→ Host replaces each approved visual anchor
+→ Harness verifies the final Article Document
+→ Preview → action-time confirmation → publish_once
+```
+
+The observed X editor has no `.md` file-upload path. The Host performs the import as one controlled, claimed structured-document action; it does not paste raw or unplanned Markdown. Temporary anchors reserve approved inline-image positions and are replaced separately at their approved block ordinals, never appended to the end. Unresolved anchors cannot reach Preview. After bulk import begins, the Host must not switch to incremental insertion. Crash recovery re-observes the exact persisted import state and resumes the next anchor replacement; it never reimports or changes strategy. The existing action-time `publish_once` confirmation is unchanged.
+
+A Host that lacks either bulk capability uses the existing incremental `insert_article_block` protocol from the start.
+
 ## 10. V2.1 visual handoff
 
 ```text

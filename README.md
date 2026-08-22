@@ -36,6 +36,16 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 - One Approval binding account, mode, text, image, Alt Text, ordinal, Adapter, and `publish_once`
 - Restricted Package-contained Browser upload and Source/Composer/Public media evidence
 
+## Available in V3.1
+
+- Optional digest-bound X Article document import for compatible Chrome Hosts
+- One controlled structured-document action followed by ordered replacement of temporary visual anchors
+- Exact template-digest and anchor-order verification before the final Article Document can reach Preview
+- Crash recovery from the observed import state without re-importing or changing strategy
+- Unchanged action-time `publish_once` confirmation, at-most-once Publish, public verification, and Receipt boundaries
+
+The observed X Article editor has no `.md` file-upload path. The Host therefore executes only a claimed `import_article_document` command, pasting the digest-bound structured document once, and later executes one claimed `replace_article_visual_anchor` command per approved inline visual at its approved block ordinal. Direct unplanned Markdown paste is prohibited. A bulk execution never switches to incremental insertion after import starts, and unresolved anchors can never reach Preview or the public Article. Hosts without both bulk capabilities continue to use the existing incremental `insert_article_block` protocol.
+
 ## Explicit non-capabilities
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.

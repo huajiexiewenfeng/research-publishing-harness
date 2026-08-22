@@ -4,7 +4,7 @@
 
 - flow_id: `x-article-document-import-v3-1`
 - parent_flow_id: `x-article-browser-publishing-v3`
-- status: `design-approved`
+- status: `verification-pending-live-smoke`
 - title: Add digest-bound bulk document import with deterministic visual anchors
 - owner: Research Publishing Harness
 - created: 2026-08-21
@@ -18,6 +18,8 @@ The V3 X Article Browser Adapter inserts one structured block per Browser Comman
 Add an optional `import_article_document` Chrome capability and Browser Command. The command imports a deterministic editor template derived from the approved X Article Document. Inline image blocks are represented during import by unique visual anchors. After the imported template is observed and verified, the Harness issues one command per planned image to replace the corresponding anchor, set the approved alt text, and restore the final Article block order. Preview remains the first place where the final public document must match the approved Article Document digest exactly.
 
 The existing incremental `insert_article_block` path remains available when the Host does not advertise document import.
+
+The observed X editor has no `.md` file-upload path. The Host performs one controlled, claimed structured-document paste using the digest-bound import template; raw or unplanned Markdown paste is not a supported publication input.
 
 ## Protocol Design
 
@@ -46,9 +48,22 @@ The existing incremental `insert_article_block` path remains available when the 
 ### Completion and recovery
 
 - A crash may resume from an exact imported-template observation or an exact prefix of completed anchor replacements.
-- Re-import is never issued when verified imported content or any human/unknown content already exists.
+- Re-import is never issued when verified imported content or any human/unknown content already exists; recovery never changes the persisted bulk strategy to incremental insertion.
 - Preview opens only when the editor projects the exact approved Article Document, all anchors are gone, all visuals are execution-owned, and autosave is `saved`.
 - The existing Publish Gate, Approval verification, at-most-once `publish_once`, public verification, and immutable Receipt behavior do not change.
+
+### Host operation
+
+```text
+Harness import command
+→ Host pastes the digest-bound structured document once
+→ Harness verifies template digest and ordered anchors
+→ Host replaces each approved visual anchor
+→ Harness verifies the final Article Document
+→ Preview → action-time confirmation → publish_once
+```
+
+Every visual replacement preserves its approved block ordinal. Temporary anchors must be resolved before Preview and can never appear in the public Article. The action-time confirmation immediately before the final `publish_once` claim is unchanged.
 
 ## Acceptance Criteria
 
@@ -100,6 +115,19 @@ The existing incremental `insert_article_block` path remains available when the 
 - Build `dist`, run Harness doctor against the publishing workspace, and confirm the new contracts and capability are exposed.
 - Execute a pre-publish Chrome smoke test that imports the approved document and three visuals, then stops at the final action-time Publish confirmation.
 
+## Offline Verification Evidence (2026-08-22)
+
+- Required documentation RED: `tests/cli/cli.test.ts` ran 8 tests; 2 failed and 6 passed. The failures were the expected stale generated doctor exit `10` and the missing packaged Host-reference `import_article_document` name.
+- Focused GREEN after documentation and build: 1 file passed, 8 tests passed.
+- Manifest generation: both runs reported 87 files. Whole-diff hashes after the first and second run were identical (`bded28d45c564534425a6f8c031c2f54c635ff9b`), proving idempotence.
+- `pnpm build`, `pnpm lint`, and `pnpm typecheck`: exit `0` with no TypeScript or ESLint warnings.
+- `pnpm test`: 53 files passed, 277 tests passed.
+- `pnpm acceptance`: all five branches completed or simulated-completed; network was unused; one X Article import, three ordered anchor replacements, and one at-most-once simulated Publish were observed.
+- Built doctor against the article publishing workspace: `state: "ready"`; contract list includes `x-article-browser-command` and `x-article-browser-observation`; `network_required: false`.
+- Generated manifest: declares both `import_article_document` and `replace_article_visual_anchor`; packaged Skill validation passed.
+- Generated runtime: `pnpm build` refreshed the ignored `dist/**` tree with 153 files for explicit inclusion in the Task 5 commit.
+- Live Chrome smoke is pending controller verification. No live execution ID, Preview revision, or Publish-command count is claimed here.
+
 ## Risks
 
 - X editor DOM semantics can change; the Page Contract must fail closed when anchors cannot be uniquely observed.
@@ -114,6 +142,6 @@ The existing incremental `insert_article_block` path remains available when the 
 | Source / problem reproduction | complete | Live X editor retained block style across separate paste operations on 2026-08-21 | Lock design |
 | Design | approved | User approved formal Harness capability and continued with the recommended anchor design | Review written Change Brief |
 | Implementation plan | complete | `.llm-wiki/working-context/x-article-document-import-v3-1-execution-plan.md` | Select execution mode |
-| Development | pending | — | TDD only after plan approval |
-| Verification | pending | Baseline `pnpm test`: 52 files, 230 tests passed | Add focused and full regression evidence |
-| Archive / finish | pending | — | Project Finish after verified browser smoke test |
+| Development | complete | Tasks 1-5 implemented the compiler, contracts, orchestration, acceptance, docs, packaged Skill, manifest, and generated runtime | Run live smoke |
+| Verification | offline-complete | 53 test files / 277 tests; acceptance complete; doctor ready with both X Article browser contracts; both manifest capabilities present | Controller performs pre-publish Chrome smoke |
+| Archive / finish | pending | Live execution ID, Preview revision, and pre-Publish count intentionally not recorded | Project Finish after verified browser smoke test |

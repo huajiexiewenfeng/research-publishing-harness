@@ -435,8 +435,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/SKILL.md",
-      "sha256": "3edfa961a5c6481a3e45bf5d1737554f434ed522f955bea569a1ceec72c5cff7",
-      "bytes": 3391
+      "sha256": "836e56d221a84440359879bd13d258126821303822b98da1ed2a1e9bab7b7765",
+      "bytes": 4132
     },
     {
       "path": "skills/x-publishing-copilot/agents/openai.yaml",
@@ -445,8 +445,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/browser-adapter-flow.md",
-      "sha256": "f94d7cfebbd3fbbd86b9c51ef66eee7c0edd49c714d437a9c1d0296ef7a64086",
-      "bytes": 1625
+      "sha256": "9c156de2143e4cfdcf537dd19d59411f0b1c5e8b0ab0a5cdf3185cb556b4637e",
+      "bytes": 3035
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-browser-flow.md",

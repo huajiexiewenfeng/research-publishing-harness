@@ -407,11 +407,11 @@ git commit -m "test: verify bulk X Article document import"
 - Document that X itself has no `.md` file upload in the observed editor; the Host imports a digest-bound structured document through one controlled editor action.
 - Document temporary visual anchors, separate final image replacement, crash recovery, and the unchanged action-time `publish_once` confirmation.
 
-- [ ] **Step 1: Add documentation assertions before editing docs**
+- [x] **Step 1: Add documentation assertions before editing docs**
 
 Extend the CLI/manifest test to assert the doctor contract list and packaged Skill reference include `import_article_document` and `replace_article_visual_anchor`. Run it and verify failure before updating docs/manifest output.
 
-- [ ] **Step 2: Update user and Host documentation**
+- [x] **Step 2: Update user and Host documentation**
 
 Add the bulk flow:
 
@@ -426,7 +426,7 @@ Harness import command
 
 Explicitly prohibit direct unplanned Markdown paste, publishing with unresolved anchors, and switching to incremental mode after a bulk import begins.
 
-- [ ] **Step 3: Build generated runtime and run the full verification gate**
+- [x] **Step 3: Build generated runtime and run the full verification gate**
 
 Run:
 
@@ -440,7 +440,7 @@ pnpm acceptance
 
 Expected: exit code 0; all test files pass; acceptance reports all branches complete; no warnings from TypeScript or ESLint.
 
-- [ ] **Step 4: Run Harness doctor against the article publishing workspace**
+- [x] **Step 4: Run Harness doctor against the article publishing workspace**
 
 Run the built CLI with:
 
@@ -462,6 +462,18 @@ Record test counts, acceptance result, doctor output, execution ID, Preview revi
 git add README.md docs/quickstart.md skills/x-publishing-copilot/SKILL.md skills/x-publishing-copilot/references/browser-adapter-flow.md .llm-wiki/requirements/x-article-document-import-v3-1.md .llm-wiki/working-context/x-article-document-import-v3-1-execution-plan.md dist
 git commit -m "docs: document X Article document import"
 ```
+
+#### Task 5 offline evidence (2026-08-22)
+
+- Documentation RED: focused CLI suite ran 8 tests; 2 failed and 6 passed. Failures were the stale built doctor returning exit `10` before `dist` regeneration and the packaged Host reference missing `import_article_document`.
+- Documentation GREEN: focused CLI suite passed 1 file and all 8 tests after the docs/Skill update and build.
+- Corrected the brief's nonexistent `docs/quickstart.md` path to the canonical `docs/guides/quickstart.md`; `README.md` already links to the canonical guide.
+- Manifest generation reported 87 files on both runs. Post-generation whole-diff hashes matched at `bded28d45c564534425a6f8c031c2f54c635ff9b`.
+- Full gate: `pnpm build`, `pnpm lint`, and `pnpm typecheck` exited `0`; `pnpm test` passed 53 files and 277 tests; `pnpm acceptance` returned `ok: true`, all branches complete/simulated-complete, `network: unused`, one import command, three anchor replacement commands, and one simulated at-most-once X Article Publish command.
+- Doctor: exact built CLI command against `publishing-workspace/llm-wiki-runtime-first-article` returned `state: "ready"`, `network_required: false`, and both `x-article-browser-command` and `x-article-browser-observation` in the contract list.
+- Registry/Skill: generated interface metadata contains `import_article_document` and `replace_article_visual_anchor`; Skill validator returned `Skill is valid!`.
+- Generated runtime: `pnpm build` refreshed 153 ignored `dist/**` files for explicit staging in the Task 5 commit.
+- Step 5 is pending controller verification. This offline slice created no X draft or Approval, performed no live Browser action, and records no fabricated execution ID, Preview revision, or Publish-command count.
 
 ## Plan Self-Review
 
