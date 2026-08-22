@@ -3,13 +3,32 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
-async function yaml(path: string): Promise<Record<string, unknown>> {
-  return parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+interface ProfileAsset {
+  profile: { id: string; version: string };
+  write_rules: { records: Record<string, unknown> };
+  logs: { types: { memory_event: unknown } };
+  read_rules: { context_pack: unknown };
+}
+
+interface MappingAsset {
+  mapping: { id: string; version: string; domain: string; owner_skill_id: string };
+  produces: readonly unknown[];
+}
+
+interface ScpAsset {
+  skill: { id: string; domain: string };
+  query: { primary_domain: string; supports: readonly unknown[] };
+  llm_wiki: { profile: string; required: boolean };
+  ingest: { produces: readonly unknown[] };
+}
+
+async function yaml<T>(path: string): Promise<T> {
+  return parse(await readFile(path, 'utf8')) as T;
 }
 
 describe('research-publishing LLM Wiki domain assets', () => {
   it('declares create-only research records, append-only events, and bounded context', async () => {
-    const profile = await yaml('harnesses/research-publishing/memory/llm-wiki-profile.yml') as any;
+    const profile = await yaml<ProfileAsset>('harnesses/research-publishing/memory/llm-wiki-profile.yml');
     expect(profile.profile).toMatchObject({ id: 'research-publishing', version: 'v0.1' });
     expect(profile.write_rules.records).toEqual({
       publication_evidence: {
@@ -43,10 +62,10 @@ describe('research-publishing LLM Wiki domain assets', () => {
   });
 
   it('binds mapping validation to the internal harness and semantics to Article/X Skills', async () => {
-    const mapping = await yaml('harnesses/research-publishing/memory/ingest-mapping.yml') as any;
-    const harnessScp = await yaml('harnesses/research-publishing/memory/scp.yml') as any;
-    const articleScp = await yaml('skills/article-publishing-copilot/scp.yml') as any;
-    const xScp = await yaml('skills/x-publishing-copilot/scp.yml') as any;
+    const mapping = await yaml<MappingAsset>('harnesses/research-publishing/memory/ingest-mapping.yml');
+    const harnessScp = await yaml<ScpAsset>('harnesses/research-publishing/memory/scp.yml');
+    const articleScp = await yaml<ScpAsset>('skills/article-publishing-copilot/scp.yml');
+    const xScp = await yaml<ScpAsset>('skills/x-publishing-copilot/scp.yml');
 
     expect(mapping.mapping).toMatchObject({
       id: 'research-publishing-memory',

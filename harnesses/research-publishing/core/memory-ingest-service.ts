@@ -278,6 +278,13 @@ export class MemoryIngestService {
     artifactOperation: MemoryIngestPlanV1['artifact_operation']
   ): Promise<MemoryIngestPlanV1> {
     const domain = await this.domainDigests();
+    // Runtime 0.2.0 derives source_id deterministically from the copied bytes.
+    // Freeze that exact ref into the Plan so approval covers the refs used by write-record.
+    const runtimeSourceId = `src-${staging.source_artifact.digest.slice('sha256:'.length, 'sha256:'.length + 12)}`;
+    const recordOperations = staging.operations.map((operation) => ({
+      ...operation,
+      refs: { ...operation.refs, source_id: runtimeSourceId }
+    }));
     const body = {
       schema_version: 'memory-ingest-plan/v1' as const,
       ingest_id: ingestId,
@@ -290,7 +297,7 @@ export class MemoryIngestService {
       target_profile: 'research-publishing' as const,
       workspace_identity_digest: this.workspaceDigest(),
       runtime_version: '0.2.0' as const,
-      record_operations: staging.operations,
+      record_operations: recordOperations,
       source_artifact: staging.source_artifact,
       artifact_operation: artifactOperation,
       log_event: { log_type: 'memory_event' as const, event_id: `memory-ingest:${ingestId}` },
@@ -560,9 +567,30 @@ export class MemoryIngestService {
     return this.store.withLock(`${this.root(ingestId)}/execution.lock`, async () => {
       const plan = await this.plan(ingestId);
       await this.preflight(plan, approval);
-      const state = await this.status(ingestId);
+      let state = await this.status(ingestId);
+      if (state.active_step === 'register_artifact') {
+        throw new HarnessError(
+          'MEMORY_INGEST_RECONCILIATION_REQUIRED',
+          'register-artifact outcome is uncertain; inspect the Runtime artifact index before continuing'
+        );
+      }
       if (state.state !== 'partial_failure') {
-        throw new HarnessError('STATE_TRANSITION_INVALID', 'only partial Memory Ingest may resume');
+        const interrupted = new Set<MemoryIngestState>([
+          'ingest_approved', 'source_copied', 'records_written',
+          'artifacts_registered', 'log_appended'
+        ]);
+        if (!interrupted.has(state.state) || (state.state === 'ingest_approved' && state.active_step === null)) {
+          throw new HarnessError(
+            'STATE_TRANSITION_INVALID',
+            'only partial or interrupted Memory Ingest may resume'
+          );
+        }
+        state = {
+          ...state,
+          state: transitionMemoryIngestState(state.state, 'partial_failure'),
+          updated_at: this.now().toISOString()
+        };
+        await this.writeState(state);
       }
       const resumed = {
         ...state,
@@ -654,7 +682,9 @@ export class MemoryIngestService {
         source: source.absolute_path,
         logical_path: `sources/originals/research-publishing/${plan.ingest_id}.json`,
         source_type: plan.ingest_kind,
-        metadata: { ingest_id: plan.ingest_id, plan_digest: plan.plan_digest }
+        // Runtime 0.2.0 reserves metadata for confirmed excerpt provenance.
+        // The complete ingest provenance is already frozen in this source bundle.
+        metadata: {}
       });
       return {
         status: result.status === 'already_exists' ? 'already_exists' : 'succeeded',

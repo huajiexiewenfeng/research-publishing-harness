@@ -3,7 +3,7 @@
 ## Summary
 
 - title: Design controlled research-memory loop through llm-wiki-runtime
-- status: executing
+- status: done
 - flow_id: `llm-wiki-memory-adapter-v2-2`
 
 ## Routing
@@ -13,7 +13,7 @@
 - secondary_bridges: `brainstorming`, `llm-wiki-core`, `project-graph-human-edge`
 - confidence: high
 - reason: V2.1 已明确预留 SCP Query/Ingest 连接点；用户确认下一阶段优先设计 LLM Wiki Memory Adapter，并要求形成 Skill + Harness + Runtime 的可持续 RSI 闭环。
-- next_gate: 按已确认实施计划执行 Task 1 的 RED/GREEN
+- next_gate: 在用户显式选择的 Publishing Workspace 初始化 `research-publishing` Domain；首次真实 Ingest 仍需精确 Human Approval
 
 ## Sources
 
@@ -89,8 +89,8 @@
 ## Plan
 
 - active_plan: `docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md`
-- status: confirmed
-- evidence: 用户明确要求“按照设计文档，开发完成 V2.2 版本”；计划已按批准规格和 source-verified `edge-001` 自审。
+- status: executed
+- evidence: Tasks 1–8 已按 RED/GREEN 完成；fresh `pnpm check`、显式真实 Runtime integration、22 项证据审计和 handoff 均已完成。
 
 ## Verification Plan
 
@@ -123,10 +123,11 @@
 | source | done | V2.1 section 24、V3 基线及本地 llm-wiki-runtime 源码契约 | 2026-08-22 |
 | design | done-approved | 用户于 2026-08-22 确认；`docs/superpowers/specs/2026-08-22-llm-wiki-memory-adapter-v2-2-design.zh-CN.md` | 2026-08-22 |
 | plan | done | `docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md` | 2026-08-22 |
-| development | active | Task 1: Contracts and Package 1.1 | 2026-08-22 |
-| testing | not-started | 规格中已定义验证矩阵 | 2026-08-22 |
-| archive | not-started | 实施和验证完成后生成 handoff | 2026-08-22 |
+| development | done | commits `f8cc624`–`76992a7` 加 Task 8 closeout；完整 Query/Package/Feedback/Insight/Ingest/CLI/Skill surface | 2026-08-22 |
+| testing | passed-agent-local | `pnpm check`: 69 files / 296 tests passed，1 real-runtime test opt-in skipped；显式 Runtime 0.2.0 integration 1/1 passed | 2026-08-22 |
+| archive | done | `.llm-wiki/verification/llm-wiki-memory-adapter-v2-2.md` 与 `.llm-wiki/handoff/llm-wiki-memory-adapter-v2-2-handoff.md` | 2026-08-22 |
 
 ## Open Questions
 
 - 第一版真实 Publishing Workspace 的位置应由用户显式选择；不得默认使用源码仓库根目录。
+- Runtime 0.2.0 的 `register-artifact` 尚无 idempotency key；该命令结果不确定的进程崩溃窗口会 fail-closed 为 `MEMORY_INGEST_RECONCILIATION_REQUIRED`，需先人工核对 artifact index。

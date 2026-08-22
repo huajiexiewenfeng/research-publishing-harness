@@ -102,6 +102,9 @@ export class MemoryInsightService {
       basis: _basis,
       ...proposalInput
     } = input;
+    void _path;
+    void _digest;
+    void _basis;
     const body = {
       schema_version: 'candidate-insight-proposal/v1' as const,
       proposal_id: this.ids.proposalId?.() ?? `insight_${randomUUID().replaceAll('-', '')}`,

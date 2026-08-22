@@ -14,6 +14,10 @@ describe('offline acceptance', () => {
       ok: true,
       x_article: 'simulated_complete',
       x_article_publish_commands: 1,
+      memory_query: 'simulated_complete',
+      publication_checkpoint: 'simulated_complete',
+      feedback_insight: 'simulated_complete',
+      memory_resume: 'simulated_complete',
       network: 'unused'
     });
   }, 20_000);

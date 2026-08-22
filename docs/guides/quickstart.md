@@ -14,7 +14,7 @@ pnpm check
 Expected Acceptance output:
 
 ```json
-{"ok":true,"article":"complete","manual_x":"complete","browser_x":"simulated_complete","visual_v2_1":"simulated_complete","x_article":"simulated_complete","network":"unused","submit_commands":1,"submit_claims":1,"x_article_publish_commands":1}
+{"ok":true,"article":"complete","manual_x":"complete","browser_x":"simulated_complete","visual_v2_1":"simulated_complete","x_article":"simulated_complete","memory_query":"simulated_complete","publication_checkpoint":"simulated_complete","feedback_insight":"simulated_complete","memory_resume":"simulated_complete","network":"unused","submit_commands":1,"submit_claims":1,"x_article_publish_commands":1}
 ```
 
 Acceptance creates a uniquely named temporary workspace, verifies both workflows and their digests, and removes only that verified temporary directory.
@@ -150,3 +150,47 @@ article handoff-x  # input includes {"asset_id":"asset_cover"}
 ```
 
 The Host manifest must include `file_upload`, `attachment_alt_text`, `upload_attachment`, and `set_attachment_alt_text`. Upload only the claimed Package-relative path. Automated acceptance uses generated synthetic images and a Fake Browser only.
+
+## 11. V2.2 governed research memory
+
+Use `llm-wiki-core` / `llm-wiki-init` once to initialize the `research-publishing` Domain in a dedicated Publishing Workspace. Do not initialize it in this source repository. The Workspace contains publication runs and research memory; this repository's `.llm-wiki` remains project-development context and is never used as publishing memory.
+
+The Harness does not discover an arbitrary executable from `PATH`. Supply both explicit options on every real Runtime command:
+
+```text
+--runtime-executable <absolute-python-or-llm-wiki-path>
+--runtime-launcher python-module|console-script
+```
+
+For Python module mode, make the pinned `llm-wiki-runtime` 0.2.0 source/package available to that Python environment. Verify the boundary first:
+
+```bash
+node dist/harnesses/research-publishing/cli/index.js memory doctor \
+  --workspace ./publishing-workspace \
+  --runtime-executable /absolute/path/to/python \
+  --runtime-launcher python-module \
+  --output json
+```
+
+Query happens only before constructing a new Package `1.1`:
+
+```text
+memory query plan → memory query execute → Human reviews ordered context_refs
+→ memory query bind-package → normal package build → review → freeze
+```
+
+Each operation receives an explicit JSON `--input` file. If Runtime Query is absent or unavailable, the flow may continue only with `memory_unavailable` or `memory_not_applied`; it must not imply that prior research was used. A frozen Package, Publication Plan, or Approval is never patched with later memory.
+
+There are two write paths:
+
+- `publication_checkpoint`: preserve a finalized publication Receipt without requiring public replies.
+- `feedback_insight`: preserve a Human-selected Feedback Snapshot plus accepted Candidate Insight proposals. Public text remains `data_only` and anecdotal evidence cannot become a verified conclusion automatically.
+
+Both use the same controlled sequence:
+
+```text
+memory ingest plan → inspect preview.md and exact plan_digest
+→ memory ingest approve → memory ingest execute
+```
+
+Any change to Workspace identity, Profile, SCP, Mapping, source bytes, staged content or Plan digest invalidates Approval. A `partial` Receipt records the last failed step; after correcting the external Runtime condition, use `memory ingest status` and `memory ingest resume` with the same still-valid Approval. Completed steps are not replayed. Never work around a failure by writing `.llm-wiki` directly.

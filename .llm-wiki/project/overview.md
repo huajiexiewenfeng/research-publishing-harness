@@ -2,7 +2,7 @@
 
 Research Publishing Harness 是一个本地优先、证据驱动的研究发布系统。它通过共享 Research Content Package，为 Article 与 X 两个平级分支提供来源、Claim、Evidence、Lineage、Privacy、Review 和 Publish Gate。
 
-当前仓库已实现 V1 本地发布主线、V2 text-only Browser Adapter，以及 V2.1 Visual Publishing。V2.1 以 Canonical Markdown Article Package 为图片事实源，支持静态 PNG/JPEG/WebP 的确定性规范化、显式 X Asset Handoff、受限 Browser 上传和 Source/Composer/Public 分层 Receipt 证据。真实 X 发布、X API、GIF/视频/动态图、多图、自动选图与 LLM Wiki V2.2 Adapter 均未实现。
+当前仓库已实现 V1 本地发布主线、V2/V2.1 Post Browser Adapter、V3 X Article Browser Publishing，以及 V2.2 LLM Wiki Memory Adapter。V2.2 以 `research-publishing` Domain 和 `research_track` 隔离研究记忆，支持受审 Query → Package 1.1、Publication Checkpoint、Human-selected Feedback、Candidate Insight、精确批准 Ingest 与下一次 Query。真实 X 发布、X API、GIF/视频/动态图、多图、自动选图、自动反馈监控和云/团队记忆仍未实现。
 
 ## 已实现模块
 
@@ -12,6 +12,8 @@ Research Publishing Harness 是一个本地优先、证据驱动的研究发布�
 - `x-harness`：Single、Thread、Reply、Manual Adapter、Browser V2/V2.1 Plan 与 Approval。
 - `skills`：Article 与 X 两个薄 Skill。
 - `visual-publishing-v2-1`：Visual Slot、静态图片规范化、Manifest、Package Digest、受限上传、公开媒体证据。
+- `x-article-harness`：受限 X Articles 文档、一次发布屏障与公开验证。
+- `memory-v2-2`：Package 1.1、Query/Feedback/Insight/Ingest 契约、受限 Runtime Adapter 与可恢复 Receipt。
 
 ## 事实权威
 

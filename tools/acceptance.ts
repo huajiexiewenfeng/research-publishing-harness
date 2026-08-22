@@ -29,6 +29,10 @@ import { approvePublication } from '../harnesses/research-publishing/core/approv
 import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
 import { approveXArticlePublication } from '../harnesses/research-publishing/core/x-article-approval.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
+import { MemoryFeedbackService } from '../harnesses/research-publishing/core/memory-feedback-service.js';
+import { MemoryIngestService } from '../harnesses/research-publishing/core/memory-ingest-service.js';
+import { MemoryInsightService } from '../harnesses/research-publishing/core/memory-insight-service.js';
+import { MemoryQueryService } from '../harnesses/research-publishing/core/memory-query-service.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
@@ -43,6 +47,10 @@ let articleComplete = false;
 let manualXComplete = false;
 let browserXComplete = false;
 let xArticleComplete = false;
+let memoryQueryComplete = false;
+let publicationCheckpointComplete = false;
+let feedbackInsightComplete = false;
+let memoryResumeComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
@@ -485,7 +493,140 @@ try {
     visualReceipt.media_evidence.composer_attachment_verified &&
     visualReceipt.media_evidence.public_media_verified;
 
-  if (!articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete) {
+  const memoryQuery = new MemoryQueryService(store, {
+    async query() {
+      return {
+        status: 'loaded' as const, runtime_version: '0.2.0' as const,
+        excluded_count: 0, truncated_count: 0,
+        items: [{
+          path: 'domains/research-publishing/tracks/enterprise-agent-runtime/insights/acceptance.md',
+          checksum: `sha256:${'d'.repeat(64)}` as const,
+          content: 'A governed memory loop preserves provenance.',
+          instruction_policy: 'data_only' as const, sanitized: false, risk_flags: []
+        }]
+      };
+    }
+  }, {
+    queryId: () => 'query_acceptance_memory', runId: () => 'run_acceptance_memory',
+    snapshotId: () => 'snapshot_acceptance_memory', now: () => new Date(browserAt)
+  });
+  const memoryQueryPlan = await memoryQuery.planQuery({
+    research_track: 'enterprise-agent-runtime', purpose: 'candidate_enrichment', query_terms: [],
+    context_budget: { max_items: 4, max_chars: 8_000, max_item_chars: 2_000 },
+    profile_digest: `sha256:${'e'.repeat(64)}`, scp_digest: `sha256:${'f'.repeat(64)}`
+  });
+  const memorySnapshot = await memoryQuery.executeQuery(memoryQueryPlan.query_id);
+  const memoryReview = await memoryQuery.reviewContext(memoryQueryPlan.query_id, {
+    selected_refs: [memorySnapshot.items[0]!.context_ref], reviewed_by: 'acceptance-reviewer',
+    reviewed_at: new Date(browserAt)
+  });
+  memoryQueryComplete = memoryReview.status === 'applied';
+
+  const memoryPublicationPath = 'receipts/acceptance_memory_publication.json';
+  await store.writeNew(memoryPublicationPath, {
+    receipt_id: 'publication_acceptance_memory', status: 'finalized', target_account: '@runtime_ai',
+    public_result: { root_url: 'https://x.com/runtime_ai/status/900000000000000000' }
+  });
+  const memoryPublication = await store.resolveExistingArtifact(memoryPublicationPath);
+  let appendLogFailure = false;
+  const fakeMemoryRuntime = {
+    async version() { return '0.2.0' as const; },
+    async validateMapping() { return { status: 'ok', warnings: [], next_actions: [], context_refs: [] }; },
+    async copySource() {
+      return { status: 'ok', path: 'sources/originals/research-publishing/acceptance.json', checksum: `sha256:${'1'.repeat(64)}`, warnings: [], next_actions: [], context_refs: [] };
+    },
+    async writeRecord() {
+      return { status: 'ok', path: 'domains/research-publishing/tracks/enterprise-agent-runtime/acceptance.md', checksum: `sha256:${'2'.repeat(64)}`, warnings: [], next_actions: [], context_refs: [] };
+    },
+    async registerArtifact() {
+      return { status: 'ok', path: 'artifacts/index.json', checksum: `sha256:${'3'.repeat(64)}`, warnings: [], next_actions: [], context_refs: [] };
+    },
+    async appendLog() {
+      if (appendLogFailure) {
+        appendLogFailure = false;
+        throw new Error('synthetic append failure');
+      }
+      return { status: 'ok', path: 'logs/research-publishing-memory-event.jsonl', checksum: `sha256:${'4'.repeat(64)}`, warnings: [], next_actions: [], context_refs: [] };
+    }
+  };
+  let memoryIngestId = 0;
+  let memoryApprovalId = 0;
+  let memoryReceiptId = 0;
+  const memoryIngest = new MemoryIngestService(store, fakeMemoryRuntime, {
+    profile_path: resolve('harnesses/research-publishing/memory/llm-wiki-profile.yml'),
+    mapping_path: resolve('harnesses/research-publishing/memory/ingest-mapping.yml'),
+    scp_paths: [
+      resolve('harnesses/research-publishing/memory/scp.yml'),
+      resolve('skills/article-publishing-copilot/scp.yml'),
+      resolve('skills/x-publishing-copilot/scp.yml')
+    ]
+  }, {
+    ingestId: () => `ingest_acceptance_${++memoryIngestId}`,
+    approvalId: () => `approval_acceptance_${++memoryApprovalId}`,
+    receiptId: () => `memory_receipt_acceptance_${++memoryReceiptId}`,
+    now: () => new Date(browserAt)
+  });
+  const checkpointPlan = await memoryIngest.planPublicationCheckpoint({
+    receipt_path: memoryPublicationPath, receipt_digest: memoryPublication.digest,
+    research_track: 'enterprise-agent-runtime', publication_id: 'publication_acceptance_memory'
+  });
+  const checkpointApproval = await memoryIngest.approve(
+    checkpointPlan.ingest_id, 'acceptance-reviewer', 60_000
+  );
+  const checkpointReceipt = await memoryIngest.execute(checkpointPlan.ingest_id, checkpointApproval);
+  publicationCheckpointComplete = checkpointReceipt.status === 'succeeded';
+
+  const acceptanceFeedback = await new MemoryFeedbackService(store, {
+    feedbackSnapshotId: () => 'feedback_acceptance_memory'
+  }).capture({
+    receipt_path: memoryPublicationPath, receipt_digest: memoryPublication.digest,
+    publication_kind: 'x_thread', public_url: 'https://x.com/runtime_ai/status/900000000000000000',
+    account: '@runtime_ai', observed_at: new Date(browserAt), selection_actor: 'acceptance-reviewer',
+    selection_reason: 'Synthetic counterexample selected by the acceptance Human gate.',
+    entries: [{
+      public_url: 'https://x.com/peer/status/900000000000000001', platform_id: '900000000000000001',
+      author: '@peer', observed_text: 'Recovery needs explicit idempotency.', observed_metrics: { replies: 1 }
+    }]
+  });
+  const acceptanceFeedbackPath = `feedback/${acceptanceFeedback.feedback_snapshot_id}/snapshot.json`;
+  const acceptanceFeedbackArtifact = await store.resolveExistingArtifact(acceptanceFeedbackPath);
+  const memoryInsights = new MemoryInsightService(store, { proposalId: () => 'insight_acceptance_memory' });
+  const acceptanceInsight = await memoryInsights.propose({
+    feedback_snapshot_path: acceptanceFeedbackPath,
+    feedback_snapshot_digest: acceptanceFeedbackArtifact.digest,
+    basis: 'observed_text', research_track: 'enterprise-agent-runtime', insight_type: 'counterexample',
+    proposition: 'Recovery may need an explicit idempotency contract.',
+    source_refs: ['feedback:feedback_acceptance_memory:1'], affected_claim_refs: [],
+    evidence_strength: 'anecdotal', confidence: 0.4,
+    boundary_note: 'Synthetic feedback is not production evidence.', alternative_explanations: ['Host retry policy.'],
+    recommended_disposition: 'investigate', created_by_skill: 'x-publishing-copilot'
+  });
+  await memoryInsights.reviewInsight(acceptanceInsight.proposal_id, {
+    reviewed_by: 'acceptance-reviewer', accepted: true, reason: 'Candidate only.',
+    reviewed_at: new Date(browserAt)
+  });
+  const feedbackPlan = await memoryIngest.planFeedbackInsight({
+    receipt_path: memoryPublicationPath, receipt_digest: memoryPublication.digest,
+    feedback_snapshot_path: acceptanceFeedbackPath,
+    feedback_snapshot_file_digest: acceptanceFeedbackArtifact.digest,
+    proposal_ids: [acceptanceInsight.proposal_id], research_track: 'enterprise-agent-runtime',
+    publication_id: 'publication_acceptance_memory', feedback_id: acceptanceFeedback.feedback_snapshot_id
+  });
+  const feedbackApproval = await memoryIngest.approve(feedbackPlan.ingest_id, 'acceptance-reviewer', 60_000);
+  appendLogFailure = true;
+  const partialFeedbackReceipt = await memoryIngest.execute(feedbackPlan.ingest_id, feedbackApproval);
+  const resumedFeedbackReceipt = await memoryIngest.resume(feedbackPlan.ingest_id, feedbackApproval);
+  feedbackInsightComplete = resumedFeedbackReceipt.status === 'succeeded';
+  memoryResumeComplete =
+    partialFeedbackReceipt.status === 'partial' &&
+    partialFeedbackReceipt.resume_cursor === 'append_log' &&
+    resumedFeedbackReceipt.resume_cursor === null;
+
+  if (
+    !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
+    !memoryQueryComplete || !publicationCheckpointComplete ||
+    !feedbackInsightComplete || !memoryResumeComplete
+  ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
   process.stdout.write(
@@ -496,6 +637,10 @@ try {
       browser_x: 'simulated_complete',
       visual_v2_1: 'simulated_complete',
       x_article: 'simulated_complete',
+      memory_query: 'simulated_complete',
+      publication_checkpoint: 'simulated_complete',
+      feedback_insight: 'simulated_complete',
+      memory_resume: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,

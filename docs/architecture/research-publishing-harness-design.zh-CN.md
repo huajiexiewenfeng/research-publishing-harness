@@ -468,3 +468,31 @@ V3 新增与 Post 分支并列的 `x-article-harness`，只接受已经 Finalize
 Chrome Host 逐条执行语义命令：观察 Articles 页、创建并识别自动保存 Draft、填充标题和正文、上传 Package 内锁定图片、验证 Preview、打开 Publish Review，最后经过 write-ahead barrier 只签发一次 `publish_article_once`。真实文件上传与最终公开发布仍需要动作时 Human 确认；发布命令一旦签发，恢复路径只读，禁止再次 Publish 或降级成 Thread。
 
 公开验证分别比较作者、标题、块顺序与文本、展开链接以及可观察的图片/Alt 证据，并生成不可变 Receipt。V3 不支持编辑、删除或取消发布既有 Article、订阅者可见、GIF/视频、嵌入 Post、排程和任意 HTML。
+
+## LLM Wiki Memory Adapter V2.2 增量
+
+V2.2 在生成平面之前增加受控长期研究记忆，但不在 Harness 内建设第二个知识库 Runtime。`research-publishing` Domain 的语义、Claim/Boundary 判断和 Candidate Insight 提议仍归 Article/X Skill；Harness 负责 Query/Ingest Plan、Digest、Review、Approval、状态和 Receipt；只有 `llm-wiki-runtime` 0.2.0 可以确定性读取或写入 Publishing Workspace 的 `.llm-wiki`。
+
+项目源码仓库的 `.llm-wiki` 与 Publishing Workspace 完全隔离。首版 Primary Domain 固定为 `research-publishing`，所有长期记录位于 `domains/research-publishing/tracks/{research_track}/...`。Adapter 只接受显式绝对 executable、固定 `python-module | console-script` launcher、固定 argv allow-list 和单个 JSON stdout envelope；禁止 shell、任意命令、静默 PATH 发现和直接文件降级。
+
+读取闭环为：
+
+```text
+Query Plan → Runtime Context Pack → frozen Context Snapshot
+→ Human Context Review → draft Package 1.1 binding → Package Review/Freeze
+```
+
+Query Plan 锁定 Domain、track、用途、allow/exclude path、预算、排序、Profile/SCP digest 和 Runtime 版本。Context Snapshot 固定有序 refs、相对路径、checksum、截断和风险字段。外部内容统一按 `data_only` 处理。Runtime 不可用时可以诚实降级为 `memory_unavailable`；没有选择内容时记录 `memory_not_applied`。既有 Package 1.0 保持只读兼容，Package 冻结后不得追加或替换 Context。
+
+写入闭环分为 `publication_checkpoint` 与 `feedback_insight`。前者保存终态 Publication Receipt；后者要求 Human 显式选择公开反馈、绑定原 Receipt、生成 Candidate Insight，并经过 Evidence Review。Candidate Insight 区分 `counterexample`、`research_question`、`candidate_claim`、`audience_signal`、`format_signal` 和 `visual_signal`，永远不是自动 verified conclusion。
+
+```text
+source/feedback/insight bytes → immutable staging + preview
+→ exact Ingest Plan → one Human Approval
+→ validate-mapping → copy-source → write-record
+→ register-artifact → append-log → immutable Ingest Receipt
+```
+
+Approval 同时绑定 Plan digest、Workspace identity、Domain/Profile、资产 digests、Runtime 版本和动作。任一变化都会 stale。`already_exists` 是明确幂等成功；partial/failed 不得伪装完成。Harness 在每个副作用前后持久化步骤状态，恢复时跳过已确认步骤。由于 Runtime 0.2.0 的 `register-artifact` 本身尚无 idempotency key，进程若恰在该命令成功后、Harness 状态落盘前崩溃，不能证明安全自动重放；该极窄窗口必须停止并人工核对 artifact index，不能声称无条件 exactly-once。
+
+V2.2 不包含自动监控 X、自动选择反馈、向量/语义搜索、跨 Domain 写入、后台 daemon、云/团队同步或无人审批 Ingest。自动化测试只使用临时 Workspace 和 Fake Runtime；真实 Runtime integration 也只在显式路径启用后写系统临时目录。

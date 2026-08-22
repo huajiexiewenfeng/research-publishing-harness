@@ -361,8 +361,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/errors.ts",
-      "sha256": "42b1e5e2fb4534926f3e5bde5a7177f9522fb373784fa39e9db5687d74e6e3be",
-      "bytes": 2043
+      "sha256": "5b435dc72d1eef449253e0e1bd105ef5085dd9752ef32efa9a97249d67764729",
+      "bytes": 2087
     },
     {
       "path": "harnesses/research-publishing/core/execution-store.ts",
@@ -391,13 +391,13 @@
     },
     {
       "path": "harnesses/research-publishing/core/memory-ingest-service.ts",
-      "sha256": "03e65c4107303a41680b924384435bdd1a5bb2384abd85bdbefbc5925c807498",
-      "bytes": 31937
+      "sha256": "b27c549118140f59257c19a3d19809ab04252a0d0c1bf3641595fdadb0dca463",
+      "bytes": 33319
     },
     {
       "path": "harnesses/research-publishing/core/memory-insight-service.ts",
-      "sha256": "4ab8f4a64e64d73224c8f5ad235aa9f84691a073c80836634edc42b169fdc732",
-      "bytes": 6948
+      "sha256": "569c450ea788c11a512b0d0981e46fbd1e9dc6a418395773f797e00464a7c595",
+      "bytes": 6999
     },
     {
       "path": "harnesses/research-publishing/core/memory-package.ts",
@@ -451,8 +451,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/types.ts",
-      "sha256": "604238fd2f9e476a8b26bdaef8b707edc9b7306bc5dd217357af6b2b456bb90b",
-      "bytes": 6592
+      "sha256": "ce1a42b1f969679b75ec62a1d41a29eda4e2e284507c262115421f18a57427a4",
+      "bytes": 6623
     },
     {
       "path": "harnesses/research-publishing/core/visual-assets.ts",

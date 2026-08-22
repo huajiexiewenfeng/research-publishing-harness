@@ -40,3 +40,9 @@
 - 用户批准 V2.2 LLM Wiki Memory Adapter 完整规格，并明确要求按设计完成开发。
 - 通过只读跨项目边界检查核对 `llm-wiki-runtime` 0.2.0 的 JSON CLI、Profile、SCP 与 Mapping 契约；远端源码 commit 为 `1ebcb04b9cb6ecd129af0386f59e469a2f2853ac`。
 - 手工登记 source-verified dependency `edge-001`，并创建 cross-ref `llm-wiki-runtime`；未修改远端项目。
+- 完成 V2.2：Package 1.1、确定性 Query/Snapshot/Review、Receipt-bound Feedback、Candidate Insight/Evidence Review、两类精确批准 Ingest、受限 Runtime Adapter、CLI 与两个薄 Skill 已交付。
+- 真实 Runtime integration 暴露并修复两处 0.2.0 契约错位：`copy-source` 受控 metadata，以及 `write-record` 必须引用 Runtime 由 source checksum 推导的真实 `source_id`。
+- 恢复审计新增 `MEMORY_INGEST_RECONCILIATION_REQUIRED`：幂等步骤可按 write-ahead 状态恢复；结果不确定的非幂等 `register-artifact` 不自动重放。
+- fresh `pnpm check` 通过：69 个测试文件 / 296 项测试通过，1 个显式真实 Runtime 测试默认跳过；离线 acceptance 的四个 Memory 闭环信号全部完成且 `network: unused`。
+- 显式本地 `llm-wiki-runtime` 0.2.0 integration 在临时 Workspace 1/1 通过；manifest 112 个文件；`git diff --check` 通过。
+- 22 项验收证据和 handoff 已归档，信任级别 `passed-agent-local`；未写用户真实 Wiki、未访问真实 X、未 push/PR。

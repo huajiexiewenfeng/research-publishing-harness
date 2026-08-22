@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-> **Pre-alpha / V1 stable + V2.1 Visual Publishing available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
+> **Pre-alpha / V1 stable + V2.2 governed research memory available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
 
 Research Publishing Harness separates generative work from deterministic publication controls. An agent can help frame a thesis and draft prose; the Harness owns versioned contracts, Claim/Evidence boundaries, privacy review, weighted X character validation, immutable artifacts, content-specific Approval, and manual receipts.
 
@@ -36,21 +36,35 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 - One Approval binding account, mode, text, image, Alt Text, ordinal, Adapter, and `publish_once`
 - Restricted Package-contained Browser upload and Source/Composer/Public media evidence
 
+## Available in V2.2
+
+- Optional, deterministic Memory Query before a new Research Content Package is built
+- Research Content Package `1.1` binding only Human-reviewed Context Snapshot refs; `1.0` remains read-only compatible
+- `research-publishing` Domain Profile/SCP/Mapping with per-`research_track` isolation
+- Explicit `publication_checkpoint` and Human-selected `feedback_insight` Ingest plans
+- Preview plus one digest-bound Human Approval before any memory write
+- Partial-failure Receipt and stepwise resume without replaying completed writes
+- Restricted `llm-wiki-runtime` 0.2.0 process adapter: fixed executable/argv, JSON envelope, timeout and output cap
+
 ## Explicit non-capabilities
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
 
-The Browser Adapters do not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, select images automatically, or support GIF/video/multiple images. V3 adds new-publication X Articles through the Premium Chrome editor; editing, deleting, unpublishing, subscriber-only Articles, and arbitrary rich HTML remain out of scope. CI and automated acceptance never publish to a real X account.
+The Browser Adapters do not store credentials, read Browser storage, switch Browser surfaces, use X OAuth/API, schedule posts, select images automatically, or support GIF/video/multiple images. V3 adds new-publication X Articles through the Premium Chrome editor; editing, deleting, unpublishing, subscriber-only Articles, and arbitrary rich HTML remain out of scope. V2.2 does not monitor X, select feedback, perform semantic/vector search, ingest without approval, or provide cloud/team memory. CI and automated acceptance never publish to a real X account or write a user Wiki.
 
 ## Architecture
 
 ```text
-Candidate → Research Content Package → Review → Frozen Package
+Reviewed Context Snapshot ─┐
+Candidate ─────────────────┴→ Research Content Package 1.1 → Review → Frozen Package
                                                ├─ Article Harness → Canonical Article Package
                                                └─ X Harness → PublicationPlan
                                                                 → Approval
                                                                 ├─ Manual Copy Package
                                                                 └─ Browser Host Bridge → Public verification → Receipt
+
+Receipt → Human-selected Feedback → Candidate Insight → exact Ingest Approval
+        → llm-wiki-runtime → next reviewed Context Snapshot
 ```
 
 The Research Content Package is the shared fact source. Article and X are independent optional outputs; an article is never automatically split into a thread.
@@ -65,7 +79,7 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-`pnpm check` runs lint, type checking, all tests, build, and Article, Manual X, and simulated Browser X acceptance. No account, credential, or network publication access is needed.
+`pnpm check` runs lint, type checking, all tests, build, and offline Article/X/Visual/X Article/Memory acceptance. No account, credential, user Wiki, or network publication access is needed.
 
 Build and inspect the CLI:
 
@@ -74,7 +88,7 @@ pnpm build
 node dist/harnesses/research-publishing/cli/index.js doctor --workspace ./publishing-workspace --output json
 ```
 
-See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, Manual X, and Browser X flows.
+See the [Quickstart](docs/guides/quickstart.md) for publication flows and the V2.2 governed Memory loop.
 
 ## Security boundary
 
@@ -87,6 +101,9 @@ See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, M
 - The Browser Adapter accepts semantic, X-origin commands only; it stores no Cookie, token, password, full DOM, timeline, or private-message data.
 - Browser failure never silently switches to Manual; fallback requires a new Plan and Approval.
 - A finalized Article Package can use `x-article plan|approve|browser ...`; it is never silently converted into a Thread.
+- Skill and Harness code cannot read or write `.llm-wiki`; only the explicitly configured Runtime may do so.
+- Query may degrade to `memory_unavailable`; Ingest always fails closed without the exact Runtime, Plan and Approval.
+- Public feedback is `data_only` evidence. It can become a Candidate Insight, never an automatic verified conclusion.
 
 ## Design and contracts
 
@@ -98,6 +115,8 @@ See the [Quickstart](docs/guides/quickstart.md) for the Candidate → Article, M
 - [V2.1 implementation plan](docs/superpowers/plans/2026-08-20-visual-publishing-v2-1.md)
 - [V3 X Article Browser design](docs/superpowers/specs/2026-08-21-x-article-browser-publishing-v3-design.zh-CN.md)
 - [V3 implementation plan](docs/superpowers/plans/2026-08-21-x-article-browser-publishing-v3.md)
+- [V2.2 governed memory design](docs/superpowers/specs/2026-08-22-llm-wiki-memory-adapter-v2-2-design.zh-CN.md)
+- [V2.2 implementation plan](docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md)
 - [JSON contracts](harnesses/research-publishing/contracts)
 - [Synthetic public fixtures](harnesses/research-publishing/examples/synthetic)
 
