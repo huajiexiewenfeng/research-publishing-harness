@@ -21,7 +21,7 @@ const ALLOWED_TOP_LEVEL = new Set([
 
 export interface ArtifactRef {
   readonly relative_path: string;
-  readonly digest: string;
+  readonly digest: `sha256:${string}`;
   readonly bytes: number;
 }
 
