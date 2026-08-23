@@ -8,7 +8,12 @@ import type { ResearchRuntimeRecordType } from '../../core/research-memory-types
 import { NodeRuntimeProcessRunner } from './runtime-process.js';
 import type {
   RuntimeEnvelope,
+  RuntimeFindRecordMatch,
+  RuntimeFindRecordsInput,
+  RuntimeFindRecordsResult,
   RuntimeLaunchConfig,
+  RuntimeLoadPathsInput,
+  RuntimeLoadPathsResult,
   RuntimeProcessOutput,
   RuntimeProcessRunner
 } from './runtime-protocol.js';
@@ -19,6 +24,8 @@ const DOMAIN = 'research-publishing';
 const RUNTIME_VERSION = '0.2.0';
 const SAFE_TRACK_PATH = /^domains\/research-publishing\/tracks\/[a-z0-9][a-z0-9_-]{0,127}\/\*\*$/;
 const SAFE_SLUG = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const SAFE_LOOKUP_VALUE = /^[a-z0-9][a-z0-9_:-]{0,255}$/;
+const SAFE_RUNTIME_PATH = /^domains\/research-publishing\/[a-zA-Z0-9._\/-]+$/;
 const INGEST_SUCCESS = new Set(['ok', 'already_exists']);
 
 export type LLMWikiRuntimeAdapterConfig = RuntimeLaunchConfig & Readonly<{
@@ -85,6 +92,9 @@ const RUNTIME_RECORD_TYPES = new Set<LegacyRuntimeRecordType | ResearchRuntimeRe
 const RUNTIME_SOURCE_TYPES = new Set<RuntimeCopySourceInput['source_type']>([
   'publication_checkpoint', 'feedback_insight', 'research_promotion'
 ]);
+const RUNTIME_LOOKUP_KEYS = new Map<ResearchRuntimeRecordType, string>([
+  ['research_index_catalog', 'index_id']
+]);
 
 function requireAbsolute(value: string, label: string): void {
   if (!isAbsolute(value)) {
@@ -136,6 +146,44 @@ function mutationResult(command: string, result: RuntimeEnvelope): RuntimeWriteR
     throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', `runtime ${command} returned an invalid mutation result`);
   }
   return normalized as RuntimeWriteResult;
+}
+
+function validateExactRuntimePath(path: string): boolean {
+  return SAFE_RUNTIME_PATH.test(path) &&
+    !path.includes('..') && !path.includes('\\') &&
+    !path.split('/').includes('.') && !path.includes('//') &&
+    !/[?*\[\]]/.test(path) && !isAbsolute(path);
+}
+
+function contextItems(
+  result: RuntimeEnvelope,
+  allowedPaths?: ReadonlySet<string>
+): RuntimeContextResult['items'] {
+  if (!Array.isArray(result.items)) {
+    throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'runtime context response has no items');
+  }
+  const observed = new Set<string>();
+  return result.items.map((raw) => {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'invalid context item');
+    }
+    const item = raw as Record<string, unknown>;
+    if (
+      typeof item.path !== 'string' || !validateExactRuntimePath(item.path) ||
+      (allowedPaths !== undefined && !allowedPaths.has(item.path)) || observed.has(item.path) ||
+      normalizedDigest(item.checksum) === null || typeof item.content !== 'string' ||
+      item.instruction_policy !== 'data_only' || typeof item.sanitized !== 'boolean' ||
+      !Array.isArray(item.risk_flags) || !item.risk_flags.every((flag) => typeof flag === 'string')
+    ) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'invalid context item fields');
+    }
+    observed.add(item.path);
+    return {
+      path: item.path, checksum: normalizedDigest(item.checksum)!, content: item.content,
+      instruction_policy: 'data_only' as const, sanitized: item.sanitized,
+      risk_flags: item.risk_flags as string[]
+    };
+  });
 }
 
 export class LLMWikiRuntimeAdapter {
@@ -249,31 +297,10 @@ export class LLMWikiRuntimeAdapter {
         '--order', 'path_asc', '--policy', 'data_only',
         '--caller-domain', DOMAIN, '--target-domain', DOMAIN
       ]);
-      if (result.status !== 'ok' || !Array.isArray(result.items)) {
+      if (result.status !== 'ok') {
         throw statusFailure('load-context-pack', result);
       }
-      const items = result.items.map((raw) => {
-        if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-          throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'invalid context item');
-        }
-        const item = raw as Record<string, unknown>;
-        if (
-          typeof item.path !== 'string' || normalizedDigest(item.checksum) === null ||
-          typeof item.content !== 'string' || item.instruction_policy !== 'data_only' ||
-          typeof item.sanitized !== 'boolean' || !Array.isArray(item.risk_flags) ||
-          !item.risk_flags.every((flag) => typeof flag === 'string')
-        ) {
-          throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'invalid context item fields');
-        }
-        return {
-          path: item.path,
-          checksum: normalizedDigest(item.checksum)!,
-          content: item.content,
-          instruction_policy: 'data_only' as const,
-          sanitized: item.sanitized,
-          risk_flags: item.risk_flags as string[]
-        };
-      });
+      const items = contextItems(result);
       return {
         status: items.length > 0 ? 'loaded' : 'empty',
         runtime_version: RUNTIME_VERSION,
@@ -290,6 +317,90 @@ export class LLMWikiRuntimeAdapter {
     }
   }
 
+  async findRecords(input: RuntimeFindRecordsInput): Promise<RuntimeFindRecordsResult> {
+    const expectedKey = RUNTIME_LOOKUP_KEYS.get(input.record_type);
+    const entries = Object.entries(input.lookup);
+    if (
+      expectedKey === undefined || entries.length !== 1 || entries[0]![0] !== expectedKey ||
+      !SAFE_LOOKUP_VALUE.test(entries[0]![1])
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'invalid or undeclared exact Runtime record lookup');
+    }
+    const result = await this.invoke('find-records', [
+      '--scope-root', this.config.workspace, '--record-type', input.record_type,
+      '--lookup-value-json', JSON.stringify(entries[0]![1]),
+      '--caller-domain', DOMAIN, '--target-domain', DOMAIN
+    ]);
+    if (result.status === 'not_found') {
+      if (!Array.isArray(result.matches) || result.matches.length !== 0) {
+        throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime not_found lookup returned matches');
+      }
+      return { status: 'not_found', record_type: input.record_type, matches: [] };
+    }
+    if (result.status !== 'found' || !Array.isArray(result.matches) || result.matches.length !== 1) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime record lookup was not exact');
+    }
+    const raw = result.matches[0];
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime record lookup match is invalid');
+    }
+    const value = raw as Record<string, unknown>;
+    const checksum = normalizedDigest(value.checksum);
+    if (
+      typeof value.path !== 'string' || !validateExactRuntimePath(value.path) || checksum === null ||
+      typeof value.identity !== 'string' || typeof value.display !== 'string' ||
+      value.fields === null || typeof value.fields !== 'object' || Array.isArray(value.fields)
+    ) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime record lookup fields are invalid');
+    }
+    const match: RuntimeFindRecordMatch = {
+      path: value.path, checksum, identity: value.identity, display: value.display,
+      fields: value.fields as Readonly<Record<string, unknown>>
+    };
+    return { status: 'found', record_type: input.record_type, matches: [match] };
+  }
+
+  async loadPaths(input: RuntimeLoadPathsInput): Promise<RuntimeLoadPathsResult> {
+    if (
+      input.paths.length === 0 || input.paths.some((path) => !validateExactRuntimePath(path)) ||
+      new Set(input.paths).size !== input.paths.length ||
+      !Number.isInteger(input.max_items) || input.max_items <= 0 || input.paths.length > input.max_items ||
+      !Number.isInteger(input.max_item_chars) || input.max_item_chars <= 0 ||
+      !Number.isInteger(input.max_total_chars) || input.max_total_chars <= 0
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'invalid exact Runtime path query or context_budget_exceeded');
+    }
+    const result = await this.invoke('load-context-pack', [
+      '--wiki-root', this.wikiRoot,
+      '--include-json', JSON.stringify(['domains/research-publishing/**']),
+      '--exclude-json', JSON.stringify(['sources/originals/**', '.meta/**']),
+      '--max-files', String(input.max_items), '--max-chars-per-file', String(input.max_item_chars),
+      '--path-json', JSON.stringify(input.paths), '--glob-json', '[]',
+      '--order', 'path_asc', '--policy', 'data_only',
+      '--caller-domain', DOMAIN, '--target-domain', DOMAIN
+    ]);
+    if (result.status !== 'ok') throw statusFailure('load-context-pack', result);
+    const items = contextItems(result, new Set(input.paths));
+    if (
+      items.length > input.max_items ||
+      items.some((item) => item.content.length > input.max_item_chars) ||
+      items.reduce((sum, item) => sum + item.content.length, 0) > input.max_total_chars
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'context_budget_exceeded');
+    }
+    const byPath = new Map(items.map((item) => [item.path, item]));
+    const ordered = input.paths.flatMap((path) => {
+      const item = byPath.get(path);
+      return item === undefined ? [] : [item];
+    });
+    return {
+      status: ordered.length > 0 ? 'loaded' : 'empty', runtime_version: RUNTIME_VERSION,
+      items: ordered,
+      excluded_count: typeof result.excluded_count === 'number' ? result.excluded_count : 0,
+      truncated_count: 0
+    };
+  }
+
   async validateMapping(): Promise<RuntimeEnvelope> {
     const result = await this.invoke('validate-mapping', [
       '--mapping-path', this.config.mapping_path,
@@ -304,27 +415,11 @@ export class LLMWikiRuntimeAdapter {
     if (!SAFE_SLUG.test(trackId)) {
       throw new HarnessError('CONTRACT_INVALID', 'Catalog Track id must be a safe slug');
     }
-    const result = await this.invoke('find-records', [
-      '--scope-root', this.config.workspace,
-      '--record-type', 'research_index_catalog',
-      '--lookup-value-json', JSON.stringify(`${trackId}:research`),
-      '--caller-domain', DOMAIN,
-      '--target-domain', DOMAIN
-    ]);
+    const result = await this.findRecords({
+      record_type: 'research_index_catalog', lookup: { index_id: `${trackId}:research` }
+    });
     if (result.status === 'not_found') return { status: 'not_found' };
-    if (result.status !== 'found' || !Array.isArray(result.matches) || result.matches.length !== 1) {
-      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup was not exact');
-    }
-    const match = result.matches[0];
-    if (match === null || typeof match !== 'object' || Array.isArray(match)) {
-      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup match is invalid');
-    }
-    const value = match as Record<string, unknown>;
-    const digest = normalizedDigest(value.checksum);
-    if (typeof value.path !== 'string' || digest === null) {
-      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup lacks path or checksum');
-    }
-    return { status: 'found', path: value.path, digest };
+    return { status: 'found', path: result.matches[0].path, digest: result.matches[0].checksum };
   }
 
   async copySource(input: RuntimeCopySourceInput): Promise<RuntimeWriteResult> {

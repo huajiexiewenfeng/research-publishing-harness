@@ -81,6 +81,38 @@ describe.skipIf(!realRuntimeConfigured)('llm-wiki-runtime 0.2.0 integration', ()
       });
       expect(written.status).toBe('ok');
       expect(written.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
+      const catalogFile = join(root, 'memory', 'staging', 'catalog.md');
+      await writeFile(catalogFile, [
+        '---',
+        'record_type: "research_index_catalog"',
+        'instruction_policy: "data_only"',
+        'index_id: "enterprise-agent-runtime:research"',
+        'track_id: "enterprise-agent-runtime"',
+        'generation: "generation_real_001"',
+        `catalog_digest: "sha256:${'a'.repeat(64)}"`,
+        '---',
+        '',
+        '# Research Index Catalog',
+        ''
+      ].join('\n'), 'utf8');
+      const catalog = await adapter.writeRecord({
+        record_type: 'research_index_catalog',
+        variables: { research_track: 'enterprise-agent-runtime' },
+        refs: { promotion_id: 'promotion_real_001' },
+        content_file: catalogFile
+      });
+      const foundCatalog = await adapter.findRecords({
+        record_type: 'research_index_catalog',
+        lookup: { index_id: 'enterprise-agent-runtime:research' }
+      });
+      expect(foundCatalog).toMatchObject({
+        status: 'found', matches: [{ path: catalog.path, checksum: catalog.checksum }]
+      });
+      const exactContext = await adapter.loadPaths({
+        paths: [catalog.path, written.path], max_items: 2,
+        max_item_chars: 12_000, max_total_chars: 20_000
+      });
+      expect(exactContext.items.map((item) => item.path)).toEqual([catalog.path, written.path]);
       const queried = await adapter.query({
         allowed_paths: ['domains/research-publishing/tracks/enterprise-agent-runtime/**'],
         excluded_paths: ['sources/originals/**', '.meta/**'],
@@ -88,10 +120,10 @@ describe.skipIf(!realRuntimeConfigured)('llm-wiki-runtime 0.2.0 integration', ()
         max_item_chars: 4_000,
         ordering_policy: 'path_asc'
       });
-      expect(queried).toMatchObject({
-        status: 'loaded', runtime_version: '0.2.0',
-        items: [{ path: 'domains/research-publishing/tracks/enterprise-agent-runtime/publications/publication_real_001.md' }]
-      });
+      expect(queried).toMatchObject({ status: 'loaded', runtime_version: '0.2.0' });
+      expect(queried.items).toEqual(expect.arrayContaining([expect.objectContaining({
+        path: 'domains/research-publishing/tracks/enterprise-agent-runtime/publications/publication_real_001.md'
+      })]));
       expect(queried.items[0]!.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
       await expect(adapter.registerArtifact({
         artifact_id: 'publication_real_001', artifact_type: 'publication_receipt'

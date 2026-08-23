@@ -60,4 +60,32 @@ describe('Memory Runtime security boundary', () => {
     })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
     expect(valid.runner.calls).toHaveLength(0);
   });
+
+  it.each([
+    { paths: [] },
+    { paths: ['domains/research-publishing/**'] },
+    { paths: ['../catalog.md'] },
+    { paths: ['C:/secrets/catalog.md'] },
+    { paths: ['domains\\research-publishing\\catalog.md'] },
+    { paths: ['domains/research-publishing/tracks/runtime/indexes/catalog.md', 'domains/research-publishing/tracks/runtime/indexes/catalog.md'] }
+  ])('rejects non-exact or duplicate Runtime paths before spawning: $paths', async ({ paths }) => {
+    const runner = new FakeRuntimeProcessRunner();
+    const adapter = createLLMWikiRuntimeAdapter({ ...valid, runner });
+    await expect(adapter.loadPaths({
+      paths, max_items: 2, max_item_chars: 12_000, max_total_chars: 20_000
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    expect(runner.calls).toHaveLength(0);
+  });
+
+  it('rejects undeclared lookup keys and unsafe lookup values before spawning', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    const adapter = createLLMWikiRuntimeAdapter({ ...valid, runner });
+    await expect(adapter.findRecords({
+      record_type: 'research_index_catalog', lookup: { track_id: 'runtime' }
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(adapter.findRecords({
+      record_type: 'research_index_catalog', lookup: { index_id: '../runtime:research' }
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    expect(runner.calls).toHaveLength(0);
+  });
 });

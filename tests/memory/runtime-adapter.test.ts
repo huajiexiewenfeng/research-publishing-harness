@@ -189,4 +189,76 @@ describe('LLMWikiRuntimeAdapter', () => {
       '--caller-domain', 'research-publishing', '--target-domain', 'research-publishing'
     ]);
   });
+
+  it('finds records through a declared exact lookup without reading bodies', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'found', record_type: 'research_index_catalog', lookup_value: 'runtime:research',
+      matches: [{
+        path: 'domains/research-publishing/tracks/runtime/indexes/catalog.md',
+        checksum: 'e'.repeat(64), identity: 'runtime:research', display: 'runtime:research',
+        fields: { index_id: 'runtime:research', track_id: 'runtime', generation: 'generation_001' }
+      }], truncated: false
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.findRecords({
+      record_type: 'research_index_catalog', lookup: { index_id: 'runtime:research' }
+    })).resolves.toMatchObject({
+      status: 'found', matches: [{ checksum: `sha256:${'e'.repeat(64)}` }]
+    });
+    expect(runner.calls[0]!.args).toEqual([
+      'find-records', '--scope-root', paths().workspace,
+      '--record-type', 'research_index_catalog', '--lookup-value-json', '"runtime:research"',
+      '--caller-domain', 'research-publishing', '--target-domain', 'research-publishing'
+    ]);
+  });
+
+  it('loads only caller-supplied exact paths and restores caller order', async () => {
+    const first = 'domains/research-publishing/tracks/runtime/indexes/catalog.md';
+    const second = 'domains/research-publishing/tracks/runtime/indexes/generations/g1/mainline/shards/s1-a.md';
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'ok', excluded_count: 0,
+      items: [
+        { path: second, checksum: '2'.repeat(64), content: 'shard', instruction_policy: 'data_only', sanitized: false, risk_flags: [] },
+        { path: first, checksum: '1'.repeat(64), content: 'catalog', instruction_policy: 'data_only', sanitized: false, risk_flags: [] }
+      ]
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    const result = await adapter.loadPaths({
+      paths: [first, second], max_items: 2, max_item_chars: 12_000, max_total_chars: 20_000
+    });
+    expect(result.items.map((item) => item.path)).toEqual([first, second]);
+    expect(runner.calls[0]!.args).toEqual([
+      'load-context-pack', '--wiki-root', resolve(paths().workspace, '.llm-wiki'),
+      '--include-json', '["domains/research-publishing/**"]',
+      '--exclude-json', '["sources/originals/**",".meta/**"]',
+      '--max-files', '2', '--max-chars-per-file', '12000',
+      '--path-json', JSON.stringify([first, second]), '--glob-json', '[]',
+      '--order', 'path_asc', '--policy', 'data_only',
+      '--caller-domain', 'research-publishing', '--target-domain', 'research-publishing'
+    ]);
+  });
+
+  it('fails closed when exact path loading exceeds the total character budget', async () => {
+    const path = 'domains/research-publishing/tracks/runtime/indexes/catalog.md';
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'ok', excluded_count: 0,
+      items: [{
+        path, checksum: '3'.repeat(64), content: 'too long',
+        instruction_policy: 'data_only', sanitized: false, risk_flags: []
+      }]
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.loadPaths({
+      paths: [path], max_items: 1, max_item_chars: 12_000, max_total_chars: 3
+    })).rejects.toThrowError(/context_budget_exceeded/);
+  });
 });
