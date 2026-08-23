@@ -58,7 +58,9 @@ export const CONTRACT_NAMES = [
   'research-index-doctor-report',
   'research-index-rebuild-plan',
   'research-terminal-hook-receipt',
-  'legacy-research-record'
+  'legacy-research-record',
+  'research-import-manifest',
+  'research-import-gap-report'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

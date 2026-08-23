@@ -44,7 +44,8 @@ export type ResearchEvidenceCaptureEvent =
   | 'publication_intent_approved'
   | 'publication_receipt_terminal'
   | 'feedback_selected'
-  | 'candidate_insight_created';
+  | 'candidate_insight_created'
+  | 'research_increment_imported';
 
 export interface ResearchEvidenceSnapshotV1 {
   readonly schema_version: 'research-evidence-snapshot/v1';

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-import-gap-report/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "import_id", "manifest_digest", "item_order", "unrecoverable_gaps", "blocking_gaps", "source_summary", "report_digest"],
+  "properties": {
+    "schema_version": { "const": "research-import-gap-report/v1" },
+    "import_id": { "$ref": "#/$defs/id" }, "manifest_digest": { "$ref": "#/$defs/digest" },
+    "item_order": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "integer", "minimum": 1, "maximum": 6 } },
+    "unrecoverable_gaps": { "type": "array", "items": { "$ref": "#/$defs/gap" } },
+    "blocking_gaps": { "type": "array", "items": { "$ref": "#/$defs/gap" } },
+    "source_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["local_verified", "receipt_backed", "user_asserted", "public_verified"],
+      "properties": { "local_verified": { "type": "integer", "minimum": 0 }, "receipt_backed": { "type": "integer", "minimum": 0 }, "user_asserted": { "type": "integer", "minimum": 0 }, "public_verified": { "type": "integer", "minimum": 0 } }
+    },
+    "report_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "gap": { "type": "object", "additionalProperties": false, "required": ["field", "reason"], "properties": { "field": { "$ref": "#/$defs/text" }, "reason": { "$ref": "#/$defs/text" } } }
+  }
+}

@@ -38,7 +38,8 @@ const EVENT_ROLES: Readonly<Record<ResearchEvidenceCaptureEvent, ReadonlySet<Art
   publication_intent_approved: new Set(['publication_plan', 'canonical_article', 'visual_asset']),
   publication_receipt_terminal: new Set(['publication_receipt', 'publication_expression']),
   feedback_selected: new Set(['feedback_snapshot']),
-  candidate_insight_created: new Set(['candidate_insight'])
+  candidate_insight_created: new Set(['candidate_insight']),
+  research_increment_imported: new Set(['research_package', 'canonical_article', 'publication_receipt', 'sources', 'boundary', 'lineage'])
 };
 
 const PRIVACY_RANK: Readonly<Record<PrivacyClassification, number>> = {

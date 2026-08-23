@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-import-manifest/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "import_id", "import_scope", "workspace_identity_digest", "track_id", "increment", "mother_article", "gist", "thread", "claims", "boundaries", "explicit_assertions", "imported_at", "manifest_digest"],
+  "properties": {
+    "schema_version": { "const": "research-import-manifest/v1" },
+    "import_id": { "$ref": "#/$defs/id" },
+    "import_scope": { "const": "single_increment" },
+    "workspace_identity_digest": { "$ref": "#/$defs/digest" },
+    "track_id": { "$ref": "#/$defs/id" },
+    "increment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["increment_id", "revision", "title", "research_question", "thesis", "summary", "tags", "claim_refs", "boundary_refs", "open_question_refs", "source_refs"],
+      "properties": {
+        "increment_id": { "$ref": "#/$defs/id" }, "revision": { "const": 1 },
+        "title": { "$ref": "#/$defs/text" }, "research_question": { "$ref": "#/$defs/text" },
+        "thesis": { "$ref": "#/$defs/text" }, "summary": { "$ref": "#/$defs/text" },
+        "tags": { "$ref": "#/$defs/refs" }, "claim_refs": { "$ref": "#/$defs/refs" },
+        "boundary_refs": { "$ref": "#/$defs/refs" }, "open_question_refs": { "$ref": "#/$defs/refs" },
+        "source_refs": { "$ref": "#/$defs/refs" }
+      }
+    },
+    "mother_article": { "$ref": "#/$defs/localArtifact" },
+    "gist": {
+      "type": "object", "additionalProperties": false, "required": ["url", "source_classification"],
+      "properties": { "url": { "$ref": "#/$defs/https" }, "source_classification": { "enum": ["user_asserted", "public_verified"] } }
+    },
+    "thread": {
+      "type": "object", "additionalProperties": false,
+      "required": ["root_url", "source_classification", "receipt", "items"],
+      "properties": {
+        "root_url": { "$ref": "#/$defs/https" },
+        "source_classification": { "enum": ["user_asserted", "public_verified"] },
+        "receipt": { "$ref": "#/$defs/artifact" },
+        "items": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "$ref": "#/$defs/threadItem" } }
+      }
+    },
+    "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/claim" } },
+    "boundaries": {
+      "type": "object", "additionalProperties": false,
+      "required": ["established", "not_established", "planned_work"],
+      "properties": { "established": { "$ref": "#/$defs/refs" }, "not_established": { "$ref": "#/$defs/refs" }, "planned_work": { "$ref": "#/$defs/refs" } }
+    },
+    "explicit_assertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },
+    "imported_at": { "type": "string", "format": "date-time" },
+    "manifest_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "https": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "artifact": {
+      "type": "object", "additionalProperties": false, "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "localArtifact": {
+      "type": "object", "additionalProperties": false, "required": ["path", "digest", "source_classification"],
+      "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" }, "source_classification": { "const": "local_verified" } }
+    },
+    "threadItem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordinal", "text", "content_digest", "platform_id", "public_url", "metrics", "source_classification"],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1, "maximum": 6 }, "text": { "$ref": "#/$defs/text" },
+        "content_digest": { "$ref": "#/$defs/digest" },
+        "platform_id": { "type": ["string", "null"], "minLength": 1 },
+        "public_url": { "anyOf": [{ "$ref": "#/$defs/https" }, { "type": "null" }] },
+        "metrics": { "anyOf": [{ "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } }, { "type": "null" }] },
+        "source_classification": { "enum": ["receipt_backed", "user_asserted"] }
+      }
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_id", "version", "statement", "claim_status", "evidence_refs", "boundary_refs", "summary"],
+      "properties": {
+        "claim_id": { "$ref": "#/$defs/id" }, "version": { "type": "integer", "minimum": 1 },
+        "statement": { "$ref": "#/$defs/text" }, "claim_status": { "enum": ["verified", "observed", "inferred", "hypothesis", "planned"] },
+        "evidence_refs": { "$ref": "#/$defs/refs" }, "boundary_refs": { "$ref": "#/$defs/refs" }, "summary": { "$ref": "#/$defs/text" }
+      }
+    },
+    "assertion": {
+      "type": "object", "additionalProperties": false, "required": ["field", "value", "source_classification"],
+      "properties": { "field": { "$ref": "#/$defs/text" }, "value": { "$ref": "#/$defs/text" }, "source_classification": { "const": "user_asserted" } }
+    }
+  }
+}

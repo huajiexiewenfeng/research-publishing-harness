@@ -1,0 +1,13 @@
+{
+  "schema_version": "research-import-manifest/v1",
+  "import_scope": "single_increment",
+  "operator_inputs": {
+    "mother_article": "user-selected canonical Markdown path plus exact digest",
+    "gist": "https://gist.github.com/huajiexiewenfeng/a507a4b080bdbd2e30cf8a05556b3f15",
+    "thread_root": "https://x.com/Glen56121/status/2089976025677725798",
+    "thread_shape": "exactly 6 ordered items",
+    "track": "enterprise-agent-runtime",
+    "open_questions": ["Trace", "Eval", "Controlled Loop remain planned research"]
+  },
+  "execution_note": "Resolve local artifact and Receipt bindings, inspect gaps, then confirm the exact ordinary Research Promotion Plan digest."
+}
