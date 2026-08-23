@@ -186,7 +186,7 @@ git commit -m "feat: add progressive research query contracts"
 - Consumes: Tasks 1–2 Adapter/selectors and Package 1.1 lifecycle.
 - Produces: `ProgressiveResearchQueryService implements ProgressiveResearchQueryPort`; Package `memory_context` may bind a reviewed V2 snapshot while retaining V1 compatibility.
 
-- [ ] **Step 1: Write failing traversal and fail-closed tests**
+- [x] **Step 1: Write failing traversal and fail-closed tests**
 
 Use a Fake Runtime call ledger and assert exact sequence:
 
@@ -197,13 +197,13 @@ find Catalog → load Catalog → load selected Shards → load selected semanti
 
 Also assert corrupt/missing Catalog, digest mismatch, Shard overflow, record overflow, chunk overflow, implicit full-document request and a broad path returned by Runtime all fail without a later load.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/progressive-research-query-service.test.ts tests/memory/package-memory-binding.test.ts tests/integration/progressive-research-query.test.ts tests/security/progressive-query-security.test.ts`
 
 Expected: FAIL because the progressive service is absent.
 
-- [ ] **Step 3: Implement staged exact traversal**
+- [x] **Step 3: Implement staged exact traversal**
 
 ```ts
 export class ProgressiveResearchQueryService implements ProgressiveResearchQueryPort {
@@ -217,17 +217,17 @@ export class ProgressiveResearchQueryService implements ProgressiveResearchQuery
 
 Persist each layer under `memory/queries-v2/<query_id>/`, verify every returned checksum against referenced digest, mark external/feedback content `data_only`, preserve risk flags, and construct Snapshot only from exact loaded refs. `full_explicit` reconstructs by ordinal and enforces 60,000 normalized chars.
 
-- [ ] **Step 4: Extend package memory binding without changing frozen boundaries**
+- [x] **Step 4: Extend package memory binding without changing frozen boundaries**
 
 Add a version-dispatched `MemoryContextV2` reference containing `research_query_plan_digest`, `research_context_snapshot_digest`, selected context refs, reviewer and reviewed time. Reject refs absent from the frozen Snapshot and reject binding to `evidence_ready|reviewed|frozen` packages.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/progressive-research-query-service.test.ts tests/memory/package-memory-binding.test.ts tests/integration/progressive-research-query.test.ts tests/security/progressive-query-security.test.ts`
 
 Expected: PASS; test ledger contains no broad glob or unplanned body path.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```text
 git add harnesses/research-publishing/core tests/memory tests/integration tests/security

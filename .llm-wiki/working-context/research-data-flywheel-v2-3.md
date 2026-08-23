@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-3-progressive-query`
-- active_task: `phase-3-task-3-progressive-query-service`
+- active_task: `phase-3-task-4-index-doctor-rebuild-plan`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
 
 ## Scope Lock
@@ -71,4 +71,10 @@
   every selection layer, the fixed memory policy, Working opt-in and explicit full-document intent.
 - Task 2 verification: 3 files / 55 tests passed; TypeScript and lint passed. Pure selectors are
   deterministic under shuffled candidates and fail closed above 4 Shards, 12 Records or 6 Chunks.
-- Next action: Phase 3 Task 3 staged progressive Query service and reviewed Package binding.
+- Phase 3 Task 3 completed in commit `1d34380`: staged exact traversal verifies Catalog, Shards,
+  semantic records, optional Manifests and bounded Chunks before freezing a V2 Context Snapshot.
+- Task 3 verification: 6-file combined regression / 20 tests passed before final hardening; final focused
+  service/security/package suite 4 files / 12 tests passed; TypeScript and lint passed.
+- Runtime unavailable and missing Index remain honest non-broad outcomes; full reconstruction requires
+  `full_explicit`, every Manifest Chunk and a matching full-content digest.
+- Next action: Phase 3 Task 4 read-only Index Doctor and approval-required rebuild Plan.
