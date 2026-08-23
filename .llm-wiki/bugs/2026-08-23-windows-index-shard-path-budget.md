@@ -59,6 +59,9 @@ The shard path redundantly included `indexes/generations`, `shards`, `shard_id`,
 - Active/packaged Profile SHA-256: `21fa376879323e04bc9f184f66eab45582af290287b36969f542e29b06cda894`.
 - Harness `memory doctor`: healthy against Runtime `0.2.0`.
 - Superseding Plan generated with Windows-safe Profile: `promotion_plan_e320140f634a460ba35d31da016cb6bd`, digest `sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`.
+- The user confirmed that exact superseding digest; Promotion completed with Receipt `promotion_receipt_a3dcd1257f774f62b696a6e15fded5ca_1` (`sha256:0fd4a2fd1cbd4d0f8b20c858183a4b0eef595822a5c144aedb5554f9ec5d0785`).
+- Catalog-last commit succeeded with content checksum `sha256:dc761be59746d413cb26d84f3f1db37b5e2207501b019ad29017adfefed9518f`.
+- A real mainline progressive Query returned `loaded`; Index Doctor returned `healthy` for three shards and six semantic records.
 - Trust level: `passed-agent-local` plus isolated real Runtime write.
 
 ## Residual Risk

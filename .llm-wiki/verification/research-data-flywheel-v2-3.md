@@ -42,5 +42,13 @@ The acceptance JSON emits an explicit `acceptance_criteria` mapping for AC01–A
 ## Residual Risks
 
 - Runtime 0.2.0 still lacks a first-class `register-artifact` idempotency key; the uncertain window deliberately stops for Human reconciliation.
-- Real X UI and persistent real-Wiki promotion were not exercised by this offline Gate. Those remain separately approved operator actions.
+- Real X UI was not exercised by this offline Gate. A separately confirmed first historical Import did exercise persistent real-Wiki Promotion through Runtime 0.2.0: Promotion completed, Catalog exact lookup matched, progressive Query returned `loaded`, and Index Doctor returned `healthy`.
 - Historical Import is deliberately not automatic: artifact digests and the exact Promotion Plan still require operator preparation and Human confirmation.
+
+## First Persistent Import Addendum
+
+- Superseding confirmed Plan: `promotion_plan_e320140f634a460ba35d31da016cb6bd`, digest `sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`.
+- Complete Receipt: `promotion_receipt_a3dcd1257f774f62b696a6e15fded5ca_1`, digest `sha256:0fd4a2fd1cbd4d0f8b20c858183a4b0eef595822a5c144aedb5554f9ec5d0785`.
+- Exact Catalog content checksum: `sha256:dc761be59746d413cb26d84f3f1db37b5e2207501b019ad29017adfefed9518f`.
+- Query `query_first_runtime_boundary_acceptance_20260823`: `loaded`, one accepted Increment context item, Runtime `0.2.0`, no risk flags; Snapshot digest `sha256:80646deaab1ff436174a7d08abb68078f6b905c8e43d201c4b101a56f736d2ff`.
+- Index Doctor: `healthy`, three shards and six semantic records verified; report digest `sha256:031cc4dac7cce826e4c167e4b7a5457af795c6ec11a4f15f5a84aa1f68b59dfd`.

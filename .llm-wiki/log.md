@@ -72,3 +72,6 @@
 - 隔离 Runtime 复现确认 Windows 路径溢出：真实 shard 目标 259 字符，原子临时路径约 296 字符。Projector/Profile 改为 `tracks/{track}/i/{generation}/{view}/{digest}.md`，聚焦测试先以 301>260 RED，修复后 11/11 GREEN；隔离真实 Runtime 写入成功。
 - 修复后 fresh `pnpm check` 通过 108 个测试文件 / 459 项测试及 AC1–38；active/packaged Profile 已原子刷新并一致，旧 Plan 因 Profile/path digest 变化按设计 stale，必须生成新 Plan 并重新确认。
 - Windows-safe 替代 Plan `promotion_plan_e320140f634a460ba35d31da016cb6bd` 已生成，digest `sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`；尚未批准或执行。
+- 用户精确确认 Windows-safe Plan 后，Promotion 完整执行：6 个既有语义记录按 `already_exists` 幂等协调，3 个 Index Shard 写入成功，Catalog-last 提交成功；Receipt `promotion_receipt_a3dcd1257f774f62b696a6e15fded5ca_1` 为 `complete`。
+- 独立 exact lookup 只找到一个 Catalog，内容 checksum `sha256:dc761be59746d413cb26d84f3f1db37b5e2207501b019ad29017adfefed9518f`。
+- 真实 progressive mainline Query `query_first_runtime_boundary_acceptance_20260823` 返回 `loaded`，读取 `increment_skill_runtime_boundary@1`，Runtime `0.2.0`，无风险标记；Index Doctor 返回 `healthy`，校验 3 个 shard 与 6 个语义记录。

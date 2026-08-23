@@ -15,7 +15,9 @@ Semantic Review of the first unapproved Delta then found that X Thread intended 
 
 The corrected V2 Delta was reviewed with all six operations retained. Initial Plan generation exposed a stale V2.2 active Runtime Profile; it was backed up and atomically refreshed to the packaged V2.3 Profile. Runtime lookup/doctor then passed and the exact Plan was generated. Work is stopped at the one-confirmation gate.
 
-The user confirmed Plan `sha256:00652a...`. Execution wrote the six immutable semantic records but stopped before Catalog visibility at `write_index_shards`. Isolated reproduction proved a Windows atomic-path overflow (259-character target, ~296-character temporary path). The shard path is now shortened and verified through the real Runtime. The confirmed Plan is stale by design because its Profile/path digest changed; a new Plan and confirmation are required. Existing semantic records will be reconciled as `already_exists`.
+The user confirmed Plan `sha256:00652a...`. Execution wrote the six immutable semantic records but stopped before Catalog visibility at `write_index_shards`. Isolated reproduction proved a Windows atomic-path overflow (259-character target, ~296-character temporary path). The shard path was shortened and verified through the real Runtime. The confirmed Plan became stale by design because its Profile/path digest changed.
+
+The user then confirmed the Windows-safe superseding Plan `sha256:eedf7b0c...`. Promotion completed: the six existing semantic records reconciled as `already_exists`, three index shards were written, and Catalog was committed last. Independent read-back found one exact Catalog with content checksum `sha256:dc761be5...`. A real progressive mainline Query loaded `increment_skill_runtime_boundary@1`, and Index Doctor verified all three shards and six semantic records with status `healthy`.
 
 ## Evidence
 
@@ -23,17 +25,17 @@ The user confirmed Plan `sha256:00652a...`. Execution wrote the six immutable se
 - Bug Brief: `.llm-wiki/bugs/2026-08-23-import-source-ref-deduplication.md`
 - Bug Brief: `.llm-wiki/bugs/2026-08-23-import-intended-content-binding.md`
 - Focused RED then GREEN: `tests/memory/research-import-service.test.ts`, `tests/security/research-import-security.test.ts`
-- Fresh full verification after each fix: `pnpm check`, exit 0; latest run 108 test files / 458 tests passed, 1 opt-in skipped; AC1–38 offline acceptance; `network: unused`.
+- Fresh full verification after each fix: `pnpm check`, exit 0; latest run 108 test files / 459 tests passed, 1 opt-in skipped; AC1–38 offline acceptance; `network: unused`.
 - Test integrity: real schema, WorkspaceStore, service persistence, Delta and Index output exercised; no behavior mocks.
+- Complete Promotion Receipt: `promotion_receipt_a3dcd1257f774f62b696a6e15fded5ca_1`, digest `sha256:0fd4a2fd1cbd4d0f8b20c858183a4b0eef595822a5c144aedb5554f9ec5d0785`.
+- Final Catalog content checksum: `sha256:dc761be59746d413cb26d84f3f1db37b5e2207501b019ad29017adfefed9518f`.
+- Progressive Query: `query_first_runtime_boundary_acceptance_20260823`, status `loaded`, Snapshot digest `sha256:80646deaab1ff436174a7d08abb68078f6b905c8e43d201c4b101a56f736d2ff`.
+- Index Doctor: `healthy`, report digest `sha256:031cc4dac7cce826e4c167e4b7a5457af795c6ec11a4f15f5a84aa1f68b59dfd`.
 
 ## Boundary
 
-Runtime Promotion has not been approved or executed. Pending exact confirmation:
-
-The prior confirmation MUST NOT be reused. Pending exact confirmation for the Windows-safe superseding Plan:
-
-`确认 Research Promotion Plan sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`
+The first real V2.3 historical Import is complete and visible through the default `enterprise-agent-runtime` mainline Query path. No X/Gist mutation occurred during Import or verification.
 
 ## Residual Risk
 
-The supplied historical timestamp retains its source classification; preserving it does not independently prove it.
+The supplied historical timestamp retains its source classification; preserving it does not independently prove it. Historical Thread metrics remain intentionally absent rather than inferred.
