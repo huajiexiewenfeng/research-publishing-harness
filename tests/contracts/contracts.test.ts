@@ -49,7 +49,9 @@ const names = [
   'research-index-shard',
   'research-query-plan-v2',
   'research-context-snapshot-v2',
-  'research-context-review-v2'
+  'research-context-review-v2',
+  'research-index-doctor-report',
+  'research-index-rebuild-plan'
 ] as const;
 
 const v1Names = new Set([
@@ -79,7 +81,9 @@ const v1Names = new Set([
   'semantic-memory-delta',
   'semantic-promotion-review',
   'research-index-catalog',
-  'research-index-shard'
+  'research-index-shard',
+  'research-index-doctor-report',
+  'research-index-rebuild-plan'
 ]);
 
 describe('public contracts', () => {

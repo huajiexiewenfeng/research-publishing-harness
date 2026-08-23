@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-index-doctor-report/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "report_id", "track_id", "status", "catalog_ref", "checked_shard_refs", "checked_record_refs", "findings", "checked_at", "report_digest"],
+  "properties": {
+    "schema_version": { "const": "research-index-doctor-report/v1" }, "report_id": { "$ref": "#/$defs/id" },
+    "track_id": { "$ref": "#/$defs/id" }, "status": { "enum": ["healthy", "legacy_only", "index_rebuild_required"] },
+    "catalog_ref": { "anyOf": [{ "$ref": "#/$defs/pathDigest" }, { "type": "null" }] },
+    "checked_shard_refs": { "type": "array", "items": { "$ref": "#/$defs/pathDigest" } },
+    "checked_record_refs": { "type": "array", "items": { "$ref": "#/$defs/recordRef" } },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "checked_at": { "type": "string", "format": "date-time" }, "report_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "pathDigest": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "recordRef": { "type": "object", "additionalProperties": false, "required": ["ref", "path", "digest"], "properties": { "ref": { "$ref": "#/$defs/text" }, "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "finding": { "type": "object", "additionalProperties": false, "required": ["code", "path", "message"], "properties": { "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" }, "path": { "type": ["string", "null"] }, "message": { "$ref": "#/$defs/text" } } }
+  }
+}

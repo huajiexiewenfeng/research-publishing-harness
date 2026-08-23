@@ -70,7 +70,9 @@ export function progressiveQueryFixture() {
   runtime.catalogPath = projection.catalog_path;
   runtime.catalogDigest = projection.catalog_content_digest;
   runtime.contents.set(projection.catalog_path, projection.catalog_content);
-  runtime.contents.set(shard.path, shard.content);
+  for (const projectedShard of projection.shards) {
+    runtime.contents.set(projectedShard.path, projectedShard.content);
+  }
   runtime.contents.set(semanticPath, semanticContent);
   const input: PlanResearchQueryInput = {
     query_id: 'query_progressive_001', track_id: track,

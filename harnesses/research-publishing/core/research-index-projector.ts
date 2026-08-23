@@ -108,6 +108,7 @@ export class ResearchIndexProjector {
     }
     const generationDigest = sha256({
       policy_version: 'research-index-policy/v1', track_id: input.track_id,
+      prior_catalog_digest: input.prior_catalog?.catalog_digest ?? null,
       records: ordered, thresholds: this.policy
     });
     const generation = `g_${generationDigest.slice('sha256:'.length, 'sha256:'.length + 24)}`;

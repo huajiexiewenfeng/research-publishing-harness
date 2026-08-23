@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-index-rebuild-plan/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "track_id", "base_catalog_digest", "source_record_refs", "proposed_generation", "proposed_shard_refs", "proposed_catalog_ref", "approval_required", "planned_at", "plan_digest"],
+  "properties": {
+    "schema_version": { "const": "research-index-rebuild-plan/v1" }, "plan_id": { "$ref": "#/$defs/id" },
+    "track_id": { "$ref": "#/$defs/id" }, "base_catalog_digest": { "$ref": "#/$defs/digest" },
+    "source_record_refs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/recordRef" } },
+    "proposed_generation": { "$ref": "#/$defs/id" },
+    "proposed_shard_refs": { "type": "array", "items": { "$ref": "#/$defs/pathDigest" } },
+    "proposed_catalog_ref": { "$ref": "#/$defs/pathDigest" }, "approval_required": { "const": true },
+    "planned_at": { "type": "string", "format": "date-time" }, "plan_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "pathDigest": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "recordRef": { "type": "object", "additionalProperties": false, "required": ["ref", "path", "digest"], "properties": { "ref": { "$ref": "#/$defs/text" }, "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

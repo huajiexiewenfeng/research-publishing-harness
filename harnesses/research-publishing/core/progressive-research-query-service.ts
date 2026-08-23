@@ -83,7 +83,7 @@ function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
-function parseCatalog(content: string): ResearchIndexCatalogV1 {
+export function parseResearchIndexCatalogRecord(content: string): ResearchIndexCatalogV1 {
   const parsed = parseRenderedRecord(content);
   const views = bodyJson(parsed.body);
   return validateContract<ResearchIndexCatalogV1>('research-index-catalog', {
@@ -94,7 +94,10 @@ function parseCatalog(content: string): ResearchIndexCatalogV1 {
   });
 }
 
-function parseShard(content: string, checksum: `sha256:${string}`): ResearchIndexShardV1 {
+export function parseResearchIndexShardRecord(
+  content: string,
+  checksum: `sha256:${string}`
+): ResearchIndexShardV1 {
   const parsed = parseRenderedRecord(content);
   const entries = parsed.body.split('\n').filter((line) => line.startsWith('- ')).map((line) => {
     try { return JSON.parse(line.slice(2)) as ResearchIndexEntryV1; }
@@ -179,7 +182,7 @@ export class ProgressiveResearchQueryService {
     if (catalogItem.checksum !== plan.catalog_ref.digest) {
       throw new HarnessError('MEMORY_EVIDENCE_CORRUPT', 'Catalog digest does not match the Query Plan');
     }
-    const catalog = parseCatalog(catalogItem.content);
+    const catalog = parseResearchIndexCatalogRecord(catalogItem.content);
     if (catalog.index_id !== plan.index_id || catalog.generation !== plan.catalog_ref.generation) {
       throw new HarnessError('MEMORY_EVIDENCE_CORRUPT', 'Catalog identity does not match the Query Plan');
     }
@@ -196,7 +199,7 @@ export class ProgressiveResearchQueryService {
     shardItems.forEach((item, index) => {
       const ref = plan.selected_shard_refs[index]!;
       if (item.checksum !== ref.digest) throw new HarnessError('MEMORY_EVIDENCE_CORRUPT', 'Shard digest does not match');
-      for (const entry of parseShard(item.content, item.checksum).entries) entries.set(entry.ref, entry);
+      for (const entry of parseResearchIndexShardRecord(item.content, item.checksum).entries) entries.set(entry.ref, entry);
     });
     for (const ref of plan.selected_record_refs) {
       const entry = entries.get(ref.ref);
