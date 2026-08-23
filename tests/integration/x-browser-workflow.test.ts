@@ -267,7 +267,7 @@ describe('X Browser Adapter integration', () => {
     expect(() => verifyApprovalV2(manualPlan, approval, new Date(at))).toThrowError();
     const manualApproval = approvePublicationV2(manualPlan, 'acceptance-human', 600_000, new Date(at));
     expect(() => verifyApprovalV2(manualPlan, manualApproval, new Date(at))).not.toThrow();
-  });
+  }, 15_000);
 
   it.each([
     ['partial three-of-six', { kind: 'partial', matched_ordinals: [1, 2, 3], missing_ordinals: [4, 5, 6], posts: [] }, true, 'partial'],

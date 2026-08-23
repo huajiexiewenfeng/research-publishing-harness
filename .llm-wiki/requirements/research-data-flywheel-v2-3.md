@@ -83,6 +83,6 @@ V2.2 can audit publication and selected feedback, but it cannot represent the re
 | source | done | approved V2.3 design and current V2.2 source/tests | 2026-08-23 |
 | design | done-approved | design commit `1948aeb`; user confirmation recorded in the spec | 2026-08-23 |
 | plan | done | plan-suite commit `20aea25` | 2026-08-23 |
-| development | in-progress | Phase 1 Task 1 starting with TDD | 2026-08-23 |
-| testing | pending | focused RED/GREEN and Phase 1 gate | 2026-08-23 |
+| development | in-progress | Phase 1 complete; Phase 2 promotion/index is next | 2026-08-23 |
+| testing | in-progress | Phase 1 `pnpm check`: 346 passed, 1 skipped; acceptance passed | 2026-08-23 |
 | archive | pending | verification and handoff after all V2.3 phases | 2026-08-23 |

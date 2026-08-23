@@ -46,7 +46,7 @@
 - Consumes: `sha256`, `validateContract`, `HarnessError`, V2.2 `Digest`.
 - Produces: policy constant and exact V2.3 value objects from design sections 10.1–10.8, 10.14, 10.15.
 
-- [ ] **Step 1: Write failing schema and digest tests**
+- [x] **Step 1: Write failing schema and digest tests**
 
 ```ts
 it('rejects absolute Artifact paths and digest self-reference', () => {
@@ -62,13 +62,13 @@ it('keeps lifecycle sequence independent from revision timestamps', () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/contracts/contracts.test.ts tests/memory/research-memory-contracts.test.ts tests/memory/research-lifecycle.test.ts`
 
 Expected: FAIL because V2.3 schemas, policy and constructors do not exist.
 
-- [ ] **Step 3: Implement exact types and constructors**
+- [x] **Step 3: Implement exact types and constructors**
 
 ```ts
 export function createArtifactRefV2(input: ArtifactRefV2Input): ArtifactRefV2;
@@ -80,13 +80,13 @@ export function deriveResearchLifecycle(events: readonly ResearchLifecycleEventV
 
 Require stable IDs matching `[a-z0-9][a-z0-9_-]{0,95}`; require `revision/version/event_seq >= 1`; enforce no-fork `previous_event_ref`; enforce allowed state transitions and Human approval bindings for `accepted/retracted`.
 
-- [ ] **Step 4: Run GREEN and V2.2 contract regression**
+- [x] **Step 4: Run GREEN and V2.2 contract regression**
 
 Run: `pnpm vitest run tests/contracts tests/memory/research-memory-contracts.test.ts tests/memory/research-lifecycle.test.ts`
 
 Expected: PASS, including all existing V2.2 schemas.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests/contracts tests/memory
@@ -109,7 +109,7 @@ git commit -m "feat: add V2.3 research memory contracts"
 - Consumes: Task 1 `ArtifactRefV2`, `ResearchEvidenceSnapshotV1`, existing contained `resolveExistingArtifact/readBytes/writeNewBytes/writeNewDirectory`.
 - Produces: immutable object bytes at `memory/evidence/objects/sha256/<first2>/<hex>` and append-only snapshots at `memory/evidence/snapshots/<snapshot_id>/manifest.json`.
 
-- [ ] **Step 1: Write failing object reuse, atomic snapshot and security tests**
+- [x] **Step 1: Write failing object reuse, atomic snapshot and security tests**
 
 ```ts
 it('revalidates bytes when a digest-addressed object already exists', async () => {
@@ -124,13 +124,13 @@ it.each(['../outside', 'C:\\absolute', 'receipts/link/secret.json'])
   });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/evidence-object-store.test.ts tests/memory/research-evidence-service.test.ts tests/security/research-evidence-security.test.ts`
 
 Expected: FAIL because the Evidence services are absent.
 
-- [ ] **Step 3: Implement byte-first object storage**
+- [x] **Step 3: Implement byte-first object storage**
 
 ```ts
 export interface EvidenceObjectStore {
@@ -146,17 +146,17 @@ export class ResearchEvidenceService implements EvidenceCapturePort {
 
 Read contained source bytes once, compute digest and byte size, scan text/config artifacts for configured secret patterns, write object create-only, then read it back and verify. Write the Snapshot directory only after every object succeeds; serialize no absolute paths.
 
-- [ ] **Step 4: Add capture policy and privacy tests**
+- [x] **Step 4: Add capture policy and privacy tests**
 
 Cover all seven `capture_event` values, the explicit role/media allow-list, `public|internal|restricted|data_only`, browser-state rejection, and failure without a complete Snapshot.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/evidence-object-store.test.ts tests/memory/research-evidence-service.test.ts tests/security/research-evidence-security.test.ts`
 
 Expected: PASS; captured object paths are digest-derived and snapshots contain only relative paths.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```text
 git add harnesses/research-publishing/core tests/memory tests/security
@@ -178,7 +178,7 @@ git commit -m "feat: add immutable research evidence store"
 - Consumes: verified text `ArtifactRefV2`, Evidence Object bytes, `RESEARCH_MEMORY_POLICY_V1.max_chars_per_chunk`.
 - Produces: `QueryableCanonicalDocumentV1` manifest plus lossless ordered local chunk artifacts under `memory/evidence/documents/<document_id>/`.
 
-- [ ] **Step 1: Write failing normalization and reconstruction tests**
+- [x] **Step 1: Write failing normalization and reconstruction tests**
 
 ```ts
 it.each(['lf', 'crlf', 'utf8-bom'])('normalizes %s deterministically', async (fixture) => {
@@ -192,13 +192,13 @@ it('does not create chunks for lossy or binary input', async () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/markdown-chunker.test.ts tests/memory/canonical-document-service.test.ts`
 
 Expected: FAIL because deterministic normalization/chunking is absent.
 
-- [ ] **Step 3: Implement versioned lossless chunking**
+- [x] **Step 3: Implement versioned lossless chunking**
 
 ```ts
 export function normalizeCanonicalUtf8(bytes: Uint8Array, declaredMediaType: string): CanonicalTextResult;
@@ -211,13 +211,13 @@ export class CanonicalDocumentService {
 
 Prefer heading/block boundaries, split oversized blocks deterministically, preserve exact normalized slices with contiguous `char_start/char_end`, and require `chunks.join('') === normalizedText`. Manifest stores descriptors only; binary visuals may contribute reviewed Alt Text refs but never binary body.
 
-- [ ] **Step 4: Run GREEN and determinism matrix**
+- [x] **Step 4: Run GREEN and determinism matrix**
 
 Run: `pnpm vitest run tests/memory/markdown-chunker.test.ts tests/memory/canonical-document-service.test.ts`
 
 Expected: PASS for LF/CRLF/BOM, headings, long blocks, CJK, empty trailing line and corrupted input.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```text
 git add harnesses/research-publishing/core tests/memory tests/fixtures
@@ -240,17 +240,17 @@ git commit -m "feat: project canonical evidence documents"
 - Consumes: Tasks 1–3 services.
 - Produces: `memory evidence capture/status`, `memory increment assemble/status`, `memory lineage show`; local working revision and lifecycle chain artifacts only.
 
-- [ ] **Step 1: Write failing CLI and integration tests**
+- [x] **Step 1: Write failing CLI and integration tests**
 
 Assert the six new operations are registered, JSON input/output is deterministic, `enterprise-agent-runtime` is the default Track, side tracks remain isolated, and cross-track predecessor/evolution refs require explicit validated refs.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/cli/cli.test.ts tests/integration/research-evidence-foundation.test.ts tests/security/research-memory-paths.test.ts`
 
 Expected: FAIL because routes and Increment assembly are absent.
 
-- [ ] **Step 3: Implement local assembly without semantic promotion**
+- [x] **Step 3: Implement local assembly without semantic promotion**
 
 ```ts
 export class ResearchIncrementService {
@@ -262,7 +262,7 @@ export class ResearchIncrementService {
 
 Require research question, thesis, Human-authored/promoted summary, at least one valid Evidence Snapshot for an Accepted candidate, and resolvable claim/decision/question refs. `assemble` remains Working and writes no Runtime record.
 
-- [ ] **Step 4: Run focused GREEN and Phase 1 acceptance**
+- [x] **Step 4: Run focused GREEN and Phase 1 acceptance**
 
 Run: `pnpm vitest run tests/contracts tests/memory tests/security/research-evidence-security.test.ts tests/security/research-memory-paths.test.ts tests/cli/cli.test.ts tests/integration/research-evidence-foundation.test.ts`
 
@@ -270,14 +270,14 @@ Run: `pnpm typecheck && pnpm lint`
 
 Expected: PASS; Phase 1 proves AC 1–7, 36 and 38 without regressing V2.2.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/cli tests tools/acceptance.ts
 git commit -m "feat: assemble evidence-backed research increments"
 ```
 
-- [ ] **Step 6: Run the Phase 1 gate**
+- [x] **Step 6: Run the Phase 1 gate**
 
 Run: `pnpm check && git diff --check && git status --short`
 

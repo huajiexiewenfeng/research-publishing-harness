@@ -4,15 +4,17 @@
 
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
-- active_phase: `phase-1-evidence-foundation`
-- active_task: `phase-1-verification-gate`
-- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-1-evidence-foundation.md`
+- active_phase: `phase-2-promotion-index`
+- active_task: `phase-2-context-handoff`
+- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
 
 ## Scope Lock
 
-- active: V2.3 policy/types/contracts/lifecycle, Evidence Object Store, canonical document projection, increment assembly, Phase 1 CLI/tests.
+- completed: Phase 1 policy/contracts/lifecycle, Evidence Object Store, canonical document projection,
+  local Working Increment assembly and CLI/acceptance coverage.
+- active: Phase 2 Semantic Delta, reviewed promotion, Runtime-backed immutable records and Catalog-last Index visibility.
 - read-only: V2.2 implementation and `llm-wiki-runtime` source referenced by `edge-001`.
-- excluded: Phase 2–4 production behavior until Phase 1 gate passes.
+- excluded: Phase 3 Progressive Query and Phase 4 Publication Flywheel until their preceding gates pass.
 
 ## Implementation Rules
 
@@ -20,7 +22,7 @@
 - No subagents.
 - Test-first for every production behavior.
 - Preserve V2.2 schema and runtime behavior.
-- Phase 1 never invokes Runtime writes and never writes `.llm-wiki` research storage.
+- Harness/Skills never write `.llm-wiki` directly; Phase 2 Runtime writes must use the verified Adapter.
 - Use `research-memory-policy/v1` fixed values from the approved overview.
 
 ## Current Checkpoint
@@ -33,4 +35,7 @@
 - Task 4 verification: 4 test files / 17 tests passed; TypeScript and focused ESLint passed.
 - Task 4 implements local Working Increment assembly, Evidence/Increment/Lineage CLI routes,
   explicit cross-track predecessor validation and offline Evidence foundation acceptance.
-- Next action: commit Task 4 and run the full Phase 1 verification gate.
+- Phase 1 gate: `pnpm check` passed with 346 tests passed and 1 skipped; offline acceptance passed.
+- One existing long X Browser integration test received an explicit 15-second budget after it
+  reproducibly exceeded the default 5 seconds only under the full parallel suite; isolated behavior passed.
+- Next action: re-read the Runtime dependency boundary and execute Phase 2 Task 1 with RED tests.
