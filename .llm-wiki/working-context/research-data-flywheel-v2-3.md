@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-3-progressive-query`
-- active_task: `phase-3-task-1-exact-runtime-reads`
+- active_task: `phase-3-task-2-query-contracts-selectors`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
 
 ## Scope Lock
@@ -62,4 +62,9 @@
   offline acceptance reported `research_promotion: simulated_complete`.
 - Phase 2 completed in commit `6a18180`; one confirmation now governs the exact reviewed/staged
   Promotion Plan, with runtime-required execution/resume and local status inspection.
-- Next action: Phase 3 Task 1 exact Catalog, Shard, record, Manifest and Chunk Runtime reads.
+- Phase 3 Task 1 completed in commit `346d09a`: the Adapter now supports declared exact
+  frontmatter lookup and caller-bounded exact path loading while preserving the V2.2 broad Query adapter.
+- Task 1 verification: Fake/security/real Runtime suites 3 files / 24 tests passed; TypeScript and lint passed.
+- Runtime 0.2.0 scalar `--lookup-value-json` behavior is source- and integration-verified; the Adapter
+  accepts the semantic `{ index_id }` lookup and translates it at the process boundary.
+- Next action: Phase 3 Task 2 versioned Query contracts and pure bounded selectors.

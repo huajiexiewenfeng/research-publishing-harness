@@ -35,7 +35,7 @@
 - Consumes: Runtime 0.2.0 `find-records` and `load-context-pack`.
 - Produces: `findRecords(input)` for exact lookup metadata and `loadPaths(input)` for exact ordered body loading; preserves legacy `query(input)` only for V2.2 callers.
 
-- [ ] **Step 1: Write failing fixed-argv and response tests**
+- [x] **Step 1: Write failing fixed-argv and response tests**
 
 ```ts
 it('finds one Catalog by exact index_id without reading bodies', async () => {
@@ -57,13 +57,13 @@ it('loads only caller-supplied exact paths', async () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/runtime-adapter.test.ts tests/security/memory-runtime-security.test.ts tests/integration/llm-wiki-runtime.integration.test.ts`
 
 Expected: FAIL because `findRecords/loadPaths` are absent.
 
-- [ ] **Step 3: Implement exact Adapter methods**
+- [x] **Step 3: Implement exact Adapter methods**
 
 ```ts
 export interface RuntimeFindRecordsInput {
@@ -84,7 +84,7 @@ loadPaths(input: RuntimeLoadPathsInput): Promise<RuntimeContextResult>;
 
 Validate record type allow-list, exact lookup key/value, ASCII-safe IDs, unique contained relative Runtime paths and positive budgets. Reject empty `paths`, globs, `..` and absolute paths. Runtime 0.2.0 receives `--max-files` and `--max-chars-per-file`; the Adapter enforces `max_total_chars` on the returned envelope before exposing it. Catalog lookup rejects zero or more than one result according to the Profile’s `max_results: 1` rule.
 
-- [ ] **Step 4: Run GREEN and real Runtime opt-in test**
+- [x] **Step 4: Run GREEN and real Runtime opt-in test**
 
 Run: `pnpm vitest run tests/memory/runtime-adapter.test.ts tests/security/memory-runtime-security.test.ts`
 
@@ -92,7 +92,7 @@ Run: `$env:RPH_RUN_REAL_LLM_WIKI='1'; pnpm vitest run tests/integration/llm-wiki
 
 Expected: unit/security tests PASS; opt-in test PASS when the pinned local Runtime is configured, otherwise skip with its existing explicit reason.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```text
 git add harnesses/research-publishing/adapters tests/memory tests/security tests/integration
