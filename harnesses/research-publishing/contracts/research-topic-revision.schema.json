@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-topic-revision/1.0",
+  "title": "Research Topic Revision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "topic_id", "roadmap_id", "revision", "previous_revision_ref",
+    "working_title", "stream_ids", "article_layer", "backlog_state", "availability",
+    "claim_status", "selection_ref", "outcome_ref", "thesis_hint", "incremental_value",
+    "evidence_refs", "boundary_notes", "source_refs", "changed_by", "change_reason",
+    "created_at", "revision_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "research-topic-revision/v1" },
+    "topic_id": { "$ref": "#/$defs/stableId" },
+    "roadmap_id": { "$ref": "#/$defs/stableId" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "previous_revision_ref": { "$ref": "#/$defs/nullableRef" },
+    "working_title": { "$ref": "#/$defs/nonEmpty" },
+    "stream_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/streamId" } },
+    "article_layer": { "enum": ["question_model", "implementation_evidence", "project_skill_failure_tradeoff", "anchor_synthesis"] },
+    "backlog_state": { "enum": ["evidence_ready", "researching", "long_term"] },
+    "availability": { "enum": ["available", "reserved", "completed", "retired"] },
+    "claim_status": { "enum": ["shipped", "validated", "observed", "exploring", "planned", "hypothesis"] },
+    "selection_ref": { "$ref": "#/$defs/nullableRef" },
+    "outcome_ref": { "$ref": "#/$defs/nullableRef" },
+    "thesis_hint": { "$ref": "#/$defs/nonEmpty" },
+    "incremental_value": { "$ref": "#/$defs/nonEmpty" },
+    "evidence_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "boundary_notes": { "$ref": "#/$defs/uniqueStrings" },
+    "source_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "changed_by": { "$ref": "#/$defs/nonEmpty" },
+    "change_reason": { "$ref": "#/$defs/nonEmpty" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "revision_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "uniqueStrings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "streamId": { "enum": ["knowledge_runtime_governance", "project_harness_lifecycle", "skill_cognitive_runtime", "runtime_evolution", "enterprise_validation"] },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+  }
+}

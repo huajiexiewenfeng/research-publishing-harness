@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-roadmap/1.0",
+  "title": "Research Roadmap v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "roadmap_id", "revision", "previous_revision_ref", "title",
+    "north_star", "primary_track_id", "target_account", "research_streams",
+    "research_stages", "publication_clock", "article_slots", "prologue_refs",
+    "non_goals", "approved_by", "change_reason", "created_at", "roadmap_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "research-roadmap/v1" },
+    "roadmap_id": { "$ref": "#/$defs/stableId" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "previous_revision_ref": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] },
+    "title": { "$ref": "#/$defs/nonEmpty" },
+    "north_star": {
+      "type": "object", "additionalProperties": false,
+      "required": ["en", "zh_CN"],
+      "properties": { "en": { "$ref": "#/$defs/nonEmpty" }, "zh_CN": { "$ref": "#/$defs/nonEmpty" } }
+    },
+    "primary_track_id": { "const": "enterprise-agent-runtime" },
+    "target_account": { "$ref": "#/$defs/nonEmpty" },
+    "research_streams": {
+      "type": "array", "minItems": 5, "maxItems": 5,
+      "items": { "$ref": "#/$defs/stream" }
+    },
+    "research_stages": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": { "$ref": "#/$defs/stage" }
+    },
+    "publication_clock": { "$ref": "#/$defs/publicationClock" },
+    "article_slots": {
+      "type": "array", "minItems": 24, "maxItems": 24,
+      "items": { "$ref": "#/$defs/articleSlot" }
+    },
+    "prologue_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "non_goals": { "$ref": "#/$defs/uniqueStrings" },
+    "approved_by": { "$ref": "#/$defs/nonEmpty" },
+    "change_reason": { "$ref": "#/$defs/nonEmpty" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "roadmap_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "uniqueStrings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "streamId": {
+      "enum": ["knowledge_runtime_governance", "project_harness_lifecycle", "skill_cognitive_runtime", "runtime_evolution", "enterprise_validation"]
+    },
+    "articleLayer": {
+      "enum": ["question_model", "implementation_evidence", "project_skill_failure_tradeoff", "anchor_synthesis"]
+    },
+    "claimStatus": { "enum": ["shipped", "validated", "observed", "exploring", "planned", "hypothesis"] },
+    "stream": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stream_id", "name", "project_refs", "research_questions", "relationship_notes"],
+      "properties": {
+        "stream_id": { "$ref": "#/$defs/streamId" },
+        "name": { "$ref": "#/$defs/nonEmpty" },
+        "project_refs": { "$ref": "#/$defs/uniqueStrings" },
+        "research_questions": { "$ref": "#/$defs/uniqueStrings" },
+        "relationship_notes": { "$ref": "#/$defs/uniqueStrings" }
+      }
+    },
+    "stage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage_id", "start_week", "end_week", "window_role", "progression_mode", "objective", "completion_signals", "capability_status", "evidence_refs"],
+      "properties": {
+        "stage_id": { "enum": ["week_01_04_wiki_contract", "week_05_12_failure_trace", "week_13_20_trace_eval", "week_21_24_synthesis"] },
+        "start_week": { "type": "integer", "minimum": 1, "maximum": 24 },
+        "end_week": { "type": "integer", "minimum": 1, "maximum": 24 },
+        "window_role": { "const": "target_only" },
+        "progression_mode": { "const": "evidence_gated" },
+        "objective": { "$ref": "#/$defs/nonEmpty" },
+        "completion_signals": { "$ref": "#/$defs/uniqueStrings" },
+        "capability_status": { "$ref": "#/$defs/claimStatus" },
+        "evidence_refs": { "$ref": "#/$defs/uniqueStrings" }
+      }
+    },
+    "publicationClock": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimum_articles_per_week", "minimum_articles_per_month", "minimum_articles_total", "default_language", "default_publication_pair", "optional_chinese_translation", "research_notes_kpi", "replies_kpi"],
+      "properties": {
+        "minimum_articles_per_week": { "const": 1 },
+        "minimum_articles_per_month": { "const": 4 },
+        "minimum_articles_total": { "const": 24 },
+        "default_language": { "const": "en" },
+        "default_publication_pair": { "type": "array", "prefixItems": [{ "const": "x_article" }, { "const": "x_single" }], "items": false, "minItems": 2, "maxItems": 2 },
+        "optional_chinese_translation": { "const": true },
+        "research_notes_kpi": { "type": "null" },
+        "replies_kpi": { "type": "null" }
+      }
+    },
+    "articleSlot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slot_id", "week_number", "month_id", "article_layer", "working_title", "planning_abstract", "stream_ids", "capability_status", "evidence_refs", "directional_only"],
+      "properties": {
+        "slot_id": { "$ref": "#/$defs/stableId" },
+        "week_number": { "type": "integer", "minimum": 1, "maximum": 24 },
+        "month_id": { "type": "string", "pattern": "^month_0[1-6]$" },
+        "article_layer": { "$ref": "#/$defs/articleLayer" },
+        "working_title": { "$ref": "#/$defs/nonEmpty" },
+        "planning_abstract": { "type": "string", "minLength": 40, "maxLength": 600 },
+        "stream_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/streamId" } },
+        "capability_status": { "$ref": "#/$defs/claimStatus" },
+        "evidence_refs": { "$ref": "#/$defs/uniqueStrings" },
+        "directional_only": { "const": true }
+      }
+    }
+  }
+}

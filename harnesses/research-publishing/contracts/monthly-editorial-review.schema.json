@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/monthly-editorial-review/1.0",
+  "title": "Monthly Editorial Review v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "review_id", "roadmap_ref", "month_id", "completed_outcome_refs",
+    "stream_coverage", "north_star_alignment", "claim_changes", "implementation_evidence_refs",
+    "failure_refs", "decision_refs", "boundary_change_refs", "open_question_refs",
+    "repeated_topic_refs", "off_track_findings", "next_candidate_topic_refs",
+    "evidence_ready_count", "cadence_met", "research_progress_met", "evidence_ready_guard_met",
+    "roadmap_change_requested", "roadmap_change_reason", "secondary_signals", "reviewed_by",
+    "reviewed_at", "review_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "monthly-editorial-review/v1" },
+    "review_id": { "$ref": "#/$defs/stableId" },
+    "roadmap_ref": { "$ref": "#/$defs/artifactRef" },
+    "month_id": { "type": "string", "pattern": "^month_0[1-6]$" },
+    "completed_outcome_refs": { "$ref": "#/$defs/uniqueArtifactRefs" },
+    "stream_coverage": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/streamId" } },
+    "north_star_alignment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "rationale"],
+      "properties": { "status": { "enum": ["aligned", "needs_revision"] }, "rationale": { "$ref": "#/$defs/nonEmpty" } }
+    },
+    "claim_changes": { "type": "array", "items": { "$ref": "#/$defs/claimChange" } },
+    "implementation_evidence_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "failure_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "decision_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "boundary_change_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "open_question_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "repeated_topic_refs": { "$ref": "#/$defs/uniqueStrings" },
+    "off_track_findings": { "$ref": "#/$defs/uniqueStrings" },
+    "next_candidate_topic_refs": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/artifactRef" } },
+    "evidence_ready_count": { "$ref": "#/$defs/count" },
+    "cadence_met": { "type": "boolean" },
+    "research_progress_met": { "type": "boolean" },
+    "evidence_ready_guard_met": { "type": "boolean" },
+    "roadmap_change_requested": { "type": "boolean" },
+    "roadmap_change_reason": { "anyOf": [{ "$ref": "#/$defs/nonEmpty" }, { "type": "null" }] },
+    "secondary_signals": { "$ref": "#/$defs/secondarySignals" },
+    "reviewed_by": { "$ref": "#/$defs/nonEmpty" },
+    "reviewed_at": { "type": "string", "format": "date-time" },
+    "review_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "uniqueStrings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "streamId": { "enum": ["knowledge_runtime_governance", "project_harness_lifecycle", "skill_cognitive_runtime", "runtime_evolution", "enterprise_validation"] },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "uniqueArtifactRefs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/artifactRef" } },
+    "claimChange": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_ref", "disposition", "evidence_refs"],
+      "properties": {
+        "claim_ref": { "$ref": "#/$defs/nonEmpty" },
+        "disposition": { "enum": ["strengthened", "weakened", "rejected", "unchanged"] },
+        "evidence_refs": { "$ref": "#/$defs/uniqueStrings" }
+      }
+    },
+    "secondarySignals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["impressions", "likes", "replies", "followers", "stars", "issues", "reproductions"],
+      "properties": {
+        "impressions": { "$ref": "#/$defs/count" },
+        "likes": { "$ref": "#/$defs/count" },
+        "replies": { "$ref": "#/$defs/count" },
+        "followers": { "$ref": "#/$defs/count" },
+        "stars": { "$ref": "#/$defs/count" },
+        "issues": { "$ref": "#/$defs/count" },
+        "reproductions": { "$ref": "#/$defs/count" }
+      }
+    }
+  }
+}

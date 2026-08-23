@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-program-status/1.0",
+  "title": "Research Program Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "roadmap_ref", "backlog_catalog_ref", "latest_review_ref", "active_cycle_refs", "warnings", "next_action", "projected_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "research-program-status/v1" },
+    "roadmap_ref": { "$ref": "#/$defs/artifactRef" },
+    "backlog_catalog_ref": { "$ref": "#/$defs/artifactRef" },
+    "latest_review_ref": { "$ref": "#/$defs/nullableRef" },
+    "active_cycle_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/artifactRef" } },
+    "warnings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "next_action": { "enum": ["replenish_evidence_ready_backlog", "open_next_weekly_cycle", "complete_active_week", "run_monthly_editorial_review", "review_requested_roadmap_change", "six_month_synthesis_due"] },
+    "projected_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+  }
+}

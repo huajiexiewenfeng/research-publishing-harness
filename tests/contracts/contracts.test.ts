@@ -51,7 +51,12 @@ const names = [
   'research-context-snapshot-v2',
   'research-context-review-v2',
   'research-index-doctor-report',
-  'research-index-rebuild-plan'
+  'research-index-rebuild-plan',
+  'research-roadmap',
+  'research-topic-revision',
+  'research-backlog-catalog',
+  'monthly-editorial-review',
+  'research-program-status'
 ] as const;
 
 const v1Names = new Set([
@@ -83,7 +88,12 @@ const v1Names = new Set([
   'research-index-catalog',
   'research-index-shard',
   'research-index-doctor-report',
-  'research-index-rebuild-plan'
+  'research-index-rebuild-plan',
+  'research-roadmap',
+  'research-topic-revision',
+  'research-backlog-catalog',
+  'monthly-editorial-review',
+  'research-program-status'
 ]);
 
 describe('public contracts', () => {
