@@ -54,6 +54,11 @@
 
 ## 2026-08-23
 
+- Research Program Orchestration V2.4 Phase 1 inline 实现完成：新增 Research Program 契约与五个 Schema、不可变 Roadmap/Topic revision、可重建 Backlog Catalog、Evidence Ready 节奏护栏、Monthly Review、Program Status 与 10 条 JSON-only CLI 路由。
+- Phase 1 任务提交为 `923d914`、`1b75f75`、`0c58ee6`、`39b8269`；未修改 Article/X/Browser、`llm-wiki-runtime` 或执行真实外部写入。
+- fresh 验证：聚焦 gate 10 个测试文件 / 101 项测试通过；最终 `pnpm test` 115 个测试文件通过、1 项既有 opt-in 跳过，500 项测试通过；lint/typecheck 通过。信任级别 `passed-agent-local`。
+- Phase 1 verification 与 handoff 已归档；V2.4 Flow 保持 active，下一步为审阅 Phase 2 Weekly Cycle 与 Evidence Package 计划。
+
 - 完成 Research Data Flywheel V2.3 四个阶段：Evidence/Increment、Review/Promotion/Index、Catalog-first progressive Query、Publication Flywheel 与显式历史 Import。
 - Task 5 补齐 terminal-hook 与 Import CLI、Article/X 薄 Skill 路由、Memory Loop 指南、完整 Import 示例及 167 文件确定性 manifest。
 - 完整离线 acceptance 真实经过 Promotion 中断/恢复、Catalog-last、Query 回绑 Package、terminal Evidence 中断/恢复、Publication Expression 与下一条未批准 Delta，并输出 AC 1–38 映射。

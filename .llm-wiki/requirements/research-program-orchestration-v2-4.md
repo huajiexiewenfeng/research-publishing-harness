@@ -4,6 +4,7 @@
 
 - title: Build the deterministic six-month research program control plane
 - status: executing
+- phase_1_status: implemented and passed-agent-local
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -85,9 +86,9 @@ The external planning documents were reviewed as temporary local sources and are
 | source | done | approved design `0a6ed18` and current V2.3 source/tests | 2026-08-23 |
 | design | done | approved six-month roadmap design | 2026-08-23 |
 | plan | done | confirmed plan-suite commit `38a3efb`; Phase 1 selected | 2026-08-23 |
-| development | active | inline execution authorized; baseline `2f581c1` | 2026-08-23 |
-| testing | pending | per-task RED/GREEN and Phase 1 gate pending | 2026-08-23 |
-| archive | pending | Phase 1 handoff pending | 2026-08-23 |
+| development | active | Phase 1 commits `923d914`, `1b75f75`, `0c58ee6`, `39b8269`; Phase 2–4 remain | 2026-08-23 |
+| testing | active | Phase 1 passed-agent-local: focused 101/101; repository 500 passed, 1 skipped | 2026-08-23 |
+| archive | active | Phase 1 handoff and verification archived; full V2.4 closure remains pending | 2026-08-23 |
 
 ## Open Questions
 
@@ -97,3 +98,4 @@ The external planning documents were reviewed as temporary local sources and are
 
 - The research execution clock is evidence-gated; week ranges are target windows only.
 - Roadmap bootstrap stores titles and short planning abstracts, not twenty-four finished articles.
+- Phase 1 is complete within its locked scope. Monthly Review verifies contained opaque Outcome bytes in this phase; Phase 4 owns Outcome schema and Roadmap/month/cycle binding.
