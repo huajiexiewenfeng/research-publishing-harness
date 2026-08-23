@@ -1,6 +1,6 @@
 # Bilingual README Refresh Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Completed steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Completed steps use checked checkbox syntax for tracking.
 
 **Goal:** Replace the version-list-first repository landing page with an onboarding-first English README and a semantically aligned Simplified Chinese README.
 
@@ -219,12 +219,12 @@ Copy these elements byte-for-byte from `README.md`:
 
 - the shared text flow;
 - all shell commands;
-- all relative link targets;
+- all content-link targets, excluding reciprocal language-switch links;
 - version identifiers and Runtime version;
 - directory names;
 - lifecycle and contract identifiers.
 
-The explanatory link labels and surrounding prose may be Chinese; the destination paths must be identical.
+The explanatory link labels and surrounding prose may be Chinese; content-link targets must be identical, while reciprocal language-switch targets intentionally point to the opposite README.
 
 - [x] **Step 3: Verify two-way navigation, parity and local links**
 
