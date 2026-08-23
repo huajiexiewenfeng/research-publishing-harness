@@ -71,3 +71,4 @@
 - 用户精确确认上述 Plan 后，Promotion 写入 6 个 immutable semantic records，但在 `write_index_shards` 安全停为 partial；Catalog 未提交，默认 Query 仍不可见，且 `reconciliation_required: false`。
 - 隔离 Runtime 复现确认 Windows 路径溢出：真实 shard 目标 259 字符，原子临时路径约 296 字符。Projector/Profile 改为 `tracks/{track}/i/{generation}/{view}/{digest}.md`，聚焦测试先以 301>260 RED，修复后 11/11 GREEN；隔离真实 Runtime 写入成功。
 - 修复后 fresh `pnpm check` 通过 108 个测试文件 / 459 项测试及 AC1–38；active/packaged Profile 已原子刷新并一致，旧 Plan 因 Profile/path digest 变化按设计 stale，必须生成新 Plan 并重新确认。
+- Windows-safe 替代 Plan `promotion_plan_e320140f634a460ba35d31da016cb6bd` 已生成，digest `sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`；尚未批准或执行。

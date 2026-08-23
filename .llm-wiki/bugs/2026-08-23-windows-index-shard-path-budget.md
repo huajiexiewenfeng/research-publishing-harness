@@ -58,6 +58,7 @@ The shard path redundantly included `indexes/generations`, `shards`, `shard_id`,
 - Fresh `pnpm check`: 108 test files / 459 tests passed, one opt-in skipped; AC1–38 offline acceptance passed with `network: unused`.
 - Active/packaged Profile SHA-256: `21fa376879323e04bc9f184f66eab45582af290287b36969f542e29b06cda894`.
 - Harness `memory doctor`: healthy against Runtime `0.2.0`.
+- Superseding Plan generated with Windows-safe Profile: `promotion_plan_e320140f634a460ba35d31da016cb6bd`, digest `sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`.
 - Trust level: `passed-agent-local` plus isolated real Runtime write.
 
 ## Residual Risk

@@ -30,7 +30,9 @@ The user confirmed Plan `sha256:00652a...`. Execution wrote the six immutable se
 
 Runtime Promotion has not been approved or executed. Pending exact confirmation:
 
-The prior confirmation MUST NOT be reused. Generate and confirm a new Plan after the Windows-safe Profile change.
+The prior confirmation MUST NOT be reused. Pending exact confirmation for the Windows-safe superseding Plan:
+
+`确认 Research Promotion Plan sha256:eedf7b0c36cff855deeb573ba484ae3bb2b82ddc24ee84cc633534c00f68acaf`
 
 ## Residual Risk
 
