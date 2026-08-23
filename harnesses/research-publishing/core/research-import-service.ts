@@ -43,6 +43,7 @@ export interface ResearchImportManifestV1 {
   }>;
   readonly thread: Readonly<{
     root_url: string;
+    published_at: string;
     source_classification: 'user_asserted' | 'public_verified';
     receipt: Readonly<{ path: string; digest: `sha256:${string}` }>;
     items: ReadonlyArray<{
@@ -309,7 +310,7 @@ export class ResearchImportService {
       verification_level: publicVerified ? 'public_verified' : 'manual_recorded',
       platform_refs: [input.thread.root_url, ...platformIds],
       publication_receipt_ref: `receipt:${input.thread.receipt.path}#${input.thread.receipt.digest}`,
-      published_at: input.imported_at
+      published_at: input.thread.published_at
     });
     const path = `${this.root(input.import_id)}/publication-expression.json`;
     if (!(await this.store.exists(path))) await this.store.writeNew(path, expression);
@@ -354,14 +355,15 @@ export class ResearchImportService {
   private index(
     ref: string, path: string, title: string, summary: string,
     category: ResearchIndexSourceRecordV1['category'], importedAt: string,
-    lifecycle: ResearchIndexSourceRecordV1['lifecycle_status'], claimStatus: ClaimStatus | null = null
+    lifecycle: ResearchIndexSourceRecordV1['lifecycle_status'], claimStatus: ClaimStatus | null = null,
+    publishedAt: string | null = null
   ): ResearchIndexSourceRecordV1 {
     return {
       ref, record_path: path, record_digest: sha256({ imported: ref }), title, summary,
       tags: ['imported'], category, claim_status: claimStatus, lifecycle_status: lifecycle,
       evolution_target: null, updated_at: importedAt,
       accepted_at: lifecycle === 'working' ? null : importedAt,
-      published_at: category === 'publication' ? importedAt : null,
+      published_at: category === 'publication' ? publishedAt : null,
       evidence_available: true, document_manifest_available: false
     };
   }
@@ -396,7 +398,7 @@ export class ResearchImportService {
       expression_id: expression.expression_id, channel: expression.channel,
       increment_ref: expression.increment_ref, verification_level: expression.verification_level
     }, { research_track: input.track_id, expression_id: expression.expression_id }, { source_id: sourceId },
-    this.index(`publication:${expression.expression_id}@${expression.expression_digest}`, `domains/research-publishing/tracks/${input.track_id}/publications/${expression.expression_id}.md`, expression.expression_id, 'Imported six-item X Thread expression.', 'publication', input.imported_at, 'published'));
+    this.index(`publication:${expression.expression_id}@${expression.expression_digest}`, `domains/research-publishing/tracks/${input.track_id}/publications/${expression.expression_id}.md`, expression.expression_id, 'Imported six-item X Thread expression.', 'publication', input.imported_at, 'published', null, input.thread.published_at));
   }
 
   private targetForLifecycle(input: ResearchImportManifestV1, event: ResearchLifecycleEventV1): PromotionTarget {

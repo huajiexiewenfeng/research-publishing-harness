@@ -19,7 +19,7 @@
   "mother_article": {"path": "articles/import/mother.md", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "source_classification": "local_verified"},
   "gist": {"url": "https://gist.github.com/huajiexiewenfeng/a507a4b080bdbd2e30cf8a05556b3f15", "source_classification": "user_asserted"},
   "thread": {
-    "root_url": "https://x.com/Glen56121/status/2089976025677725798", "source_classification": "user_asserted",
+    "root_url": "https://x.com/Glen56121/status/2089976025677725798", "published_at": "2026-02-09T00:00:00.000Z", "source_classification": "user_asserted",
     "receipt": {"path": "receipts/import-thread.json", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"},
     "items": [
       {"ordinal": 1, "text": "Imported research thread item 1", "content_digest": "sha256:6be06e6e0563c35d4736ad5bd2b3340e53a0fda6971a897be91a9ab47b642a8a", "platform_id": "2089976025677725798", "public_url": "https://x.com/Glen56121/status/2089976025677725798", "metrics": null, "source_classification": "receipt_backed"},
@@ -34,5 +34,5 @@
   "boundaries": {"established": ["The HR Skill integration works in the author's own use."], "not_established": ["No public production benchmark or business-impact evidence."], "planned_work": ["Trace", "Eval", "Controlled Loop"]},
   "explicit_assertions": [{"field": "thread.item_order", "value": "The supplied six items are in publication order.", "source_classification": "user_asserted"}],
   "imported_at": "2026-08-23T04:00:00.000Z",
-  "manifest_digest": "sha256:dd6b2bbb03415d469c59a6c43682200c808087f36d875c9ca843c19763f9febc"
+  "manifest_digest": "sha256:2812e593ee121a913048dd9b492320b9b6eccb8fea0c7e1e826603532b44803f"
 }

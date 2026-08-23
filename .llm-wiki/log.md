@@ -60,3 +60,5 @@
 - fresh `pnpm check` 通过：108 个测试文件 / 457 项测试通过，1 项显式 opt-in 测试跳过；`network: unused`。
 - 安全审计未发现 V2.3 宽目录 Query、直接 `.llm-wiki` 写入、凭据或用户绝对路径；命中项仅为防护检测器和 V2.2 兼容声明。
 - development/testing/archive 已按 `passed-agent-local` 同步；未冒充 CI/独立复核，未 push、未访问真实 X 或执行真实 Wiki Promotion。
+- 首次真实 Import 前修复发布时间绑定：新增 `thread.published_at`，Publication Expression/Index 保留历史发布时间，`imported_at` 仅表示导入与生命周期时间；聚焦测试先 RED 后 GREEN。
+- 修复后 fresh `pnpm check` 通过：108 个测试文件 / 458 项测试通过，1 项 opt-in 跳过，AC 1–38 离线验收通过且 `network: unused`；验证级别为 `passed-agent-local`。

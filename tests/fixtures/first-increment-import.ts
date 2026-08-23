@@ -37,6 +37,7 @@ export async function firstIncrementImportFixture(store: WorkspaceStore): Promis
     },
     thread: {
       root_url: 'https://x.com/Glen56121/status/2089976025677725798',
+      published_at: '2026-02-09T00:00:00.000Z',
       source_classification: 'user_asserted' as const,
       receipt: { path: receipt.relative_path, digest: receipt.digest },
       items: Array.from({ length: 6 }, (_, index) => ({

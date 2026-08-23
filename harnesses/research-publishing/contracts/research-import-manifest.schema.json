@@ -28,9 +28,10 @@
     },
     "thread": {
       "type": "object", "additionalProperties": false,
-      "required": ["root_url", "source_classification", "receipt", "items"],
+      "required": ["root_url", "published_at", "source_classification", "receipt", "items"],
       "properties": {
         "root_url": { "$ref": "#/$defs/https" },
+        "published_at": { "type": "string", "format": "date-time" },
         "source_classification": { "enum": ["user_asserted", "public_verified"] },
         "receipt": { "$ref": "#/$defs/artifact" },
         "items": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "$ref": "#/$defs/threadItem" } }

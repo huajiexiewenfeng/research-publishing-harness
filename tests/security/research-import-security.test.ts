@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import { ResearchImportService } from '../../harnesses/research-publishing/core/research-import-service.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { firstIncrementImportFixture } from '../fixtures/first-increment-import.js';
@@ -41,5 +42,18 @@ describe('Research Import security', () => {
       ...manifest, thread: { ...manifest.thread, items }
     })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
   });
-});
 
+  it('requires a valid historical Thread publication timestamp', async () => {
+    const { store, manifest } = await fixture();
+    const invalidBody = {
+      ...manifest,
+      thread: { ...manifest.thread, published_at: 'not-a-date' }
+    };
+    await expect(new ResearchImportService(store).inspect({
+      ...invalidBody,
+      manifest_digest: sha256(Object.fromEntries(
+        Object.entries(invalidBody).filter(([key]) => key !== 'manifest_digest')
+      ))
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+});

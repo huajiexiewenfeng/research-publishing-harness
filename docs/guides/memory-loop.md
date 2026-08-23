@@ -32,7 +32,7 @@ memory index doctor|rebuild-plan
 memory import inspect|capture|propose
 ```
 
-`memory import inspect` and `capture` receive a complete Import Manifest. `memory import propose` receives `{ "manifest": <manifest>, "evidence_snapshot_id": "..." }`. Import is bounded to one Increment and exactly six ordered Thread items; missing platform IDs, URLs, and metrics stay explicit gaps.
+`memory import inspect` and `capture` receive a complete Import Manifest. `memory import propose` receives `{ "manifest": <manifest>, "evidence_snapshot_id": "..." }`. Import is bounded to one Increment and exactly six ordered Thread items; missing platform IDs, URLs, and metrics stay explicit gaps. `thread.published_at` preserves the historical publication time, while top-level `imported_at` records when the legacy material entered the Harness; these timestamps must not be substituted for each other.
 
 Review the generated Import Delta with `review_id: "review_<import_id>"`. The imported `accepted` lifecycle event is pre-bound to that exact Human Review; a different Review id makes Promotion planning fail closed.
 

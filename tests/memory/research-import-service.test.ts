@@ -51,8 +51,17 @@ describe('ResearchImportService', () => {
     expect((expression.intended_content as { expected_item_order: number[] }).expected_item_order)
       .toEqual([1, 2, 3, 4, 5, 6]);
     expect(expression.verification_level).toBe('manual_recorded');
+    expect(expression.published_at).toBe(manifest.thread.published_at);
+    expect(expression.published_at).not.toBe(manifest.imported_at);
+    const publicationOperation = delta.proposed_operations.find(
+      (operation) => operation.record_type === 'publication_expression'
+    );
+    expect(publicationOperation?.target_content.index_entry).toMatchObject({
+      published_at: manifest.thread.published_at,
+      updated_at: manifest.imported_at,
+      accepted_at: manifest.imported_at
+    });
     expect(delta.proposed_operations.some((operation) => operation.operation_type === 'attach_publication')).toBe(true);
     await expect(store.exists('memory/promotions/import_first_runtime_boundary/approval.json')).resolves.toBe(false);
   });
 });
-
