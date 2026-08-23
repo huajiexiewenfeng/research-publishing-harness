@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-3-progressive-query`
-- active_task: `phase-3-task-4-index-doctor-rebuild-plan`
+- active_task: `phase-3-task-5-cli-acceptance`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
 
 ## Scope Lock
@@ -77,4 +77,8 @@
   service/security/package suite 4 files / 12 tests passed; TypeScript and lint passed.
 - Runtime unavailable and missing Index remain honest non-broad outcomes; full reconstruction requires
   `full_explicit`, every Manifest Chunk and a matching full-content digest.
-- Next action: Phase 3 Task 4 read-only Index Doctor and approval-required rebuild Plan.
+- Phase 3 Task 4 completed in commit `22f1d81`: exact-ref Doctor reports healthy, legacy-only or
+  rebuild-required state; Rebuild produces a digest-bound approval-required Plan without writing Runtime.
+- Task 4 verification: 4 files / 57 tests passed; TypeScript and lint passed. Rebuild generations bind
+  the prior Catalog digest so recovery does not collide with corrupt create-only Shard paths.
+- Next action: Phase 3 Task 5 CLI routes, broad-load prohibition scan, offline acceptance and full gate.

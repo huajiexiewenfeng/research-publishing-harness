@@ -249,17 +249,17 @@ git commit -m "feat: add bounded progressive research query"
 - Consumes: exact Adapter reads, semantic record refs from Catalog generations and Phase 2 projector.
 - Produces: read-only doctor report and an approval-required rebuild Plan; never silently repairs during Query.
 
-- [ ] **Step 1: Write failing doctor and rebuild tests**
+- [x] **Step 1: Write failing doctor and rebuild tests**
 
 Cover missing Catalog, duplicate exact lookup, bad Catalog digest, missing/corrupt Shard, semantic digest drift, orphan staged generation, valid legacy-only workspace and healthy multi-view index.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/research-index-maintenance-service.test.ts tests/integration/research-index-rebuild.test.ts`
 
 Expected: FAIL because maintenance services/schemas are absent.
 
-- [ ] **Step 3: Implement read-only diagnosis and rebuild planning**
+- [x] **Step 3: Implement read-only diagnosis and rebuild planning**
 
 ```ts
 export class ResearchIndexMaintenanceService {
@@ -270,13 +270,13 @@ export class ResearchIndexMaintenanceService {
 
 Doctor only follows exact Catalog refs. Rebuild Plan enumerates exact source semantic refs, proposed generation Shards and final Catalog digest; execution reuses Phase 2 Promotion approval and Catalog-last mechanics rather than adding a second write path.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/research-index-maintenance-service.test.ts tests/integration/research-index-rebuild.test.ts`
 
 Expected: PASS; damaged indexes report `index_rebuild_required` and no repair occurs before approval.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests
