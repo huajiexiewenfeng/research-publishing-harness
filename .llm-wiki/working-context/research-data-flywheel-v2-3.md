@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-1-evidence-foundation`
-- active_task: `task-3-canonical-document-chunking`
+- active_task: `task-4-increment-cli-acceptance`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-1-evidence-foundation.md`
 
 ## Scope Lock
@@ -29,4 +29,5 @@
 - Change Brief created before production edits.
 - Task 1 verification: 4 test files / 45 tests passed; TypeScript and focused ESLint passed.
 - Task 2 verification: 4 test files / 24 tests passed; TypeScript and focused ESLint passed.
-- Next action: write Task 3 canonical normalization/chunking failing tests.
+- Task 3 verification: 2 test files / 11 tests passed; TypeScript and focused ESLint passed.
+- Next action: write Task 4 Increment Assembly, CLI and Phase 1 acceptance failing tests.
