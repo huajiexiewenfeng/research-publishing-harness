@@ -13,6 +13,8 @@ The first real Capture then exposed duplicate provenance refs when canonical Gis
 
 Semantic Review of the first unapproved Delta then found that X Thread intended content pointed to the mother article rather than the content-bearing Import Manifest. The binding is corrected and verified; the first Delta remains unreviewed/unapproved as audit evidence and must be superseded before Promotion.
 
+The corrected V2 Delta was reviewed with all six operations retained. Initial Plan generation exposed a stale V2.2 active Runtime Profile; it was backed up and atomically refreshed to the packaged V2.3 Profile. Runtime lookup/doctor then passed and the exact Plan was generated. Work is stopped at the one-confirmation gate.
+
 ## Evidence
 
 - Bug Brief: `.llm-wiki/bugs/2026-08-23-import-publication-time-binding.md`
@@ -24,7 +26,9 @@ Semantic Review of the first unapproved Delta then found that X Thread intended 
 
 ## Boundary
 
-The code fix is ready for the real first-Increment Import. Import capture/proposal may create local Harness evidence, but Runtime Promotion still requires the exact reviewed Promotion Plan confirmation.
+Runtime Promotion has not been approved or executed. Pending exact confirmation:
+
+`确认 Research Promotion Plan sha256:00652a0191193e044d28ef0697152879867817ac8979fd9ea7801af16545d8d6`
 
 ## Residual Risk
 

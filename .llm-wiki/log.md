@@ -65,3 +65,6 @@
 - 首次真实 Capture 暴露 Gist/Thread canonical URL 与 Increment source refs 重复；Harness 在 Evidence 边界改为保持顺序的确定性去重。真实尝试仅写入本地 Import Manifest/gap report，未创建 Evidence/Delta/Review/Promotion，也未触发 Runtime 或 X。
 - source-ref 修复聚焦测试先复现 duplicate-items RED，再以 3/3 GREEN；随后 fresh `pnpm check` 再次通过 108 个测试文件 / 458 项测试及 AC 1–38 离线验收。
 - 首个未批准 Delta 的语义 Review 发现 X Thread `intended_content` 错绑母稿而非包含 6 条原文的 Import Manifest；修复后聚焦测试先 RED 后 3/3 GREEN，fresh `pnpm check` 再次通过。旧 Delta 保持未 Review/未批准，作为审计证据，不进入 Runtime。
+- 替代 Delta `delta_import_first_runtime_boundary_v2` 已完成 agent-prepared Review，6 个 operation 全部保留，等待一次 Promotion Plan 确认接受语义选择并授权执行。
+- 首次 Plan lookup 暴露 Workspace active Profile 仍为 V2.2 snapshot；旧 snapshot 已按 SHA-256 版本化备份，并通过 Runtime `init-profile` 原子刷新到 V2.3。精确 Catalog lookup 返回首建态 `not_found`，Harness Doctor healthy。
+- 已生成但未批准/未执行 Plan `promotion_plan_d48de57241b34ea5981bd69629d38ea7`，digest `sha256:00652a0191193e044d28ef0697152879867817ac8979fd9ea7801af16545d8d6`。
