@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/legacy-research-record/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "legacy_record_type", "source_record_type", "source_path", "source_digest",
+    "content", "instruction_policy", "sanitized", "risk_flags", "supporting_only",
+    "semantic_completeness", "record_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "legacy-research-record/v1" },
+    "legacy_record_type": { "enum": ["legacy_publication_evidence", "legacy_feedback_snapshot", "legacy_candidate_insight"] },
+    "source_record_type": { "enum": ["publication_evidence", "feedback_snapshot", "candidate_insight"] },
+    "source_path": { "type": "string", "pattern": "^domains/research-publishing/tracks/[a-z0-9][a-z0-9_-]{0,127}/(?:publications|feedback|insights)/[a-zA-Z0-9._-]+\\.md$" },
+    "source_digest": { "$ref": "#/$defs/digest" },
+    "content": { "type": "string", "minLength": 1 },
+    "instruction_policy": { "const": "data_only" },
+    "sanitized": { "type": "boolean" },
+    "risk_flags": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "supporting_only": { "const": true },
+    "semantic_completeness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["research_question", "thesis", "canonical_evidence"],
+      "properties": {
+        "research_question": { "const": false },
+        "thesis": { "const": false },
+        "canonical_evidence": { "const": false }
+      }
+    },
+    "record_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}
