@@ -35,7 +35,7 @@
 - Consumes: frozen Article Package refs, X/X Article approved Plans, V1/V2/V2.1/X Article terminal Receipts, Gist/GitHub explicit evidence and Phase 1 Evidence service.
 - Produces: immutable `PublicationExpressionV1` candidates with separate intended/observed blocks and Evidence Snapshot refs.
 
-- [ ] **Step 1: Write failing cross-channel and evidence-strength tests**
+- [x] **Step 1: Write failing cross-channel and evidence-strength tests**
 
 ```ts
 it.each(['article', 'x_article', 'x_thread', 'x_single', 'x_reply', 'gist', 'github_article'])
@@ -54,13 +54,13 @@ it('preserves intended truth when public verification conflicts', async () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/publication-expression-service.test.ts tests/security/publication-expression-security.test.ts`
 
 Expected: FAIL because expression assembly is absent.
 
-- [ ] **Step 3: Implement version-dispatched evidence readers**
+- [x] **Step 3: Implement version-dispatched evidence readers**
 
 ```ts
 export interface PublicationEvidenceReader {
@@ -75,13 +75,13 @@ export class PublicationExpressionService {
 
 Resolve only contained artifacts, verify bytes/digests before and after parsing, map each existing Receipt schema to `planned|manual_recorded|public_verified|outcome_unknown|conflict`, preserve item order/link/media mismatches, and reject privacy downgrade or claim escalation.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/publication-expression-service.test.ts tests/security/publication-expression-security.test.ts`
 
 Expected: PASS for all channels, receipt versions, translation/compression/adaptation and verification conflicts.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```text
 git add harnesses/research-publishing/core tests/memory tests/fixtures tests/security

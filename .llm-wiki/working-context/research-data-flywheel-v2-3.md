@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-4-publication-migration`
-- active_task: `phase-4-task-1-publication-expression`
+- active_task: `phase-4-task-2-terminal-feedback-loop`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
@@ -87,4 +87,9 @@
 - Phase 3 focused gate: 45 files / 227 tests passed. Full `pnpm check`: 96 files passed plus
   1 skipped; 415 tests passed plus 1 skipped; offline acceptance reported
   `progressive_query: simulated_complete` with network unused.
-- Next action: Phase 4 Task 1 Publication Expression assembly.
+- Phase 4 Task 1 completed in commit `b115fb1`: seven publication channels now assemble into one
+  immutable Publication Expression with separate approved intent, terminal observation and Evidence refs.
+- Task 1 verification: 4 files / 68 tests passed across contract regression and focused behavior;
+  TypeScript and lint passed. Receipt V1/V2/V2.1/X Article dispatch, privacy downgrade, stale bytes,
+  claim escalation and public verification conflicts are fail-closed.
+- Next action: Phase 4 Task 2 terminal hook idempotency and supervised flywheel RED tests.
