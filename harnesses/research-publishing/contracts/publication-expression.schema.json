@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-expression/1.0",
+  "title": "Publication Expression V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "expression_id", "increment_ref", "channel", "language", "derivation_type", "claim_refs", "visual_refs", "intended_content", "observed_content", "verification_level", "platform_refs", "publication_receipt_ref", "published_at", "expression_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-expression/v1" },
+    "expression_id": { "$ref": "#/$defs/id" },
+    "increment_ref": { "$ref": "#/$defs/text" },
+    "channel": { "enum": ["article", "x_article", "x_thread", "x_single", "x_reply", "gist", "github_article"] },
+    "language": { "$ref": "#/$defs/text" },
+    "derivation_type": { "enum": ["original", "translation", "compression", "adaptation"] },
+    "claim_refs": { "$ref": "#/$defs/refs" },
+    "visual_refs": { "$ref": "#/$defs/refs" },
+    "intended_content": { "$ref": "#/$defs/intended" },
+    "observed_content": { "anyOf": [{ "$ref": "#/$defs/observed" }, { "type": "null" }] },
+    "verification_level": { "enum": ["planned", "manual_recorded", "public_verified", "outcome_unknown", "conflict"] },
+    "platform_refs": { "$ref": "#/$defs/refs" },
+    "publication_receipt_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "published_at": { "type": ["string", "null"], "format": "date-time" },
+    "expression_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "intended": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approved_plan_ref", "approved_plan_digest", "local_content_path", "local_content_digest", "expected_item_order", "link_refs", "visual_refs"],
+      "properties": {
+        "approved_plan_ref": { "$ref": "#/$defs/text" }, "approved_plan_digest": { "$ref": "#/$defs/digest" },
+        "local_content_path": { "$ref": "#/$defs/text" }, "local_content_digest": { "$ref": "#/$defs/digest" },
+        "expected_item_order": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "link_refs": { "$ref": "#/$defs/refs" }, "visual_refs": { "$ref": "#/$defs/refs" }
+      }
+    },
+    "observed": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "public_url", "platform_ids", "observed_digest", "actual_item_order", "media_verification", "link_verification", "mismatches"],
+      "properties": {
+        "source": { "enum": ["public_page", "user_report"] }, "public_url": { "type": "string", "format": "uri" },
+        "platform_ids": { "$ref": "#/$defs/refs" }, "observed_digest": { "$ref": "#/$defs/digest" },
+        "actual_item_order": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "media_verification": { "enum": ["matched", "unverified", "mismatch"] },
+        "link_verification": { "enum": ["matched", "unverified", "mismatch"] },
+        "mismatches": { "$ref": "#/$defs/refs" }
+      }
+    }
+  }
+}

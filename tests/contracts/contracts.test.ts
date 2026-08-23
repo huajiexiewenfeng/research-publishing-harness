@@ -29,7 +29,17 @@ const names = [
   'candidate-insight-proposal',
   'memory-ingest-plan',
   'memory-ingest-approval',
-  'memory-ingest-receipt'
+  'memory-ingest-receipt',
+  'artifact-ref-v2',
+  'research-evidence-snapshot',
+  'research-increment-revision',
+  'claim-version',
+  'research-decision',
+  'open-question-version',
+  'research-evolution-edge',
+  'publication-expression',
+  'queryable-canonical-document',
+  'research-lifecycle-event'
 ] as const;
 
 const v1Names = new Set([
@@ -46,7 +56,16 @@ const v1Names = new Set([
   'candidate-insight-proposal',
   'memory-ingest-plan',
   'memory-ingest-approval',
-  'memory-ingest-receipt'
+  'memory-ingest-receipt',
+  'research-evidence-snapshot',
+  'research-increment-revision',
+  'claim-version',
+  'research-decision',
+  'open-question-version',
+  'research-evolution-edge',
+  'publication-expression',
+  'queryable-canonical-document',
+  'research-lifecycle-event'
 ]);
 
 describe('public contracts', () => {
@@ -64,7 +83,9 @@ describe('public contracts', () => {
         additionalProperties: boolean;
       };
 
-      const version = name === 'research-content-package'
+      const version = name === 'artifact-ref-v2'
+        ? '2.3'
+        : name === 'research-content-package'
         ? '1.1'
         : v1Names.has(name)
         ? '1.0'

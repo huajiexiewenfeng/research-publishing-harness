@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/open-question-version/1.0",
+  "title": "Open Question Version V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "question_id", "version", "question", "why_it_matters", "origin_refs", "candidate_next_actions", "status", "answered_by_ref", "question_digest"],
+  "properties": {
+    "schema_version": { "const": "open-question-version/v1" },
+    "question_id": { "$ref": "#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "question": { "$ref": "#/$defs/text" },
+    "why_it_matters": { "$ref": "#/$defs/text" },
+    "origin_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "candidate_next_actions": { "$ref": "#/$defs/refs" },
+    "status": { "enum": ["open", "investigating", "answered", "deferred", "closed"] },
+    "answered_by_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "question_digest": { "$ref": "#/$defs/digest" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "const": "answered" } } }, "then": { "properties": { "answered_by_ref": { "$ref": "#/$defs/text" } } } }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

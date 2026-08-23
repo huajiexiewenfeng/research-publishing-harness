@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-lifecycle-event/1.0",
+  "title": "Research Lifecycle Event V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "increment_ref", "event_seq", "previous_event_ref", "event_type", "prior_state", "resulting_state", "evidence_refs", "approval_ref", "receipt_ref", "occurred_at", "event_digest"],
+  "properties": {
+    "schema_version": { "const": "research-lifecycle-event/v1" },
+    "event_id": { "$ref": "#/$defs/id" },
+    "increment_ref": { "$ref": "#/$defs/text" },
+    "event_seq": { "type": "integer", "minimum": 1 },
+    "previous_event_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "event_type": { "enum": ["working_checkpointed", "package_finalized", "accepted", "publication_attached", "superseded", "retracted"] },
+    "prior_state": { "anyOf": [{ "$ref": "#/$defs/state" }, { "type": "null" }] },
+    "resulting_state": { "$ref": "#/$defs/state" },
+    "evidence_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "approval_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "receipt_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "event_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["working", "accepted", "published", "superseded", "retracted"] },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

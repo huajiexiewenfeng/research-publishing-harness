@@ -34,7 +34,17 @@ export const CONTRACT_NAMES = [
   'candidate-insight-proposal',
   'memory-ingest-plan',
   'memory-ingest-approval',
-  'memory-ingest-receipt'
+  'memory-ingest-receipt',
+  'artifact-ref-v2',
+  'research-evidence-snapshot',
+  'research-increment-revision',
+  'claim-version',
+  'research-decision',
+  'open-question-version',
+  'research-evolution-edge',
+  'publication-expression',
+  'queryable-canonical-document',
+  'research-lifecycle-event'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

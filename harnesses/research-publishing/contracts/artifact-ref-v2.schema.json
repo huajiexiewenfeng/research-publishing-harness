@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/artifact-ref-v2/2.3",
+  "title": "Artifact Ref V2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "role", "workspace_relative_path", "object_path", "digest", "media_type", "byte_size", "canonical", "privacy_classification"],
+  "properties": {
+    "schema_version": { "const": "2.3" },
+    "role": { "$ref": "#/$defs/role" },
+    "workspace_relative_path": { "$ref": "#/$defs/relativePath" },
+    "object_path": { "type": "string", "pattern": "^memory/evidence/objects/sha256/[a-f0-9]{2}/[a-f0-9]{64}$" },
+    "digest": { "$ref": "#/$defs/digest" },
+    "media_type": { "type": "string", "minLength": 1 },
+    "byte_size": { "type": "integer", "minimum": 0 },
+    "canonical": { "type": "boolean" },
+    "privacy_classification": { "$ref": "#/$defs/privacy" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:[\\\\/])(?!/)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$" },
+    "privacy": { "enum": ["public", "internal", "restricted", "data_only"] },
+    "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "feedback_snapshot", "candidate_insight"] }
+  }
+}

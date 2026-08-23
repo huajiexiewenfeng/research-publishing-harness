@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/queryable-canonical-document/1.0",
+  "title": "Queryable Canonical Document V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "document_id", "document_role", "increment_ref", "artifact_ref", "full_content_digest", "chunk_policy_version", "chunks", "language", "privacy_classification", "instruction_policy", "manifest_digest"],
+  "properties": {
+    "schema_version": { "const": "queryable-canonical-document/v1" },
+    "document_id": { "$ref": "#/$defs/id" },
+    "document_role": { "$ref": "#/$defs/role" },
+    "increment_ref": { "$ref": "#/$defs/text" },
+    "artifact_ref": { "$ref": "#/$defs/artifact" },
+    "full_content_digest": { "$ref": "#/$defs/digest" },
+    "chunk_policy_version": { "const": "canonical-markdown-chunks/v1" },
+    "chunks": { "type": "array", "items": { "$ref": "#/$defs/chunk" } },
+    "language": { "$ref": "#/$defs/text" },
+    "privacy_classification": { "$ref": "#/$defs/privacy" },
+    "instruction_policy": { "const": "data_only" },
+    "manifest_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "privacy": { "enum": ["public", "internal", "restricted", "data_only"] },
+    "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "feedback_snapshot", "candidate_insight"] },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "role", "workspace_relative_path", "object_path", "digest", "media_type", "byte_size", "canonical", "privacy_classification"],
+      "properties": {
+        "schema_version": { "const": "2.3" }, "role": { "$ref": "#/$defs/role" },
+        "workspace_relative_path": { "$ref": "#/$defs/text" },
+        "object_path": { "type": "string", "pattern": "^memory/evidence/objects/sha256/[a-f0-9]{2}/[a-f0-9]{64}$" },
+        "digest": { "$ref": "#/$defs/digest" }, "media_type": { "$ref": "#/$defs/text" },
+        "byte_size": { "type": "integer", "minimum": 0 }, "canonical": { "type": "boolean" },
+        "privacy_classification": { "$ref": "#/$defs/privacy" }
+      }
+    },
+    "chunk": {
+      "type": "object", "additionalProperties": false,
+      "required": ["chunk_id", "ordinal", "record_path", "chunk_digest", "char_start", "char_end", "heading_path", "byte_size"],
+      "properties": {
+        "chunk_id": { "$ref": "#/$defs/id" }, "ordinal": { "type": "integer", "minimum": 1 },
+        "record_path": { "$ref": "#/$defs/text" }, "chunk_digest": { "$ref": "#/$defs/digest" },
+        "char_start": { "type": "integer", "minimum": 0 }, "char_end": { "type": "integer", "minimum": 0 },
+        "heading_path": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "byte_size": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
