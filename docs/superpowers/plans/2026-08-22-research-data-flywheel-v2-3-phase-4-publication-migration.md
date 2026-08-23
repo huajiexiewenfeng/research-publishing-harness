@@ -227,17 +227,17 @@ git commit -m "feat: preserve V2.2 memory through read-only adapter"
 - Consumes: user-supplied mother article path/digest, Gist URL, six ordered Thread items, existing publication receipt, claim/evidence/boundary data and explicit assertions.
 - Produces: Import Evidence Snapshot, gap report, imported Working Increment, Publication Expression, Semantic Delta and ordinary Phase 2 Promotion Plan; no special write bypass.
 
-- [ ] **Step 1: Write failing import/gap/provenance tests**
+- [x] **Step 1: Write failing import/gap/provenance tests**
 
 The synthetic fixture represents exactly one mother article and six Thread items. Assert missing platform IDs/metrics appear as unrecoverable gaps, user assertions remain `manual_recorded`, receipt-backed fields use their actual verification strength, item order is preserved, and extra historical posts are rejected from the same manifest.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/research-import-service.test.ts tests/integration/first-increment-import-promotion.test.ts tests/security/research-import-security.test.ts`
 
 Expected: FAIL because Import contracts/service are absent.
 
-- [ ] **Step 3: Implement bounded Import preparation**
+- [x] **Step 3: Implement bounded Import preparation**
 
 ```ts
 export class ResearchImportService {
@@ -249,7 +249,7 @@ export class ResearchImportService {
 
 Require `import_scope: 'single_increment'`, exact six-item order for this migration template, explicit source classification per field, contained local paths and HTTPS public URLs. `propose` uses the normal Review → Promotion Plan → confirmation → Catalog-last path.
 
-- [ ] **Step 4: Add first real migration operator runbook**
+- [x] **Step 4: Add first real migration operator runbook**
 
 Document these operator inputs in the example without embedding machine-specific paths:
 
@@ -264,13 +264,13 @@ Open questions: Trace, Eval, Controlled Loop remain planned research
 
 The real run happens only after the user supplies/resolves the local artifact/receipt bindings and confirms the generated Import Promotion Plan digest.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/research-import-service.test.ts tests/integration/first-increment-import-promotion.test.ts tests/security/research-import-security.test.ts`
 
 Expected: PASS; test proves AC 33 without network, Chrome or real Wiki access.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts docs/examples tests

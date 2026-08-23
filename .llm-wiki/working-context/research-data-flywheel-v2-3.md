@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-4-publication-migration`
-- active_task: `phase-4-task-4-first-increment-import`
+- active_task: `phase-4-task-5-cli-skills-acceptance`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
@@ -105,4 +105,11 @@
   and every binding is ineligible for Mainline without an ordinary Import Promotion.
 - Task 3 verification: 5 files / 57 tests passed across legacy adapter, contract and V2.2 loop
   regressions; TypeScript and lint passed.
-- Next action: Phase 4 Task 4 bounded first-Increment Import RED tests.
+- Phase 4 Task 4 completed in commit `399f786`: a bounded `single_increment` Import captures
+  one canonical mother article, one Receipt, Gist lineage and exactly six ordered Thread items.
+- Missing per-item IDs/URLs/metrics remain explicit unrecoverable gaps; user assertions stay
+  `manual_recorded`. The imported Working Increment and Publication Expression produce a normal
+  Semantic Delta that passed Review and generated the existing approval-required Promotion Plan.
+- Task 4 verification: 6 files / 68 tests passed across Import, Evidence and contract regression;
+  TypeScript and lint passed; all fixtures were local and network-free.
+- Next action: Phase 4 Task 5 CLI, thin Skills, docs, manifest, AC 1–38 acceptance and full gate.
