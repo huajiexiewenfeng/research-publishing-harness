@@ -1,4 +1,4 @@
-import type { MemoryContextV1 } from './memory-types.js';
+import type { MemoryContextV1, MemoryContextV2 } from './memory-types.js';
 
 export const CONTRACT_NAMES = [
   'candidate',
@@ -176,7 +176,7 @@ export interface ResearchContentPackageV1_0 extends ResearchContentPackageBase {
 
 export interface ResearchContentPackageV1_1 extends ResearchContentPackageBase {
   readonly schema_version: '1.1';
-  readonly memory_context: MemoryContextV1;
+  readonly memory_context: MemoryContextV1 | MemoryContextV2;
 }
 
 export type ResearchContentPackage = ResearchContentPackageV1_0 | ResearchContentPackageV1_1;

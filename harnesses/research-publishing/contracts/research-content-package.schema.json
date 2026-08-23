@@ -58,6 +58,12 @@
   "$defs": {
     "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "memoryContext": {
+      "oneOf": [
+        { "$ref": "#/$defs/memoryContextV1" },
+        { "$ref": "#/$defs/memoryContextV2" }
+      ]
+    },
+    "memoryContextV1": {
       "type": "object",
       "additionalProperties": false,
       "required": ["query_plan_digest", "context_snapshot_digest", "context_refs", "status", "reviewer", "reviewed_at"],
@@ -109,6 +115,24 @@
             "reviewed_at": { "type": "null" }
           }
         }
+      ]
+    },
+    "memoryContextV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "research_query_plan_digest", "research_context_snapshot_digest", "context_refs", "status", "reviewer", "reviewed_at"],
+      "properties": {
+        "schema_version": { "const": "memory-context/v2" },
+        "research_query_plan_digest": { "$ref": "#/$defs/digest" },
+        "research_context_snapshot_digest": { "$ref": "#/$defs/digest" },
+        "context_refs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "status": { "enum": ["applied", "reviewed_not_applied"] },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "reviewed_at": { "type": "string", "format": "date-time" }
+      },
+      "oneOf": [
+        { "properties": { "status": { "const": "applied" }, "context_refs": { "type": "array", "minItems": 1 } } },
+        { "properties": { "status": { "const": "reviewed_not_applied" }, "context_refs": { "type": "array", "maxItems": 0 } } }
       ]
     },
     "claimStatus": {

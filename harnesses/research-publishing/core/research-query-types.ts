@@ -146,6 +146,12 @@ function unique(values: readonly string[], label: string): void {
   }
 }
 
+function exactRuntimePath(value: string): boolean {
+  return /^domains\/research-publishing\/[A-Za-z0-9._/-]+$/.test(value) &&
+    !value.includes('..') && !value.includes('//') && !value.includes('\\') &&
+    !/[?*\[\]]/.test(value);
+}
+
 export function createResearchQueryPlan(input: PlanResearchQueryInput): ResearchQueryPlanV2 {
   if (!STABLE_ID_PATTERN.test(input.query_id) || !STABLE_ID_PATTERN.test(input.track_id)) {
     throw new HarnessError('CONTRACT_INVALID', 'Query and Track ids must be stable');
@@ -165,9 +171,20 @@ export function createResearchQueryPlan(input: PlanResearchQueryInput): Research
   unique(input.selected_record_refs.map((item) => item.ref), 'selected records');
   unique(input.selected_manifest_refs.map((item) => item.document_id), 'selected Manifests');
   unique(input.selected_chunk_refs.map((item) => item.chunk_id), 'selected Chunks');
+  const paths = [
+    ...(input.catalog_ref === null ? [] : [input.catalog_ref.path]),
+    ...input.selected_shard_refs.map((item) => item.path),
+    ...input.selected_record_refs.map((item) => item.path),
+    ...input.selected_manifest_refs.map((item) => item.path),
+    ...input.selected_chunk_refs.map((item) => item.path)
+  ];
+  if (paths.some((path) => !exactRuntimePath(path))) {
+    throw new HarnessError('CONTRACT_INVALID', 'Query Plan requires exact contained Runtime paths');
+  }
   if (
     input.selected_shard_refs.length > RESEARCH_QUERY_BUDGETS_V2.max_shards ||
     input.selected_record_refs.length > RESEARCH_QUERY_BUDGETS_V2.max_records ||
+    input.selected_manifest_refs.length > RESEARCH_QUERY_BUDGETS_V2.max_records ||
     input.selected_chunk_refs.length > RESEARCH_QUERY_BUDGETS_V2.max_chunks
   ) {
     throw new HarnessError('CONTRACT_INVALID', 'context_budget_exceeded');

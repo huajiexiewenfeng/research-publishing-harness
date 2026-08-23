@@ -15,7 +15,7 @@
     "catalog_ref": { "anyOf": [{ "$ref": "#/$defs/indexRef" }, { "type": "null" }] },
     "selected_shard_refs": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/shardRef" } },
     "selected_record_refs": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/recordRef" } },
-    "selected_manifest_refs": { "type": "array", "items": { "$ref": "#/$defs/manifestRef" } },
+    "selected_manifest_refs": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/manifestRef" } },
     "selected_chunk_refs": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/chunkRef" } },
     "policy_version": { "const": "research-memory-policy/v1" }, "budgets": { "$ref": "#/$defs/budgets" },
     "created_at": { "type": "string", "format": "date-time" }, "plan_digest": { "$ref": "#/$defs/digest" }

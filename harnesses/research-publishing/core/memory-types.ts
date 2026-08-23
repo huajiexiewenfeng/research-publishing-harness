@@ -36,6 +36,16 @@ export type MemoryContextV1 = Readonly<{
   reviewed_at: string | null;
 }>;
 
+export type MemoryContextV2 = Readonly<{
+  schema_version: 'memory-context/v2';
+  research_query_plan_digest: Digest;
+  research_context_snapshot_digest: Digest;
+  context_refs: readonly string[];
+  status: 'applied' | 'reviewed_not_applied';
+  reviewer: string;
+  reviewed_at: string;
+}>;
+
 export interface MemoryQueryPlanInput {
   readonly research_track: string;
   readonly purpose: 'candidate_enrichment' | 'feedback_followup';

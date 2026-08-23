@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createContextSnapshot, createMemoryQueryPlan } from '../../harnesses/research-publishing/core/memory-contracts.js';
-import { bindMemoryContext, validatePackageMemoryBinding } from '../../harnesses/research-publishing/core/memory-package.js';
+import { bindMemoryContext, bindResearchMemoryContext, validatePackageMemoryBinding } from '../../harnesses/research-publishing/core/memory-package.js';
 import type { ResearchContentPackageV1_1 } from '../../harnesses/research-publishing/core/types.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
@@ -102,5 +102,29 @@ describe('Package 1.1 memory binding', () => {
       'reviewer',
       new Date()
     )).toThrowError(/draft/);
+  });
+
+  it('binds a reviewed V2 Snapshot without mutating the draft and rejects non-draft states', () => {
+    const { draft } = fixture();
+    const snapshot = {
+      schema_version: 'research-context-snapshot/v2' as const,
+      snapshot_id: 'snapshot_v2', query_id: 'query_v2', query_plan_digest: digest('a'),
+      query_intent: 'test', track_id: 'enterprise-agent-runtime', view: 'mainline' as const,
+      index_refs: [], selected_summary_refs: [], selected_record_refs: [], selected_evidence_refs: [],
+      context_items: [{ context_ref: 'claim:test@1', relative_path: 'claims/test.md', content_digest: digest('c'), content: 'test', source_layer: 'semantic_record' as const, classification: 'data_only' as const, sanitized: false, risk_flags: [] }],
+      risk_flags: [], budgets: { max_shards: 4, max_records: 12, max_chunks: 6, max_chars_per_index_record: 12000, max_reconstructed_document_chars: 60000 } as const,
+      selection_rationale: 'test', query_status: 'loaded' as const, runtime_version: '0.2.0' as const,
+      created_at: '2026-08-23T00:00:00.000Z', snapshot_digest: digest('b')
+    };
+    const review = {
+      schema_version: 'research-context-review/v2' as const, review_id: 'review_v2', query_id: 'query_v2',
+      query_plan_digest: digest('a'), snapshot_digest: digest('b'), selected_context_refs: ['claim:test@1'],
+      reviewer: 'human-reviewer', reviewed_at: '2026-08-23T00:01:00.000Z', review_digest: digest('c')
+    };
+    const bound = bindResearchMemoryContext(draft, snapshot, review);
+    expect(bound.memory_context).toMatchObject({ schema_version: 'memory-context/v2', status: 'applied' });
+    expect(draft.memory_context.status).toBe('not_configured');
+    expect(() => bindResearchMemoryContext({ ...draft, status: 'frozen' }, snapshot, review))
+      .toThrowError(/draft/);
   });
 });
