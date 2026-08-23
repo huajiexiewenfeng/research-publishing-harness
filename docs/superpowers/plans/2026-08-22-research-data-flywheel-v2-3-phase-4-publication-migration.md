@@ -175,17 +175,17 @@ git commit -m "feat: connect publication evidence to supervised research loop"
 - Consumes: V2.2 `publication_evidence|feedback_snapshot|candidate_insight` exact refs and Runtime Adapter exact loading.
 - Produces: read-only `LegacyResearchRecordV1` labeled `legacy_publication_evidence|legacy_feedback_snapshot|legacy_candidate_insight`; never fabricates a complete Increment.
 
-- [ ] **Step 1: Write failing preservation and non-upgrade tests**
+- [x] **Step 1: Write failing preservation and non-upgrade tests**
 
 Assert legacy files remain byte-identical, can be explicitly loaded as supporting records, cannot independently satisfy an Increment’s required research question/thesis/Evidence, and never enter Mainline without an Import Promotion.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/legacy-memory-adapter.test.ts tests/integration/v2-2-memory-compatibility.test.ts`
 
 Expected: FAIL because the legacy adapter is absent.
 
-- [ ] **Step 3: Implement exact read-only mapping**
+- [x] **Step 3: Implement exact read-only mapping**
 
 ```ts
 export class LegacyMemoryAdapter {
@@ -196,13 +196,13 @@ export class LegacyMemoryAdapter {
 
 Preserve original path/digest and Runtime risk flags. Reject write/update methods by exposing none; conversion into V2.3 semantic records is only possible through Task 4 Import Delta/Review/Promotion.
 
-- [ ] **Step 4: Run GREEN and V2.2 loop regression**
+- [x] **Step 4: Run GREEN and V2.2 loop regression**
 
 Run: `pnpm vitest run tests/memory/legacy-memory-adapter.test.ts tests/integration/v2-2-memory-compatibility.test.ts tests/integration/memory-loop.test.ts tests/integration/memory-ingest-workflow.test.ts`
 
 Expected: PASS and legacy source bytes are unchanged.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests

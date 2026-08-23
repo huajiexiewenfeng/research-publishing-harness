@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-4-publication-migration`
-- active_task: `phase-4-task-3-v2-2-read-only-adapter`
+- active_task: `phase-4-task-4-first-increment-import`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
@@ -99,4 +99,10 @@
 - The supervised Flywheel proposes `attach_publication` plus a Receipt/verification-bound
   `publication_attached` lifecycle event and data-only next questions, ending at an unapproved Delta.
 - Task 2 verification: 10 files / 80 tests passed; TypeScript and lint passed.
-- Next action: Phase 4 Task 3 V2.2 exact-ref read-only adapter RED tests.
+- Phase 4 Task 3 completed in commit `7a9c3a4`: V2.2 publication, feedback and insight
+  records load through one exact Runtime path and remain supporting-only data.
+- Legacy path/digest/content and Runtime sanitization/risk flags are preserved; no mutation API exists,
+  and every binding is ineligible for Mainline without an ordinary Import Promotion.
+- Task 3 verification: 5 files / 57 tests passed across legacy adapter, contract and V2.2 loop
+  regressions; TypeScript and lint passed.
+- Next action: Phase 4 Task 4 bounded first-Increment Import RED tests.
