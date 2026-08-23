@@ -25,6 +25,11 @@ export interface ArtifactRef {
   readonly bytes: number;
 }
 
+export interface ContainedArtifact extends ArtifactRef {
+  readonly absolute_path: string;
+  readonly content: Buffer;
+}
+
 export interface WorkspaceExecutionApi {
   exists(relativePath: string): Promise<boolean>;
   appendLine(relativePath: string, line: string): Promise<ArtifactRef>;
@@ -236,6 +241,16 @@ export class WorkspaceStore {
   async resolveExistingArtifact(
     relativePath: string
   ): Promise<ArtifactRef & { readonly absolute_path: string }> {
+    const artifact = await this.readContainedArtifact(relativePath);
+    return {
+      relative_path: artifact.relative_path,
+      absolute_path: artifact.absolute_path,
+      digest: artifact.digest,
+      bytes: artifact.bytes
+    };
+  }
+
+  async readContainedArtifact(relativePath: string): Promise<ContainedArtifact> {
     const { absolutePath, normalized } = this.resolveAllowed(relativePath);
     const segments = normalized.split('/');
     let current = this.root;
@@ -270,7 +285,8 @@ export class WorkspaceStore {
       relative_path: normalized,
       absolute_path: realFile,
       digest: sha256Bytes(bytes),
-      bytes: bytes.length
+      bytes: bytes.length,
+      content: bytes
     };
   }
 
