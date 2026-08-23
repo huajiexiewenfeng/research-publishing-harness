@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-English
+English | [简体中文](README.zh-CN.md)
 
 > **Pre-alpha** — A local-first, human-governed workflow for turning ongoing technical research into evidence-backed articles, X publications, and reusable research memory.
 
