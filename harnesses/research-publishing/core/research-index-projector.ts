@@ -244,7 +244,7 @@ export class ResearchIndexProjector {
     const hex = contentDigest.slice('sha256:'.length);
     return {
       record,
-      path: `domains/research-publishing/tracks/${trackId}/indexes/generations/${generation}/${view}/shards/${shardId}-${hex}.md`,
+      path: `domains/research-publishing/tracks/${trackId}/i/${generation}/${view}/${hex}.md`,
       content,
       content_digest: contentDigest
     };

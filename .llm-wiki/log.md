@@ -68,3 +68,6 @@
 - 替代 Delta `delta_import_first_runtime_boundary_v2` 已完成 agent-prepared Review，6 个 operation 全部保留，等待一次 Promotion Plan 确认接受语义选择并授权执行。
 - 首次 Plan lookup 暴露 Workspace active Profile 仍为 V2.2 snapshot；旧 snapshot 已按 SHA-256 版本化备份，并通过 Runtime `init-profile` 原子刷新到 V2.3。精确 Catalog lookup 返回首建态 `not_found`，Harness Doctor healthy。
 - 已生成但未批准/未执行 Plan `promotion_plan_d48de57241b34ea5981bd69629d38ea7`，digest `sha256:00652a0191193e044d28ef0697152879867817ac8979fd9ea7801af16545d8d6`。
+- 用户精确确认上述 Plan 后，Promotion 写入 6 个 immutable semantic records，但在 `write_index_shards` 安全停为 partial；Catalog 未提交，默认 Query 仍不可见，且 `reconciliation_required: false`。
+- 隔离 Runtime 复现确认 Windows 路径溢出：真实 shard 目标 259 字符，原子临时路径约 296 字符。Projector/Profile 改为 `tracks/{track}/i/{generation}/{view}/{digest}.md`，聚焦测试先以 301>260 RED，修复后 11/11 GREEN；隔离真实 Runtime 写入成功。
+- 修复后 fresh `pnpm check` 通过 108 个测试文件 / 459 项测试及 AC1–38；active/packaged Profile 已原子刷新并一致，旧 Plan 因 Profile/path digest 变化按设计 stale，必须生成新 Plan 并重新确认。

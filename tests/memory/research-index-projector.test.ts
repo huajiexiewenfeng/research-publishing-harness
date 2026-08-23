@@ -72,4 +72,17 @@ describe('five-view research index projector', () => {
     expect(projection.shards[0]!.content).toContain('Reviewed summary only.');
     expect(projection.shards[0]!.content).not.toContain('canonical_full_text_marker');
   });
+
+  it('keeps shard paths within the Windows atomic-write budget', () => {
+    const projection = new ResearchIndexProjector().project({
+      track_id: 'enterprise-agent-runtime', prior_catalog: null, records: researchIndexRecords
+    });
+    const runtimeRootBudget = 48;
+    const separatorBudget = 1;
+    const atomicSuffixBudget = 37;
+    for (const shard of projection.shards) {
+      expect(runtimeRootBudget + separatorBudget + shard.path.length + atomicSuffixBudget)
+        .toBeLessThanOrEqual(260);
+    }
+  });
 });

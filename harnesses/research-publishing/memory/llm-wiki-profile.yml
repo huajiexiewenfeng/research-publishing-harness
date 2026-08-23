@@ -75,9 +75,9 @@ write_rules:
       required_vars: [research_track, edge_id]
       required_refs: [source_id]
     research_index_shard:
-      path: domains/research-publishing/tracks/{research_track}/indexes/generations/{generation}/{view}/shards/{shard_id}-{digest_hex}.md
+      path: domains/research-publishing/tracks/{research_track}/i/{generation}/{view}/{digest_hex}.md
       mode: create_only
-      required_vars: [research_track, generation, view, shard_id, digest_hex]
+      required_vars: [research_track, generation, view, digest_hex]
       required_refs: [promotion_id]
     research_index_catalog:
       path: domains/research-publishing/tracks/{research_track}/indexes/catalog.md

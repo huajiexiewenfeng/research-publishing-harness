@@ -108,7 +108,7 @@ describe('research-publishing LLM Wiki domain assets', () => {
       open_question: ['domains/research-publishing/tracks/{research_track}/questions/{question_id}/versions/{version}.md', 'create_only'],
       publication_expression: ['domains/research-publishing/tracks/{research_track}/publications/{expression_id}.md', 'create_only'],
       research_evolution_edge: ['domains/research-publishing/tracks/{research_track}/evolution/{edge_id}.md', 'create_only'],
-      research_index_shard: ['domains/research-publishing/tracks/{research_track}/indexes/generations/{generation}/{view}/shards/{shard_id}-{digest_hex}.md', 'create_only'],
+      research_index_shard: ['domains/research-publishing/tracks/{research_track}/i/{generation}/{view}/{digest_hex}.md', 'create_only'],
       research_index_catalog: ['domains/research-publishing/tracks/{research_track}/indexes/catalog.md', 'update_allowed']
     } as const;
     for (const [recordType, [path, mode]] of Object.entries(expected)) {

@@ -15,6 +15,8 @@ Semantic Review of the first unapproved Delta then found that X Thread intended 
 
 The corrected V2 Delta was reviewed with all six operations retained. Initial Plan generation exposed a stale V2.2 active Runtime Profile; it was backed up and atomically refreshed to the packaged V2.3 Profile. Runtime lookup/doctor then passed and the exact Plan was generated. Work is stopped at the one-confirmation gate.
 
+The user confirmed Plan `sha256:00652a...`. Execution wrote the six immutable semantic records but stopped before Catalog visibility at `write_index_shards`. Isolated reproduction proved a Windows atomic-path overflow (259-character target, ~296-character temporary path). The shard path is now shortened and verified through the real Runtime. The confirmed Plan is stale by design because its Profile/path digest changed; a new Plan and confirmation are required. Existing semantic records will be reconciled as `already_exists`.
+
 ## Evidence
 
 - Bug Brief: `.llm-wiki/bugs/2026-08-23-import-publication-time-binding.md`
@@ -28,7 +30,7 @@ The corrected V2 Delta was reviewed with all six operations retained. Initial Pl
 
 Runtime Promotion has not been approved or executed. Pending exact confirmation:
 
-`确认 Research Promotion Plan sha256:00652a0191193e044d28ef0697152879867817ac8979fd9ea7801af16545d8d6`
+The prior confirmation MUST NOT be reused. Generate and confirm a new Plan after the Windows-safe Profile change.
 
 ## Residual Risk
 
