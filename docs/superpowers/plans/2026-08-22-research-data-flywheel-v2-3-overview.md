@@ -108,7 +108,7 @@ Run: `pnpm check`
 
 Expected: PASS on the unmodified V2.2 baseline; record the commit SHA in the Phase 1 handoff.
 
-- [ ] **Gate 2: Execute Phase 1 and verify its focused suite**
+- [x] **Gate 2: Execute Phase 1 and verify its focused suite**
 
 Run the exact commands in the Phase 1 plan, then `pnpm check`.
 
@@ -120,7 +120,7 @@ Run the exact commands in the Phase 2 plan, including crash-window and Catalog-l
 
 Expected: only a complete Promotion can switch the active Catalog generation.
 
-- [ ] **Gate 4: Execute Phase 3 and prove no broad loading**
+- [x] **Gate 4: Execute Phase 3 and prove no broad loading**
 
 Run the exact commands in the Phase 3 plan, including Adapter argv assertions and adversarial budget tests, then `pnpm check`.
 

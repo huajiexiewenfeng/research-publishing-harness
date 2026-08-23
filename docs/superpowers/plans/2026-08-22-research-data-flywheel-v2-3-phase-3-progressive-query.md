@@ -297,21 +297,21 @@ git commit -m "feat: diagnose and plan research index rebuilds"
 **Interfaces:**
 - Produces: V2 behavior for `memory query plan/execute/review/bind-package`, plus `memory index doctor/rebuild-plan`; preserves `memory query status` and V2.2 artifact reads.
 
-- [ ] **Step 1: Write failing CLI and source-policy tests**
+- [x] **Step 1: Write failing CLI and source-policy tests**
 
 Assert CLI exposes all specified routes and scan production query code for forbidden broad values such as `domains/research-publishing/**`; allow the string only in V2.2 compatibility code explicitly named by the test allow-list.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/cli/cli.test.ts tests/integration/progressive-query-cli.test.ts tests/security/no-broad-memory-query.test.ts`
 
 Expected: FAIL because V2 routes and prohibition evidence are absent.
 
-- [ ] **Step 3: Route CLI to progressive and maintenance services**
+- [x] **Step 3: Route CLI to progressive and maintenance services**
 
 Require explicit `view`, `document_mode`, selection refs/rationale between stages and Human review before package binding. `memory query execute` must not invent Skill selections; it consumes the staged Plan selections.
 
-- [ ] **Step 4: Run Phase 3 verification**
+- [x] **Step 4: Run Phase 3 verification**
 
 Run: `pnpm vitest run tests/contracts tests/memory tests/security tests/integration/progressive-research-query.test.ts tests/integration/research-index-rebuild.test.ts tests/integration/progressive-query-cli.test.ts tests/cli/cli.test.ts`
 
@@ -319,14 +319,14 @@ Run: `pnpm check`
 
 Expected: PASS; acceptance proves AC 22–25 and 31, and V2.2 regression remains green.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ```text
 git add harnesses/research-publishing/cli tests tools/acceptance.ts
 git commit -m "feat: expose progressive research memory query"
 ```
 
-- [ ] **Step 6: Inspect repository state**
+- [x] **Step 6: Inspect repository state**
 
 Run: `git diff --check && git status --short`
 

@@ -4,18 +4,19 @@
 
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
-- active_phase: `phase-3-progressive-query`
-- active_task: `phase-3-task-5-cli-acceptance`
-- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
+- active_phase: `phase-4-publication-migration`
+- active_task: `phase-4-task-1-publication-expression`
+- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
 
 - completed: Phase 1 policy/contracts/lifecycle, Evidence Object Store, canonical document projection,
   local Working Increment assembly and CLI/acceptance coverage.
 - completed: Phase 2 Semantic Delta, reviewed promotion, Runtime-backed immutable records and Catalog-last Index visibility.
-- active: Phase 3 Catalog-first progressive query and exact Runtime reads.
+- completed: Phase 3 Catalog-first progressive query and exact Runtime reads.
+- active: Phase 4 Publication Flywheel and historical migration.
 - read-only: V2.2 implementation and `llm-wiki-runtime` source referenced by `edge-001`.
-- excluded: Phase 4 Publication Flywheel until the Phase 3 gate passes.
+- excluded: none within the approved V2.3 plan; final project finish remains gated on Phase 4.
 
 ## Implementation Rules
 
@@ -81,4 +82,9 @@
   rebuild-required state; Rebuild produces a digest-bound approval-required Plan without writing Runtime.
 - Task 4 verification: 4 files / 57 tests passed; TypeScript and lint passed. Rebuild generations bind
   the prior Catalog digest so recovery does not collide with corrupt create-only Shard paths.
-- Next action: Phase 3 Task 5 CLI routes, broad-load prohibition scan, offline acceptance and full gate.
+- Phase 3 Task 5 completed in commit `a81b2fe`: CLI version-dispatches V2.2/V2.3 Query artifacts,
+  exposes explicit V2 Review and Index maintenance routes, and statically prohibits broad V2.3 query paths.
+- Phase 3 focused gate: 45 files / 227 tests passed. Full `pnpm check`: 96 files passed plus
+  1 skipped; 415 tests passed plus 1 skipped; offline acceptance reported
+  `progressive_query: simulated_complete` with network unused.
+- Next action: Phase 4 Task 1 Publication Expression assembly.
