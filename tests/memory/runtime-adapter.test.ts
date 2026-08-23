@@ -135,4 +135,36 @@ describe('LLMWikiRuntimeAdapter', () => {
       content_file: resolve(paths().workspace, 'memory/staging/p1.md')
     })).resolves.toMatchObject({ checksum: `sha256:${'a'.repeat(64)}` });
   });
+
+  it('writes V2.3 records and research sources through fixed argv', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'ok', path: 'domains/research-publishing/tracks/runtime/indexes/catalog.md',
+      checksum: 'b'.repeat(64)
+    }));
+    runner.enqueue(envelope({
+      status: 'ok', path: 'sources/originals/research-publishing/promotion.json',
+      checksum: 'c'.repeat(64)
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.writeRecord({
+      record_type: 'research_index_catalog', variables: { research_track: 'runtime' },
+      refs: { promotion_id: 'promotion_001' },
+      content_file: resolve(paths().workspace, 'memory/staging/catalog.md')
+    })).resolves.toMatchObject({ status: 'ok', checksum: `sha256:${'b'.repeat(64)}` });
+    await expect(adapter.copySource({
+      source: resolve(paths().workspace, 'memory/staging/promotion.json'),
+      logical_path: 'sources/originals/research-publishing/promotion.json',
+      source_type: 'research_promotion', metadata: {}
+    })).resolves.toMatchObject({ checksum: `sha256:${'c'.repeat(64)}` });
+    expect(runner.calls.map((call) => call.args[0])).toEqual(['write-record', 'copy-source']);
+    expect(runner.calls[0]!.args).toEqual([
+      'write-record', '--scope-root', paths().workspace, '--profile-path', paths().profile_path,
+      '--record-type', 'research_index_catalog', '--variables-json', '{"research_track":"runtime"}',
+      '--refs-json', '{"promotion_id":"promotion_001"}', '--content-file',
+      resolve(paths().workspace, 'memory/staging/catalog.md')
+    ]);
+  });
 });

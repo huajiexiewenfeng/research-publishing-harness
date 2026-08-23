@@ -29,6 +29,61 @@ write_rules:
       mode: create_only
       required_vars: [research_track, insight_id]
       required_refs: [source_id, feedback_id]
+    research_increment:
+      path: domains/research-publishing/tracks/{research_track}/increments/{increment_id}/revisions/{revision}/summary.md
+      mode: create_only
+      required_vars: [research_track, increment_id, revision]
+      required_refs: [source_id]
+    research_lifecycle_event:
+      path: domains/research-publishing/tracks/{research_track}/increments/{increment_id}/lifecycle/{event_id}.md
+      mode: create_only
+      required_vars: [research_track, increment_id, event_id]
+      required_refs: [source_id]
+    canonical_document_manifest:
+      path: domains/research-publishing/tracks/{research_track}/documents/{document_id}/manifest.md
+      mode: create_only
+      required_vars: [research_track, document_id]
+      required_refs: [source_id]
+    canonical_document_chunk:
+      path: domains/research-publishing/tracks/{research_track}/documents/{document_id}/chunks/{ordinal}-{digest_hex}.md
+      mode: create_only
+      required_vars: [research_track, document_id, ordinal, digest_hex]
+      required_refs: [source_id]
+    claim_version:
+      path: domains/research-publishing/tracks/{research_track}/claims/{claim_id}/versions/{version}.md
+      mode: create_only
+      required_vars: [research_track, claim_id, version]
+      required_refs: [source_id]
+    research_decision:
+      path: domains/research-publishing/tracks/{research_track}/decisions/{decision_id}.md
+      mode: create_only
+      required_vars: [research_track, decision_id]
+      required_refs: [source_id]
+    open_question:
+      path: domains/research-publishing/tracks/{research_track}/questions/{question_id}/versions/{version}.md
+      mode: create_only
+      required_vars: [research_track, question_id, version]
+      required_refs: [source_id]
+    publication_expression:
+      path: domains/research-publishing/tracks/{research_track}/publications/{expression_id}.md
+      mode: create_only
+      required_vars: [research_track, expression_id]
+      required_refs: [source_id]
+    research_evolution_edge:
+      path: domains/research-publishing/tracks/{research_track}/evolution/{edge_id}.md
+      mode: create_only
+      required_vars: [research_track, edge_id]
+      required_refs: [source_id]
+    research_index_shard:
+      path: domains/research-publishing/tracks/{research_track}/indexes/generations/{generation}/{view}/shards/{shard_id}-{digest_hex}.md
+      mode: create_only
+      required_vars: [research_track, generation, view, shard_id, digest_hex]
+      required_refs: [promotion_id]
+    research_index_catalog:
+      path: domains/research-publishing/tracks/{research_track}/indexes/catalog.md
+      mode: update_allowed
+      required_vars: [research_track]
+      required_refs: [promotion_id]
 
 logs:
   types:
@@ -42,7 +97,14 @@ read_rules:
     exclude: [sources/originals/**, .meta/**]
     order: path_asc
     max_files: 30
-    max_chars_per_file: 4000
+    max_chars_per_file: 12000
+  record_lookup:
+    research_index_catalog:
+      identity_field: index_id
+      display_field: index_id
+      match_fields: [index_id]
+      return_fields: [index_id, track_id, generation, catalog_digest]
+      max_results: 1
 
 artifacts:
-  types: [publication_receipt, memory_ingest_receipt]
+  types: [publication_receipt, memory_ingest_receipt, research_promotion]

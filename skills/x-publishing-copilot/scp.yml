@@ -27,4 +27,26 @@ ingest:
     - domain: research-publishing
       record_type: candidate_insight
     - domain: research-publishing
+      record_type: research_increment
+    - domain: research-publishing
+      record_type: research_lifecycle_event
+    - domain: research-publishing
+      record_type: canonical_document_manifest
+    - domain: research-publishing
+      record_type: canonical_document_chunk
+    - domain: research-publishing
+      record_type: claim_version
+    - domain: research-publishing
+      record_type: research_decision
+    - domain: research-publishing
+      record_type: open_question
+    - domain: research-publishing
+      record_type: publication_expression
+    - domain: research-publishing
+      record_type: research_evolution_edge
+    - domain: research-publishing
+      record_type: research_index_shard
+    - domain: research-publishing
+      record_type: research_index_catalog
+    - domain: research-publishing
       log_type: memory_event

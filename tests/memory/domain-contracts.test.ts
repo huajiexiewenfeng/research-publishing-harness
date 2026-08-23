@@ -7,7 +7,7 @@ interface ProfileAsset {
   profile: { id: string; version: string };
   write_rules: { records: Record<string, unknown> };
   logs: { types: { memory_event: unknown } };
-  read_rules: { context_pack: unknown };
+  read_rules: { context_pack: Record<string, unknown>; record_lookup?: Record<string, unknown> };
 }
 
 interface MappingAsset {
@@ -30,7 +30,7 @@ describe('research-publishing LLM Wiki domain assets', () => {
   it('declares create-only research records, append-only events, and bounded context', async () => {
     const profile = await yaml<ProfileAsset>('harnesses/research-publishing/memory/llm-wiki-profile.yml');
     expect(profile.profile).toMatchObject({ id: 'research-publishing', version: 'v0.1' });
-    expect(profile.write_rules.records).toEqual({
+    expect(profile.write_rules.records).toMatchObject({
       publication_evidence: {
         path: 'domains/research-publishing/tracks/{research_track}/publications/{publication_id}.md',
         mode: 'create_only',
@@ -73,12 +73,12 @@ describe('research-publishing LLM Wiki domain assets', () => {
       domain: 'research-publishing',
       owner_skill_id: 'research-publishing-harness-memory'
     });
-    expect(mapping.produces).toEqual([
+    expect(mapping.produces).toEqual(expect.arrayContaining([
       { record_type: 'publication_evidence' },
       { record_type: 'feedback_snapshot' },
       { record_type: 'candidate_insight' },
       { log_type: 'memory_event' }
-    ]);
+    ]));
     expect(harnessScp.skill).toEqual({ id: 'research-publishing-harness-memory', domain: 'research-publishing' });
 
     for (const [id, scp] of [
@@ -93,6 +93,36 @@ describe('research-publishing LLM Wiki domain assets', () => {
         { domain: 'research-publishing', record_type: 'feedback_snapshot' },
         { domain: 'research-publishing', record_type: 'candidate_insight' }
       ]));
+    }
+  });
+
+  it('declares all V2.3 Runtime records, stable Catalog lookup, and bounded full index records', async () => {
+    const profile = await yaml<ProfileAsset>('harnesses/research-publishing/memory/llm-wiki-profile.yml');
+    const expected = {
+      research_increment: ['domains/research-publishing/tracks/{research_track}/increments/{increment_id}/revisions/{revision}/summary.md', 'create_only'],
+      research_lifecycle_event: ['domains/research-publishing/tracks/{research_track}/increments/{increment_id}/lifecycle/{event_id}.md', 'create_only'],
+      canonical_document_manifest: ['domains/research-publishing/tracks/{research_track}/documents/{document_id}/manifest.md', 'create_only'],
+      canonical_document_chunk: ['domains/research-publishing/tracks/{research_track}/documents/{document_id}/chunks/{ordinal}-{digest_hex}.md', 'create_only'],
+      claim_version: ['domains/research-publishing/tracks/{research_track}/claims/{claim_id}/versions/{version}.md', 'create_only'],
+      research_decision: ['domains/research-publishing/tracks/{research_track}/decisions/{decision_id}.md', 'create_only'],
+      open_question: ['domains/research-publishing/tracks/{research_track}/questions/{question_id}/versions/{version}.md', 'create_only'],
+      publication_expression: ['domains/research-publishing/tracks/{research_track}/publications/{expression_id}.md', 'create_only'],
+      research_evolution_edge: ['domains/research-publishing/tracks/{research_track}/evolution/{edge_id}.md', 'create_only'],
+      research_index_shard: ['domains/research-publishing/tracks/{research_track}/indexes/generations/{generation}/{view}/shards/{shard_id}-{digest_hex}.md', 'create_only'],
+      research_index_catalog: ['domains/research-publishing/tracks/{research_track}/indexes/catalog.md', 'update_allowed']
+    } as const;
+    for (const [recordType, [path, mode]] of Object.entries(expected)) {
+      expect(profile.write_rules.records[recordType]).toMatchObject({ path, mode });
+    }
+    expect(profile.read_rules.context_pack.max_chars_per_file).toBe(12_000);
+    expect(profile.read_rules.record_lookup?.research_index_catalog).toEqual({
+      identity_field: 'index_id', display_field: 'index_id', match_fields: ['index_id'],
+      return_fields: ['index_id', 'track_id', 'generation', 'catalog_digest'], max_results: 1
+    });
+
+    const mapping = await yaml<MappingAsset>('harnesses/research-publishing/memory/ingest-mapping.yml');
+    for (const recordType of Object.keys(expected)) {
+      expect(mapping.produces).toContainEqual({ record_type: recordType });
     }
   });
 });

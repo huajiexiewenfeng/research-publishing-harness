@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-2-promotion-index`
-- active_task: `phase-2-task-2-runtime-projection`
+- active_task: `phase-2-task-3-five-view-index`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
 
 ## Scope Lock
@@ -43,3 +43,7 @@
   its unrelated untracked assessment document was preserved.
 - Phase 2 Task 1 verification: 4 test files / 49 tests passed; TypeScript and focused ESLint passed.
 - Next action: Task 2 Runtime Profile, fixed Adapter writes and deterministic record renderer RED tests.
+- Phase 2 Task 2 verification: 4 test files / 17 tests passed; TypeScript passed.
+- Runtime Profile now exposes eleven V2.3 record types, Catalog exact lookup and a 12,000-char
+  per-record ceiling while preserving Runtime 0.2.0 and V2.2 record routes.
+- Next action: Task 3 deterministic five-view generation Index projector RED tests.

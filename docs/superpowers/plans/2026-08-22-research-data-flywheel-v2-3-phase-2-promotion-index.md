@@ -106,17 +106,17 @@ git commit -m "feat: add semantic promotion contracts"
 - Consumes: fixed Runtime `write-record/copy-source/register-artifact/append-log` commands.
 - Produces: eleven new record types, `research_promotion` source type, exact rendered frontmatter/body bytes and normalized returned digests.
 
-- [ ] **Step 1: Write failing Profile, renderer and Adapter tests**
+- [x] **Step 1: Write failing Profile, renderer and Adapter tests**
 
 Assert all record paths from design section 12.1, create-only/update rules, required vars/refs, fixed argv, ASCII-safe variables, no shell, and no user-controlled command names.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/domain-contracts.test.ts tests/memory/runtime-adapter.test.ts tests/memory/research-record-renderer.test.ts tests/security/memory-runtime-security.test.ts`
 
 Expected: FAIL because V2.3 record types and renderers are absent.
 
-- [ ] **Step 3: Extend Profile and Adapter types**
+- [x] **Step 3: Extend Profile and Adapter types**
 
 ```ts
 export type ResearchRuntimeRecordType =
@@ -146,17 +146,17 @@ record_lookup:
 
 Set `context_pack.max_chars_per_file: 12000` so one bounded Index record can be returned intact; V2.3 callers still pass exact paths and enforce their smaller per-stage counts and total budget.
 
-- [ ] **Step 4: Implement deterministic record rendering**
+- [x] **Step 4: Implement deterministic record rendering**
 
 Render YAML frontmatter with lookup identities and data-only policy followed by bounded Markdown. Never synthesize a summary during projection: use only Human-promoted `summary/tags/status` fields from accepted operations.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/domain-contracts.test.ts tests/memory/runtime-adapter.test.ts tests/memory/research-record-renderer.test.ts tests/security/memory-runtime-security.test.ts`
 
 Expected: PASS; all write modes and paths match the approved design.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```text
 git add harnesses/research-publishing/memory harnesses/research-publishing/adapters harnesses/research-publishing/core skills tests

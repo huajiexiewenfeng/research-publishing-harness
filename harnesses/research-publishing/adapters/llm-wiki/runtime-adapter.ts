@@ -4,6 +4,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { sha256Bytes } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import type { RuntimeContextResult } from '../../core/memory-types.js';
+import type { ResearchRuntimeRecordType } from '../../core/research-memory-types.js';
 import { NodeRuntimeProcessRunner } from './runtime-process.js';
 import type {
   RuntimeEnvelope,
@@ -48,8 +49,10 @@ export interface RuntimeQueryInput {
   readonly ordering_policy: 'path_asc';
 }
 
+export type LegacyRuntimeRecordType = 'publication_evidence' | 'feedback_snapshot' | 'candidate_insight';
+
 export interface RuntimeWriteRecordInput {
-  readonly record_type: 'publication_evidence' | 'feedback_snapshot' | 'candidate_insight';
+  readonly record_type: LegacyRuntimeRecordType | ResearchRuntimeRecordType;
   readonly variables: Readonly<Record<string, string>>;
   readonly refs: Readonly<Record<string, string>>;
   readonly content_file: string;
@@ -58,9 +61,26 @@ export interface RuntimeWriteRecordInput {
 export interface RuntimeCopySourceInput {
   readonly source: string;
   readonly logical_path: string;
-  readonly source_type: 'publication_checkpoint' | 'feedback_insight';
+  readonly source_type: 'publication_checkpoint' | 'feedback_insight' | 'research_promotion';
   readonly metadata: Readonly<Record<string, unknown>>;
 }
+
+export interface RuntimeWriteResult extends RuntimeEnvelope {
+  readonly status: 'ok' | 'already_exists';
+  readonly path: string;
+  readonly checksum: `sha256:${string}`;
+}
+
+const RUNTIME_RECORD_TYPES = new Set<LegacyRuntimeRecordType | ResearchRuntimeRecordType>([
+  'publication_evidence', 'feedback_snapshot', 'candidate_insight',
+  'research_increment', 'claim_version', 'research_decision', 'open_question',
+  'publication_expression', 'research_evolution_edge', 'canonical_document_manifest',
+  'canonical_document_chunk', 'research_lifecycle_event', 'research_index_catalog',
+  'research_index_shard'
+]);
+const RUNTIME_SOURCE_TYPES = new Set<RuntimeCopySourceInput['source_type']>([
+  'publication_checkpoint', 'feedback_insight', 'research_promotion'
+]);
 
 function requireAbsolute(value: string, label: string): void {
   if (!isAbsolute(value)) {
@@ -101,6 +121,17 @@ function normalizedDigest(value: unknown): `sha256:${string}` | null {
 function normalizeEnvelopeChecksum(result: RuntimeEnvelope): RuntimeEnvelope {
   const checksum = normalizedDigest(result.checksum);
   return checksum === null ? result : { ...result, checksum };
+}
+
+function mutationResult(command: string, result: RuntimeEnvelope): RuntimeWriteResult {
+  const normalized = normalizeEnvelopeChecksum(result);
+  if (
+    (normalized.status !== 'ok' && normalized.status !== 'already_exists') ||
+    typeof normalized.path !== 'string' || normalizedDigest(normalized.checksum) === null
+  ) {
+    throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', `runtime ${command} returned an invalid mutation result`);
+  }
+  return normalized as RuntimeWriteResult;
 }
 
 export class LLMWikiRuntimeAdapter {
@@ -265,8 +296,11 @@ export class LLMWikiRuntimeAdapter {
     return normalizeEnvelopeChecksum(result);
   }
 
-  async copySource(input: RuntimeCopySourceInput): Promise<RuntimeEnvelope> {
+  async copySource(input: RuntimeCopySourceInput): Promise<RuntimeWriteResult> {
     assertContained(this.config.workspace, input.source, 'source staging file');
+    if (!RUNTIME_SOURCE_TYPES.has(input.source_type)) {
+      throw new HarnessError('CONTRACT_INVALID', 'unsupported Runtime source type');
+    }
     if (input.logical_path.includes('..') || input.logical_path.startsWith('/') || input.logical_path.includes('\\')) {
       throw new HarnessError('CONTRACT_INVALID', 'invalid logical source path');
     }
@@ -276,11 +310,14 @@ export class LLMWikiRuntimeAdapter {
       '--metadata-json', JSON.stringify(input.metadata)
     ]);
     if (!INGEST_SUCCESS.has(result.status)) throw statusFailure('copy-source', result);
-    return normalizeEnvelopeChecksum(result);
+    return mutationResult('copy-source', result);
   }
 
-  async writeRecord(input: RuntimeWriteRecordInput): Promise<RuntimeEnvelope> {
+  async writeRecord(input: RuntimeWriteRecordInput): Promise<RuntimeWriteResult> {
     assertContained(this.config.workspace, input.content_file, 'record content file');
+    if (!RUNTIME_RECORD_TYPES.has(input.record_type)) {
+      throw new HarnessError('CONTRACT_INVALID', 'unsupported Runtime record type');
+    }
     for (const value of Object.values(input.variables)) {
       if (!SAFE_SLUG.test(value)) throw new HarnessError('CONTRACT_INVALID', 'invalid record path variable');
     }
@@ -291,7 +328,7 @@ export class LLMWikiRuntimeAdapter {
       '--content-file', input.content_file
     ]);
     if (!INGEST_SUCCESS.has(result.status)) throw statusFailure('write-record', result);
-    return normalizeEnvelopeChecksum(result);
+    return mutationResult('write-record', result);
   }
 
   async registerArtifact(record: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope> {

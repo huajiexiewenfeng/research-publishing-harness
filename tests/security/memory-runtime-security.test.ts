@@ -45,4 +45,19 @@ describe('Memory Runtime security boundary', () => {
     })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
     expect(valid.runner.calls).toHaveLength(0);
   });
+
+  it('rejects user-controlled record types and unsafe V2.3 path variables before spawning', async () => {
+    const adapter = createLLMWikiRuntimeAdapter(valid);
+    await expect(adapter.writeRecord({
+      record_type: 'evil-command' as never,
+      variables: { research_track: 'runtime' }, refs: {},
+      content_file: resolve(valid.workspace, 'memory/staging/record.md')
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(adapter.writeRecord({
+      record_type: 'research_index_catalog' as never,
+      variables: { research_track: '../escape' }, refs: { promotion_id: 'p1' },
+      content_file: resolve(valid.workspace, 'memory/staging/record.md')
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    expect(valid.runner.calls).toHaveLength(0);
+  });
 });
