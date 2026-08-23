@@ -36,7 +36,10 @@ import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-i
 import { MemoryQueryService } from '../core/memory-query-service.js';
 import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memory-types.js';
 import { MemoryPromotionService } from '../core/memory-promotion-service.js';
+import { ProgressiveResearchQueryService } from '../core/progressive-research-query-service.js';
+import { ResearchIndexMaintenanceService } from '../core/research-index-maintenance-service.js';
 import { SemanticDeltaService } from '../core/semantic-delta-service.js';
+import type { PlanResearchQueryInput } from '../core/research-query-types.js';
 import type {
   MemoryPromotionApprovalV2,
   ReviewDeltaInput,
@@ -222,6 +225,15 @@ const unavailableIngestRuntime = {
   }
 };
 
+const unavailableProgressiveRuntime = {
+  async findRecords(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async loadPaths(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  }
+};
+
 function requireMemoryRuntime(runtime: LLMWikiRuntimeAdapter | null): LLMWikiRuntimeAdapter {
   if (runtime === null) {
     throw new HarnessError(
@@ -336,6 +348,14 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
       }
     );
+    const progressive = new ProgressiveResearchQueryService(
+      store,
+      (runtime ?? unavailableProgressiveRuntime) as ConstructorParameters<typeof ProgressiveResearchQueryService>[1]
+    );
+    const indexMaintenance = new ResearchIndexMaintenanceService(
+      store,
+      (runtime ?? unavailableProgressiveRuntime) as ConstructorParameters<typeof ResearchIndexMaintenanceService>[1]
+    );
     const ingest = new MemoryIngestService(
       store,
       (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryIngestService>[1],
@@ -423,13 +443,18 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       return { ok: true, operation, artifact, state: artifact.status };
     }
     if (operation === 'memory query plan') {
-      const input = await readInput<{
+      const raw = await readInput<Record<string, unknown>>(options);
+      if ('track_id' in raw) {
+        const artifact = await progressive.plan(raw as unknown as PlanResearchQueryInput);
+        return { ok: true, operation, artifact, state: 'planned' };
+      }
+      const input = raw as unknown as {
         research_track: string;
         purpose: 'candidate_enrichment' | 'feedback_followup';
         query_terms: readonly string[];
         context_budget: { max_items: number; max_chars: number; max_item_chars: number };
         skill: 'article' | 'x';
-      }>(options);
+      };
       const [profileBytes, scpBytes] = await Promise.all([
         readFile(assets.profilePath),
         readFile(input.skill === 'x' ? assets.xScpPath : assets.articleScpPath)
@@ -446,22 +471,50 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     }
     if (operation === 'memory query execute') {
       const input = await readInput<{ query_id: string }>(options);
+      if (await store.exists(`memory/queries-v2/${input.query_id}/plan.json`)) {
+        const artifact = await progressive.execute(input.query_id);
+        return { ok: true, operation, artifact, state: artifact.query_status };
+      }
       const artifact = await query.executeQuery(input.query_id);
       return { ok: true, operation, artifact, state: artifact.status };
     }
+    if (operation === 'memory query review') {
+      const input = await readInput<{
+        query_id: string; selected_context_refs: readonly string[];
+        reviewer: string; reviewed_at: string;
+      }>(options);
+      const artifact = await progressive.review(input.query_id, {
+        selected_context_refs: input.selected_context_refs,
+        reviewer: input.reviewer, reviewed_at: input.reviewed_at
+      });
+      return { ok: true, operation, artifact, state: 'reviewed' };
+    }
     if (operation === 'memory query status') {
       const input = await readInput<{ query_id: string }>(options);
+      if (await store.exists(`memory/queries-v2/${input.query_id}/plan.json`)) {
+        const artifact = await progressive.status(input.query_id);
+        return { ok: true, operation, artifact, state: artifact.phase };
+      }
       const artifact = await query.queryStatus(input.query_id);
       return { ok: true, operation, artifact, state: artifact.state };
     }
     if (operation === 'memory query bind-package') {
-      const input = await readInput<{
+      const raw = await readInput<Record<string, unknown>>(options);
+      const queryId = raw.query_id as string;
+      if (await store.exists(`memory/queries-v2/${queryId}/plan.json`)) {
+        const input = raw as unknown as {
+          query_id: string; package: Extract<ResearchContentPackage, { schema_version: '1.1' }>;
+        };
+        const artifact = await progressive.bindPackage(input.query_id, input.package);
+        return { ok: true, operation, artifact, state: artifact.memory_context.status };
+      }
+      const input = raw as unknown as {
         query_id: string;
         package: Extract<ResearchContentPackage, { schema_version: '1.1' }>;
         selected_refs: readonly string[];
         reviewed_by: string;
         reviewed_at: string;
-      }>(options);
+      };
       await query.reviewContext(input.query_id, {
         selected_refs: input.selected_refs,
         reviewed_by: input.reviewed_by,
@@ -469,6 +522,18 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       });
       const artifact = await query.bindPackage(input.query_id, input.package);
       return { ok: true, operation, artifact, state: artifact.memory_context.status };
+    }
+    if (operation === 'memory index doctor') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ track_id: string }>(options);
+      const artifact = await indexMaintenance.doctor(input.track_id);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory index rebuild-plan') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ track_id: string }>(options);
+      const artifact = await indexMaintenance.rebuildPlan(input.track_id);
+      return { ok: true, operation, artifact, state: 'planned' };
     }
     if (operation === 'memory feedback capture') {
       const raw = await readInput<Omit<CaptureFeedbackInput, 'observed_at'> & { observed_at: string }>(options);

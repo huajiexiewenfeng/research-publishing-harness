@@ -36,9 +36,12 @@ import { MemoryIngestService } from '../harnesses/research-publishing/core/memor
 import { MemoryInsightService } from '../harnesses/research-publishing/core/memory-insight-service.js';
 import { MemoryQueryService } from '../harnesses/research-publishing/core/memory-query-service.js';
 import { MemoryPromotionService } from '../harnesses/research-publishing/core/memory-promotion-service.js';
+import { ProgressiveResearchQueryService } from '../harnesses/research-publishing/core/progressive-research-query-service.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import { ResearchEvidenceService } from '../harnesses/research-publishing/core/research-evidence-service.js';
 import { ResearchIncrementService } from '../harnesses/research-publishing/core/research-increment-service.js';
+import { ResearchIndexProjector } from '../harnesses/research-publishing/core/research-index-projector.js';
+import { renderResearchRecord } from '../harnesses/research-publishing/core/research-record-renderer.js';
 import { SemanticDeltaService } from '../harnesses/research-publishing/core/semantic-delta-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
@@ -59,6 +62,7 @@ let feedbackInsightComplete = false;
 let memoryResumeComplete = false;
 let researchEvidenceFoundationComplete = false;
 let researchPromotionComplete = false;
+let progressiveQueryComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
@@ -632,6 +636,86 @@ try {
     promotionReceipt.status === 'complete' &&
     observedCatalog?.digest === promotionPlan.expected_final_catalog_digest;
 
+  const queryRecordContent = renderResearchRecord({
+    record_type: 'claim_version',
+    frontmatter: { claim_id: 'claim_acceptance_query', version: 1, claim_status: 'observed' },
+    body: '# Runtime boundary\n\nDeterministic knowledge access belongs in the Runtime.\n'
+  });
+  const queryRecordPath = 'domains/research-publishing/tracks/enterprise-agent-runtime/claims/claim_acceptance_query/versions/1.md';
+  const queryRecordDigest = sha256Bytes(Buffer.from(queryRecordContent, 'utf8'));
+  const queryProjection = new ResearchIndexProjector().project({
+    track_id: 'enterprise-agent-runtime', prior_catalog: null,
+    records: [{
+      ref: 'claim:claim_acceptance_query@1', record_path: queryRecordPath,
+      record_digest: queryRecordDigest, title: 'Runtime boundary',
+      summary: 'Deterministic knowledge access belongs in the Runtime.', tags: ['runtime'],
+      category: 'semantic', claim_status: 'observed', lifecycle_status: 'accepted',
+      evolution_target: null, updated_at: browserAt, accepted_at: browserAt, published_at: null,
+      evidence_available: true, document_manifest_available: false
+    }]
+  });
+  const queryShard = queryProjection.shards.find((item) => item.record.view === 'mainline')!;
+  const queryRuntimeContent = new Map([
+    [queryProjection.catalog_path, queryProjection.catalog_content],
+    [queryShard.path, queryShard.content],
+    [queryRecordPath, queryRecordContent]
+  ]);
+  const queryRuntimeCalls: string[] = [];
+  const progressiveQuery = new ProgressiveResearchQueryService(store, {
+    async findRecords() {
+      queryRuntimeCalls.push('find:catalog');
+      return {
+        status: 'found', record_type: 'research_index_catalog',
+        matches: [{
+          path: queryProjection.catalog_path, checksum: queryProjection.catalog_content_digest,
+          identity: 'enterprise-agent-runtime:research', display: 'enterprise-agent-runtime:research', fields: {}
+        }]
+      };
+    },
+    async loadPaths(input) {
+      queryRuntimeCalls.push(`load:${input.paths.join(',')}`);
+      const items = input.paths.map((path) => {
+        const content = queryRuntimeContent.get(path);
+        if (content === undefined) throw new Error('acceptance exact Query path is missing');
+        return {
+          path, checksum: sha256Bytes(Buffer.from(content, 'utf8')), content,
+          instruction_policy: 'data_only' as const, sanitized: false, risk_flags: []
+        };
+      });
+      return { status: 'loaded' as const, runtime_version: '0.2.0' as const, items, excluded_count: 0, truncated_count: 0 };
+    }
+  }, {
+    snapshotId: () => 'snapshot_acceptance_progressive',
+    reviewId: () => 'review_acceptance_progressive', now: () => new Date(browserAt)
+  });
+  const progressivePlan = await progressiveQuery.plan({
+    query_id: 'query_acceptance_progressive', track_id: 'enterprise-agent-runtime',
+    query_intent: 'Explain the Runtime boundary.', view: 'mainline', include_working: false,
+    selection_terms: ['runtime', 'boundary'], selection_rationale: 'The accepted claim directly answers the question.',
+    document_mode: 'none', catalog_ref: {
+      path: queryProjection.catalog_path, digest: queryProjection.catalog_content_digest,
+      generation: queryProjection.generation
+    },
+    selected_shard_refs: [{
+      shard_id: queryShard.record.shard_id, path: queryShard.path, digest: queryShard.content_digest,
+      generation: queryProjection.generation, view: 'mainline'
+    }],
+    selected_record_refs: [{
+      ref: 'claim:claim_acceptance_query@1', path: queryRecordPath, digest: queryRecordDigest,
+      evidence_refs: [], document_manifest_ref: null
+    }],
+    selected_manifest_refs: [], selected_chunk_refs: [], created_at: browserAt
+  });
+  const progressiveSnapshot = await progressiveQuery.execute(progressivePlan.query_id);
+  const progressiveReview = await progressiveQuery.review(progressivePlan.query_id, {
+    selected_context_refs: [progressiveSnapshot.context_items[0]!.context_ref],
+    reviewer: 'acceptance-reviewer', reviewed_at: browserAt
+  });
+  progressiveQueryComplete =
+    progressiveSnapshot.query_status === 'loaded' &&
+    progressiveReview.snapshot_digest === progressiveSnapshot.snapshot_digest &&
+    queryRuntimeCalls.length === 4 && queryRuntimeCalls.every((call) => !call.includes('**'));
+
   const memoryQuery = new MemoryQueryService(store, {
     async query() {
       return {
@@ -765,7 +849,7 @@ try {
     !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
     !memoryQueryComplete || !publicationCheckpointComplete ||
     !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete ||
-    !researchPromotionComplete
+    !researchPromotionComplete || !progressiveQueryComplete
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
@@ -783,6 +867,7 @@ try {
       memory_resume: 'simulated_complete',
       research_evidence_foundation: 'simulated_complete',
       research_promotion: 'simulated_complete',
+      progressive_query: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,

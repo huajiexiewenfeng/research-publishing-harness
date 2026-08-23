@@ -26,8 +26,9 @@ describe('research-publish CLI', () => {
     const input = join(parent, 'input.json');
     await writeFile(input, '{}', 'utf8');
     const operations = [
-      'memory doctor', 'memory query plan', 'memory query execute', 'memory query status',
-      'memory query bind-package', 'memory feedback capture', 'memory feedback review',
+      'memory doctor', 'memory query plan', 'memory query execute', 'memory query review',
+      'memory query status', 'memory query bind-package', 'memory index doctor',
+      'memory index rebuild-plan', 'memory feedback capture', 'memory feedback review',
       'memory insight propose', 'memory insight review', 'memory ingest plan',
       'memory ingest approve', 'memory ingest execute', 'memory ingest status', 'memory ingest resume',
       'memory evidence capture', 'memory evidence status',
