@@ -29,14 +29,17 @@ import { approvePublication } from '../harnesses/research-publishing/core/approv
 import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
 import { approveXArticlePublication } from '../harnesses/research-publishing/core/x-article-approval.js';
 import { CanonicalDocumentService } from '../harnesses/research-publishing/core/canonical-document-service.js';
+import { sha256, sha256Bytes } from '../harnesses/research-publishing/core/digest.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
 import { MemoryFeedbackService } from '../harnesses/research-publishing/core/memory-feedback-service.js';
 import { MemoryIngestService } from '../harnesses/research-publishing/core/memory-ingest-service.js';
 import { MemoryInsightService } from '../harnesses/research-publishing/core/memory-insight-service.js';
 import { MemoryQueryService } from '../harnesses/research-publishing/core/memory-query-service.js';
+import { MemoryPromotionService } from '../harnesses/research-publishing/core/memory-promotion-service.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import { ResearchEvidenceService } from '../harnesses/research-publishing/core/research-evidence-service.js';
 import { ResearchIncrementService } from '../harnesses/research-publishing/core/research-increment-service.js';
+import { SemanticDeltaService } from '../harnesses/research-publishing/core/semantic-delta-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
 
@@ -55,6 +58,7 @@ let publicationCheckpointComplete = false;
 let feedbackInsightComplete = false;
 let memoryResumeComplete = false;
 let researchEvidenceFoundationComplete = false;
+let researchPromotionComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
@@ -540,6 +544,94 @@ try {
     increment.revision === 1 &&
     await canonicalDocuments.reconstruct(canonicalProjection.manifest) === researchEvidenceText;
 
+  const promotionTarget = {
+    frontmatter: { claim_id: 'claim_acceptance_promotion', version: 1, claim_status: 'observed' },
+    body: '# Catalog-last promotion\n\nHuman-promoted acceptance claim.\n',
+    variables: {
+      research_track: 'enterprise-agent-runtime', claim_id: 'claim_acceptance_promotion', version: '1'
+    },
+    refs: {},
+    index_entry: {
+      ref: 'claim:claim_acceptance_promotion@1',
+      record_path: 'domains/research-publishing/tracks/enterprise-agent-runtime/claims/claim_acceptance_promotion/versions/1.md',
+      record_digest: `sha256:${'b'.repeat(64)}`, title: 'Catalog-last promotion',
+      summary: 'Human-promoted acceptance claim.', tags: ['promotion'], category: 'semantic',
+      claim_status: 'observed', lifecycle_status: 'accepted', evolution_target: null,
+      updated_at: browserAt, accepted_at: browserAt, published_at: null,
+      evidence_available: true, document_manifest_available: false
+    }
+  } as const;
+  const promotionDeltas = new SemanticDeltaService(store);
+  const promotionDelta = await promotionDeltas.propose({
+    delta_id: 'delta_acceptance_promotion',
+    increment_ref: 'increment:enterprise-agent-runtime:increment_acceptance_foundation@1',
+    base_catalog_digest: sha256({ catalog: null }),
+    evidence_snapshot_refs: [`evidence:${researchEvidence.evidence_snapshot_id}`],
+    proposed_operations: [{
+      operation_id: 'op_acceptance_promotion', operation_type: 'add_record',
+      target_id: 'claim_acceptance_promotion', record_type: 'claim_version',
+      target_content: promotionTarget, target_content_digest: sha256(promotionTarget),
+      evidence_refs: [`evidence:${researchEvidence.evidence_snapshot_id}`],
+      evidence_privacy_classification: 'internal', target_privacy_classification: 'internal',
+      index_impact: ['mainline', 'history']
+    }],
+    generated_by: 'acceptance', generated_at: browserAt, policy_version: 'semantic-promotion/v1'
+  });
+  const promotionReview = await promotionDeltas.review(promotionDelta.delta_id, {
+    review_id: 'review_acceptance_promotion', accepted_operation_ids: ['op_acceptance_promotion'],
+    rejected_operation_ids: [], rejection_reasons: [], operation_replacements: [],
+    reviewer: 'acceptance-reviewer', reviewed_at: browserAt
+  });
+  let acceptanceCatalog: { path: string; digest: `sha256:${string}` } | null = null;
+  const acceptancePromotionRuntime = {
+    async version() { return '0.2.0' as const; },
+    async validateMapping() { return { status: 'ok' }; },
+    async findCatalog() {
+      return acceptanceCatalog === null
+        ? { status: 'not_found' as const }
+        : { status: 'found' as const, ...acceptanceCatalog };
+    },
+    async copySource(input: Readonly<Record<string, unknown>>) {
+      return {
+        status: 'ok', path: input.logical_path as string,
+        checksum: sha256Bytes(await readFile(input.source as string))
+      };
+    },
+    async writeRecord(input: Readonly<Record<string, unknown>>) {
+      const checksum = sha256Bytes(await readFile(input.content_file as string));
+      const recordType = input.record_type as string;
+      const path = `acceptance/${recordType}.md`;
+      if (recordType === 'research_index_catalog') acceptanceCatalog = { path, digest: checksum };
+      return { status: 'ok', path, checksum };
+    },
+    async registerArtifact() { return { status: 'ok' }; },
+    async appendLog() { return { status: 'ok', path: 'logs/research-promotion.jsonl' }; }
+  };
+  const promotionService = new MemoryPromotionService(store, acceptancePromotionRuntime, {
+    profile_path: resolve('harnesses/research-publishing/memory/llm-wiki-profile.yml'),
+    mapping_path: resolve('harnesses/research-publishing/memory/ingest-mapping.yml'),
+    scp_paths: [
+      resolve('harnesses/research-publishing/memory/scp.yml'),
+      resolve('skills/article-publishing-copilot/scp.yml'),
+      resolve('skills/x-publishing-copilot/scp.yml')
+    ]
+  }, {
+    planId: () => 'promotion_plan_acceptance', approvalId: () => 'promotion_approval_acceptance',
+    receiptId: () => 'promotion_receipt_acceptance', now: () => new Date(browserAt)
+  });
+  const promotionPlan = await promotionService.plan(promotionDelta.delta_id, promotionReview.review_id);
+  const promotionApproval = await promotionService.approve(
+    promotionPlan.plan_id, promotionPlan.plan_digest, 'acceptance-reviewer', 60_000
+  );
+  const promotionReceipt = await promotionService.execute(promotionPlan.plan_id, promotionApproval);
+  const observedCatalog = acceptanceCatalog as {
+    path: string;
+    digest: `sha256:${string}`;
+  } | null;
+  researchPromotionComplete =
+    promotionReceipt.status === 'complete' &&
+    observedCatalog?.digest === promotionPlan.expected_final_catalog_digest;
+
   const memoryQuery = new MemoryQueryService(store, {
     async query() {
       return {
@@ -672,7 +764,8 @@ try {
   if (
     !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
     !memoryQueryComplete || !publicationCheckpointComplete ||
-    !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete
+    !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete ||
+    !researchPromotionComplete
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
@@ -689,6 +782,7 @@ try {
       feedback_insight: 'simulated_complete',
       memory_resume: 'simulated_complete',
       research_evidence_foundation: 'simulated_complete',
+      research_promotion: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,

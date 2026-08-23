@@ -35,6 +35,13 @@ import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpo
 import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-insight-service.js';
 import { MemoryQueryService } from '../core/memory-query-service.js';
 import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memory-types.js';
+import { MemoryPromotionService } from '../core/memory-promotion-service.js';
+import { SemanticDeltaService } from '../core/semantic-delta-service.js';
+import type {
+  MemoryPromotionApprovalV2,
+  ReviewDeltaInput,
+  SemanticMemoryDeltaInput
+} from '../core/research-memory-types.js';
 import {
   ResearchEvidenceService,
   type CaptureResearchEvidenceInput
@@ -209,6 +216,9 @@ const unavailableIngestRuntime = {
   },
   async appendLog(): Promise<never> {
     throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
+  },
+  async findCatalog(): Promise<never> {
+    throw new HarnessError('MEMORY_RUNTIME_UNAVAILABLE', 'Runtime is not configured');
   }
 };
 
@@ -216,7 +226,7 @@ function requireMemoryRuntime(runtime: LLMWikiRuntimeAdapter | null): LLMWikiRun
   if (runtime === null) {
     throw new HarnessError(
       'MEMORY_RUNTIME_INVALID_CONFIG',
-      'Memory Ingest requires explicit --runtime-executable and --runtime-launcher'
+      'Memory mutation requires explicit --runtime-executable and --runtime-launcher'
     );
   }
   return runtime;
@@ -316,6 +326,16 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const insight = new MemoryInsightService(store);
     const evidence = new ResearchEvidenceService(store);
     const increments = new ResearchIncrementService(store);
+    const deltas = new SemanticDeltaService(store);
+    const promotion = new MemoryPromotionService(
+      store,
+      (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryPromotionService>[1],
+      {
+        profile_path: assets.profilePath,
+        mapping_path: assets.mappingPath,
+        scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+      }
+    );
     const ingest = new MemoryIngestService(
       store,
       (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryIngestService>[1],
@@ -359,6 +379,48 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const input = await readInput<{ increment_id: string }>(options);
       const artifact = await increments.lineage(input.increment_id);
       return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory delta propose') {
+      const artifact = await deltas.propose(await readInput<SemanticMemoryDeltaInput>(options));
+      return { ok: true, operation, artifact, state: 'delta_proposed' };
+    }
+    if (operation === 'memory delta review') {
+      const input = await readInput<{ delta_id: string; review: ReviewDeltaInput }>(options);
+      const artifact = await deltas.review(input.delta_id, input.review);
+      return { ok: true, operation, artifact, state: 'reviewed' };
+    }
+    if (operation === 'memory promotion plan') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ delta_id: string; review_id: string }>(options);
+      const artifact = await promotion.plan(input.delta_id, input.review_id);
+      return { ok: true, operation, artifact, state: 'planned' };
+    }
+    if (operation === 'memory promotion approve') {
+      const input = await readInput<{
+        plan_id: string; confirmed_plan_digest: `sha256:${string}`;
+        approved_by: string; ttl_ms: number;
+      }>(options);
+      const artifact = await promotion.approve(
+        input.plan_id, input.confirmed_plan_digest, input.approved_by, input.ttl_ms
+      );
+      return { ok: true, operation, artifact, state: 'approved' };
+    }
+    if (operation === 'memory promotion execute') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ plan_id: string; approval: MemoryPromotionApprovalV2 }>(options);
+      const artifact = await promotion.execute(input.plan_id, input.approval);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory promotion status') {
+      const input = await readInput<{ plan_id: string }>(options);
+      const artifact = await promotion.status(input.plan_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'memory promotion resume') {
+      requireMemoryRuntime(runtime);
+      const input = await readInput<{ plan_id: string; approval: MemoryPromotionApprovalV2 }>(options);
+      const artifact = await promotion.resume(input.plan_id, input.approval);
+      return { ok: true, operation, artifact, state: artifact.status };
     }
     if (operation === 'memory query plan') {
       const input = await readInput<{

@@ -19,6 +19,7 @@ describe('offline acceptance', () => {
       feedback_insight: 'simulated_complete',
       memory_resume: 'simulated_complete',
       research_evidence_foundation: 'simulated_complete',
+      research_promotion: 'simulated_complete',
       network: 'unused'
     });
   }, 20_000);

@@ -31,7 +31,10 @@ describe('research-publish CLI', () => {
       'memory insight propose', 'memory insight review', 'memory ingest plan',
       'memory ingest approve', 'memory ingest execute', 'memory ingest status', 'memory ingest resume',
       'memory evidence capture', 'memory evidence status',
-      'memory increment assemble', 'memory increment status', 'memory lineage show'
+      'memory increment assemble', 'memory increment status', 'memory lineage show',
+      'memory delta propose', 'memory delta review', 'memory promotion plan',
+      'memory promotion approve', 'memory promotion execute', 'memory promotion status',
+      'memory promotion resume'
     ];
     for (const operation of operations) {
       const result = run([
