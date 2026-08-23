@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-3-progressive-query`
-- active_task: `phase-3-task-2-query-contracts-selectors`
+- active_task: `phase-3-task-3-progressive-query-service`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
 
 ## Scope Lock
@@ -67,4 +67,8 @@
 - Task 1 verification: Fake/security/real Runtime suites 3 files / 24 tests passed; TypeScript and lint passed.
 - Runtime 0.2.0 scalar `--lookup-value-json` behavior is source- and integration-verified; the Adapter
   accepts the semantic `{ index_id }` lookup and translates it at the process boundary.
-- Next action: Phase 3 Task 2 versioned Query contracts and pure bounded selectors.
+- Phase 3 Task 2 completed in commit `2321a4c`: versioned Plan/Snapshot/Review contracts bind
+  every selection layer, the fixed memory policy, Working opt-in and explicit full-document intent.
+- Task 2 verification: 3 files / 55 tests passed; TypeScript and lint passed. Pure selectors are
+  deterministic under shuffled candidates and fail closed above 4 Shards, 12 Records or 6 Chunks.
+- Next action: Phase 3 Task 3 staged progressive Query service and reviewed Package binding.

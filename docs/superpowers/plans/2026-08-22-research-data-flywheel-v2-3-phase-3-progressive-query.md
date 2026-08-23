@@ -119,7 +119,7 @@ git commit -m "feat: add exact LLM Wiki lookup and path loading"
 - Consumes: Phase 2 Catalog/Shard types and locked policy.
 - Produces: `ResearchQueryPlanV2`, `ResearchContextSnapshotV2`, `ResearchContextReviewV2` and pure bounded selectors.
 
-- [ ] **Step 1: Write failing contract and selector tests**
+- [x] **Step 1: Write failing contract and selector tests**
 
 ```ts
 it('binds every selection layer and policy limit into the Plan digest', () => {
@@ -135,13 +135,13 @@ it('fails closed when candidate shards exceed policy', () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/contracts/contracts.test.ts tests/memory/research-query-contracts.test.ts tests/memory/research-query-selector.test.ts`
 
 Expected: FAIL because V2 Query contracts/selectors are absent.
 
-- [ ] **Step 3: Implement exact Query values**
+- [x] **Step 3: Implement exact Query values**
 
 ```ts
 export type ResearchQueryView = 'mainline' | 'history' | 'working' | 'publication' | 'feedback';
@@ -155,13 +155,13 @@ export function selectDocumentChunks(input: SelectDocumentChunksInput): readonly
 
 Plan stores query intent, track/view, selection terms, rationale, exact refs/digests at each completed layer, policy version, budgets and `document_mode`. Selectors are pure, stable-order, deduplicate refs and throw stable budget errors.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `pnpm vitest run tests/contracts/contracts.test.ts tests/memory/research-query-contracts.test.ts tests/memory/research-query-selector.test.ts`
 
 Expected: PASS for all views, shuffled candidates, exact limits, over-limit and Working opt-in.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests/contracts tests/memory
