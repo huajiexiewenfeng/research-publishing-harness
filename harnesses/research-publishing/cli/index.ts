@@ -36,8 +36,19 @@ import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-i
 import { MemoryQueryService } from '../core/memory-query-service.js';
 import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memory-types.js';
 import { MemoryPromotionService } from '../core/memory-promotion-service.js';
+import { MonthlyEditorialReviewService } from '../core/monthly-editorial-review-service.js';
 import { ProgressiveResearchQueryService } from '../core/progressive-research-query-service.js';
+import { ResearchBacklogService } from '../core/research-backlog-service.js';
 import { ResearchIndexMaintenanceService } from '../core/research-index-maintenance-service.js';
+import { ResearchProgramStatusService } from '../core/research-program-status-service.js';
+import type {
+  AddResearchTopicInput,
+  CreateMonthlyEditorialReviewInput,
+  CreateResearchRoadmapInput,
+  ReviseResearchRoadmapInput,
+  ReviseResearchTopicInput
+} from '../core/research-program-types.js';
+import { ResearchRoadmapService } from '../core/research-roadmap-service.js';
 import { ResearchTerminalHooks } from '../core/research-terminal-hooks.js';
 import {
   ResearchImportService,
@@ -333,6 +344,62 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const input = await readInput<{ package: ResearchContentPackage }>(options);
     const artifact = await packages.freezePackage(input.package);
     return { ok: true, operation, artifact, state: artifact.package.status };
+  }
+
+  if (operation.startsWith('program ')) {
+    const roadmaps = new ResearchRoadmapService(store);
+    const backlog = new ResearchBacklogService(store, roadmaps);
+    const reviews = new MonthlyEditorialReviewService(store);
+    const programStatus = new ResearchProgramStatusService(store, roadmaps, backlog, reviews);
+
+    if (operation === 'program roadmap create') {
+      const artifact = await roadmaps.create(await readInput<CreateResearchRoadmapInput>(options));
+      return { ok: true, operation, artifact, state: 'created' };
+    }
+    if (operation === 'program roadmap revise') {
+      const artifact = await roadmaps.revise(await readInput<ReviseResearchRoadmapInput>(options));
+      return { ok: true, operation, artifact, state: 'revised' };
+    }
+    if (operation === 'program roadmap status') {
+      const input = await readInput<{ roadmap_id: string }>(options);
+      const artifact = await roadmaps.current(input.roadmap_id);
+      return { ok: true, operation, artifact, state: 'current' };
+    }
+    if (operation === 'program backlog add') {
+      const artifact = await backlog.add(await readInput<AddResearchTopicInput>(options));
+      return { ok: true, operation, artifact, state: artifact.availability };
+    }
+    if (operation === 'program backlog revise') {
+      const artifact = await backlog.revise(await readInput<ReviseResearchTopicInput>(options));
+      return { ok: true, operation, artifact, state: artifact.availability };
+    }
+    if (operation === 'program backlog status') {
+      const input = await readInput<{ roadmap_id: string }>(options);
+      const artifact = await backlog.catalog(input.roadmap_id);
+      return { ok: true, operation, artifact, state: 'current' };
+    }
+    if (operation === 'program backlog rebuild') {
+      const input = await readInput<{ roadmap_id: string }>(options);
+      const artifact = await backlog.rebuildCatalog(input.roadmap_id);
+      return { ok: true, operation, artifact, state: 'rebuilt' };
+    }
+    if (operation === 'program month review') {
+      const artifact = await reviews.create(
+        await readInput<CreateMonthlyEditorialReviewInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'reviewed' };
+    }
+    if (operation === 'program month status') {
+      const input = await readInput<{ month_id: string }>(options);
+      const artifact = await reviews.status(input.month_id);
+      return { ok: true, operation, artifact, state: artifact === null ? 'not_started' : 'reviewed' };
+    }
+    if (operation === 'program status') {
+      const input = await readInput<{ roadmap_id: string }>(options);
+      const artifact = await programStatus.status(input.roadmap_id);
+      return { ok: true, operation, artifact, state: artifact.next_action };
+    }
+    throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
   }
 
   if (operation.startsWith('memory ')) {

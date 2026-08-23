@@ -20,6 +20,28 @@ function run(args: readonly string[]) {
 }
 
 describe('research-publish CLI', () => {
+  it('exposes the Phase 1 program command surface with JSON-only routing', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-program-routes-'));
+    const workspace = join(parent, 'workspace');
+    const input = join(parent, 'input.json');
+    await writeFile(input, '{}', 'utf8');
+    const operations = [
+      'program roadmap create', 'program roadmap revise', 'program roadmap status',
+      'program backlog add', 'program backlog revise', 'program backlog status',
+      'program backlog rebuild', 'program month review', 'program month status',
+      'program status'
+    ];
+    for (const operation of operations) {
+      const result = run([
+        ...operation.split(' '), '--workspace', workspace,
+        '--input', input, '--output', 'json'
+      ]);
+      const payload = JSON.parse(result.stdout) as { operation: string; error?: { message: string } };
+      expect(payload.operation).toBe(operation);
+      expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
+    }
+  });
+
   it('exposes the V2.2-compatible V2.3 Memory command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
     const workspace = join(parent, 'workspace');
