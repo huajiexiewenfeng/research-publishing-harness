@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-terminal-hook-receipt/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "event_kind", "event_digest", "source_digest", "status",
+    "evidence_snapshot_ref", "evidence_snapshot_digest", "error_code", "recorded_at", "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "research-terminal-hook-receipt/v1" },
+    "event_id": { "$ref": "#/$defs/id" },
+    "event_kind": { "enum": ["package_finalized", "article_finalized", "publication_plan_approved", "publication_receipt_terminal", "feedback_selected", "candidate_insight_created"] },
+    "event_digest": { "$ref": "#/$defs/digest" },
+    "source_digest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["complete", "evidence_capture_pending"] },
+    "evidence_snapshot_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "evidence_snapshot_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+    "error_code": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "receipt_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

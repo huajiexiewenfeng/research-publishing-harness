@@ -2,6 +2,10 @@ import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
 import { runEvidenceGate, runPrivacyGate, runResearchGate } from './gates.js';
 import { validatePackageMemoryBinding } from './memory-package.js';
+import {
+  notifyTerminalSafely,
+  type ResearchTerminalNotifier
+} from './research-terminal-hooks.js';
 import { validateContract } from './schema-validator.js';
 import type { Candidate, ResearchContentPackage, ReviewReport } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
@@ -11,7 +15,8 @@ type CandidateQualification = Readonly<Pick<Candidate, 'novelty_hint'>>;
 export class PackageService {
   constructor(
     private readonly store: WorkspaceStore,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly terminalNotifier: ResearchTerminalNotifier | null = null
   ) {}
 
   async captureCandidate(candidate: Candidate): Promise<Candidate> {
@@ -133,6 +138,14 @@ export class PackageService {
     const digest = sha256(frozen);
     await this.store.writeNew(this.packagePath(frozen), frozen);
     await this.store.writeNew(this.digestPath(frozen), `${digest}\n`);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `package_finalized_${frozen.package_id}_${frozen.version}`,
+      kind: 'package_finalized', publication_kind: null,
+      workspace_relative_path: this.packagePath(frozen), role: 'research_package',
+      media_type: 'application/json', canonical: true,
+      privacy_classification: frozen.privacy.contains_private_material ? 'restricted' : 'internal',
+      occurred_at: frozen.updated_at
+    });
     return { package: frozen, digest };
   }
 

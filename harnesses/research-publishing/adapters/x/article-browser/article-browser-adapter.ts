@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
 import {
+  notifyTerminalSafely,
+  type ResearchTerminalNotifier
+} from '../../../core/research-terminal-hooks.js';
+import {
   createXArticleExecutionEvent,
   transitionXArticleExecution,
   type XArticleExecutionSnapshotV1,
@@ -64,6 +68,7 @@ interface XArticleBrowserAdapterOptions {
   readonly attemptId?: () => string;
   readonly receiptId?: () => string;
   readonly now?: () => Date;
+  readonly terminalNotifier?: ResearchTerminalNotifier;
 }
 
 export class XArticleBrowserAdapter {
@@ -72,6 +77,7 @@ export class XArticleBrowserAdapter {
   private readonly attemptId: () => string;
   private readonly receiptId: () => string;
   private readonly now: () => Date;
+  private readonly terminalNotifier: ResearchTerminalNotifier | null;
   private readonly broker: XArticleCommandBroker;
 
   constructor(
@@ -84,6 +90,7 @@ export class XArticleBrowserAdapter {
     this.attemptId = options.attemptId ?? (() => `x_article_attempt_${randomUUID()}`);
     this.receiptId = options.receiptId ?? (() => `x_article_receipt_${randomUUID()}`);
     this.now = options.now ?? (() => new Date());
+    this.terminalNotifier = options.terminalNotifier ?? null;
     this.broker = new XArticleCommandBroker(store, {
       ...(options.commandId === undefined ? {} : { commandId: options.commandId }),
       now: this.now
@@ -114,6 +121,13 @@ export class XArticleBrowserAdapter {
     await this.store.writeNewDirectory(this.prefix(executionId), {
       'plan.json': plan, 'approval.json': approval, 'capabilities.json': capabilities,
       'adapter-context.json': context
+    });
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `publication_plan_${plan.plan_id}_${executionId}`,
+      kind: 'publication_plan_approved', publication_kind: null,
+      workspace_relative_path: `${this.prefix(executionId)}/plan.json`, role: 'publication_plan',
+      media_type: 'application/json', canonical: true, privacy_classification: 'internal',
+      occurred_at: snapshot.updated_at
     });
     return snapshot;
   }
@@ -363,6 +377,12 @@ export class XArticleBrowserAdapter {
     });
     const receiptPath = `receipts/${receipt.receipt_id}.json`;
     await this.store.writeNew(receiptPath, receipt);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `publication_receipt_${receipt.receipt_id}`,
+      kind: 'publication_receipt_terminal', publication_kind: 'x_article',
+      workspace_relative_path: receiptPath, role: 'publication_receipt', media_type: 'application/json',
+      canonical: true, privacy_classification: 'internal', occurred_at: receipt.issued_at
+    });
     const finalState = verification.kind === 'full_match'
       ? 'finalized'
       : verification.kind === 'media_unverified'

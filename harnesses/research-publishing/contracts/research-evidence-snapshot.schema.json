@@ -31,7 +31,7 @@
       "required": ["schema_version", "role", "workspace_relative_path", "object_path", "digest", "media_type", "byte_size", "canonical", "privacy_classification"],
       "properties": {
         "schema_version": { "const": "2.3" },
-        "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "feedback_snapshot", "candidate_insight"] },
+        "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "publication_expression", "feedback_snapshot", "candidate_insight"] },
         "workspace_relative_path": { "type": "string", "minLength": 1 },
         "object_path": { "type": "string", "pattern": "^memory/evidence/objects/sha256/[a-f0-9]{2}/[a-f0-9]{64}$" },
         "digest": { "$ref": "#/$defs/digest" },

@@ -36,7 +36,7 @@ const EVENT_ROLES: Readonly<Record<ResearchEvidenceCaptureEvent, ReadonlySet<Art
   research_package_finalized: new Set(['research_package', 'claim_map', 'sources', 'boundary', 'lineage']),
   article_finalized: new Set(['canonical_article', 'article_metadata', 'review_report', 'visual_review_report', 'visual_asset', 'sources', 'boundary', 'lineage']),
   publication_intent_approved: new Set(['publication_plan', 'canonical_article', 'visual_asset']),
-  publication_receipt_terminal: new Set(['publication_receipt']),
+  publication_receipt_terminal: new Set(['publication_receipt', 'publication_expression']),
   feedback_selected: new Set(['feedback_snapshot']),
   candidate_insight_created: new Set(['candidate_insight'])
 };

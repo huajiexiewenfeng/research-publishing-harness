@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { sha256, sha256Bytes } from './digest.js';
 import { HarnessError } from './errors.js';
+import { notifyTerminalSafely, type ResearchTerminalNotifier } from './research-terminal-hooks.js';
 import type { Digest, PublicationFeedbackSnapshotV1 } from './memory-types.js';
 import { validateContract } from './schema-validator.js';
 import type { WorkspaceStore } from './workspace-store.js';
@@ -60,7 +61,8 @@ function publicHttpsUrl(value: string): URL {
 export class MemoryFeedbackService {
   constructor(
     private readonly store: WorkspaceStore,
-    private readonly ids: MemoryFeedbackServiceIds = {}
+    private readonly ids: MemoryFeedbackServiceIds = {},
+    private readonly terminalNotifier: ResearchTerminalNotifier | null = null
   ) {}
 
   private async receipt(path: string, expectedDigest: Digest): Promise<{
@@ -161,7 +163,14 @@ export class MemoryFeedbackService {
       'publication-feedback-snapshot',
       { ...body, snapshot_digest: sha256(body) }
     );
-    await this.store.writeNew(`feedback/${snapshot.feedback_snapshot_id}/snapshot.json`, snapshot);
+    const snapshotPath = `feedback/${snapshot.feedback_snapshot_id}/snapshot.json`;
+    await this.store.writeNew(snapshotPath, snapshot);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `feedback_selected_${snapshot.feedback_snapshot_id}`,
+      kind: 'feedback_selected', publication_kind: null,
+      workspace_relative_path: snapshotPath, role: 'feedback_snapshot', media_type: 'application/json',
+      canonical: true, privacy_classification: 'data_only', occurred_at: snapshot.observed_at
+    });
     return snapshot;
   }
 }

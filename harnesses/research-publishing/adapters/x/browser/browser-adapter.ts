@@ -15,6 +15,10 @@ import type { PublicationPlanV2 } from '../../../core/publication-plan-v2.js';
 import { assertPublicationPlanV2 } from '../../../core/publication-plan-v2.js';
 import type { PublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
 import { assertPublicationPlanV2_1 } from '../../../core/publication-plan-v2-1.js';
+import {
+  notifyTerminalSafely,
+  type ResearchTerminalNotifier
+} from '../../../core/research-terminal-hooks.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import {
   type ComposerContext,
@@ -139,7 +143,8 @@ export class BrowserAdapter implements BrowserAdapterApi {
     private readonly now: () => Date = () => new Date(),
     private readonly attemptId: () => string = () => `attempt_${randomUUID()}`,
     private readonly receiptId: () => string = () => `receipt_${randomUUID()}`,
-    private readonly outcomeResolver = new DeterministicOutcomeResolver()
+    private readonly outcomeResolver = new DeterministicOutcomeResolver(),
+    private readonly terminalNotifier: ResearchTerminalNotifier | null = null
   ) {}
 
   async start(input: StartBrowserExecutionInput): Promise<BrowserExecutionSnapshot> {
@@ -173,6 +178,12 @@ export class BrowserAdapter implements BrowserAdapterApi {
     await this.store.writeNew(planPath, input.plan);
     await this.store.writeNew(approvalPath, input.approval);
     await this.store.writeNew(manifestPath, input.capability_manifest);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `publication_plan_${input.plan.plan_id}_${input.execution_id}`,
+      kind: 'publication_plan_approved', publication_kind: null,
+      workspace_relative_path: planPath, role: 'publication_plan', media_type: 'application/json',
+      canonical: true, privacy_classification: 'internal', occurred_at: this.now().toISOString()
+    });
     let context: StoredExecutionContext = {
       schema_version: '2.0',
       plan_path: planPath,
@@ -861,7 +872,14 @@ export class BrowserAdapter implements BrowserAdapterApi {
         this.receiptId,
         this.now
       );
-      await this.store.writeNew(`receipts/${receipt.receipt_id}.json`, receipt);
+      const receiptPath = `receipts/${receipt.receipt_id}.json`;
+      await this.store.writeNew(receiptPath, receipt);
+      await notifyTerminalSafely(this.store, this.terminalNotifier, {
+        notification_id: `publication_receipt_${receipt.receipt_id}`,
+        kind: 'publication_receipt_terminal', publication_kind: 'x_post',
+        workspace_relative_path: receiptPath, role: 'publication_receipt', media_type: 'application/json',
+        canonical: true, privacy_classification: 'internal', occurred_at: receipt.created_at
+      });
       return receipt;
     }
     const approval = await this.store.readJson<ApprovalV2>(context.approval_path);
@@ -909,7 +927,14 @@ export class BrowserAdapter implements BrowserAdapterApi {
       this.receiptId,
       this.now
     );
-    await this.store.writeNew(`receipts/${receipt.receipt_id}.json`, receipt);
+    const receiptPath = `receipts/${receipt.receipt_id}.json`;
+    await this.store.writeNew(receiptPath, receipt);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `publication_receipt_${receipt.receipt_id}`,
+      kind: 'publication_receipt_terminal', publication_kind: 'x_post',
+      workspace_relative_path: receiptPath, role: 'publication_receipt', media_type: 'application/json',
+      canonical: true, privacy_classification: 'internal', occurred_at: receipt.created_at
+    });
     return receipt;
   }
 

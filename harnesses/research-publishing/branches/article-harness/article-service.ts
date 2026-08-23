@@ -4,6 +4,10 @@ import { sha256, sha256Bytes } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runEvidenceGate, runPrivacyGate } from '../../core/gates.js';
+import {
+  notifyTerminalSafely,
+  type ResearchTerminalNotifier
+} from '../../core/research-terminal-hooks.js';
 import { validateContract } from '../../core/schema-validator.js';
 import { VisualAssetImporter, type AttachVisualInput, type VisualCandidate } from '../../core/visual-assets.js';
 import type {
@@ -86,6 +90,7 @@ export interface VisualReviewInput {
 interface ArticleServiceOptions {
   readonly runId?: () => string;
   readonly now?: () => Date;
+  readonly terminalNotifier?: ResearchTerminalNotifier;
 }
 
 interface RunMetadata {
@@ -111,6 +116,7 @@ function slugify(value: string): string {
 export class ArticleService {
   private readonly runId: () => string;
   private readonly now: () => Date;
+  private readonly terminalNotifier: ResearchTerminalNotifier | null;
 
   constructor(
     private readonly store: WorkspaceStore,
@@ -118,6 +124,7 @@ export class ArticleService {
   ) {
     this.runId = options.runId ?? (() => `article_${randomUUID()}`);
     this.now = options.now ?? (() => new Date());
+    this.terminalNotifier = options.terminalNotifier ?? null;
   }
 
   async prepareArticle(
@@ -473,6 +480,14 @@ export class ArticleService {
     }
     await this.store.writeNewDirectory(root, packageFiles);
     await this.store.writeNew(`${prefix}/finalized-package.json`, ref);
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `article_finalized_${runId}`,
+      kind: 'article_finalized', publication_kind: null,
+      workspace_relative_path: `${root}/article.md`, role: 'canonical_article',
+      media_type: 'text/markdown', canonical: true,
+      privacy_classification: packageValue.privacy.contains_private_material ? 'restricted' : 'internal',
+      occurred_at: this.now().toISOString()
+    });
     return ref;
   }
 

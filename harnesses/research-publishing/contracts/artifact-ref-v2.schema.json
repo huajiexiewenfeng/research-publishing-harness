@@ -20,6 +20,6 @@
     "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "relativePath": { "type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:[\\\\/])(?!/)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$" },
     "privacy": { "enum": ["public", "internal", "restricted", "data_only"] },
-    "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "feedback_snapshot", "candidate_insight"] }
+    "role": { "enum": ["canonical_article", "research_package", "claim_map", "sources", "boundary", "lineage", "article_metadata", "review_report", "visual_review_report", "visual_asset", "publication_plan", "publication_receipt", "publication_expression", "feedback_snapshot", "candidate_insight"] }
   }
 }

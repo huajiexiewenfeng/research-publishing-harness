@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { sha256, sha256Bytes } from './digest.js';
 import { HarnessError } from './errors.js';
+import { notifyTerminalSafely, type ResearchTerminalNotifier } from './research-terminal-hooks.js';
 import type {
   CandidateInsightProposalV1,
   Digest,
@@ -32,6 +33,7 @@ export interface MemoryInsightReviewV1 {
 
 export interface MemoryInsightServiceIds {
   readonly proposalId?: () => string;
+  readonly now?: () => Date;
 }
 
 function unsigned<T extends object, K extends keyof T>(value: T, key: K): object {
@@ -43,7 +45,8 @@ function unsigned<T extends object, K extends keyof T>(value: T, key: K): object
 export class MemoryInsightService {
   constructor(
     private readonly store: WorkspaceStore,
-    private readonly ids: MemoryInsightServiceIds = {}
+    private readonly ids: MemoryInsightServiceIds = {},
+    private readonly terminalNotifier: ResearchTerminalNotifier | null = null
   ) {}
 
   private root(proposalId: string): string {
@@ -115,11 +118,19 @@ export class MemoryInsightService {
       { ...body, proposal_digest: sha256(body) }
     );
     const root = this.root(proposal.proposal_id);
-    await this.store.writeNew(`${root}/proposal.json`, proposal);
+    const proposalPath = `${root}/proposal.json`;
+    await this.store.writeNew(proposalPath, proposal);
     await this.store.writeNew(`${root}/source.json`, {
       feedback_snapshot_path: input.feedback_snapshot_path,
       feedback_snapshot_digest: input.feedback_snapshot_digest,
       basis: input.basis
+    });
+    await notifyTerminalSafely(this.store, this.terminalNotifier, {
+      notification_id: `candidate_insight_created_${proposal.proposal_id}`,
+      kind: 'candidate_insight_created', publication_kind: null,
+      workspace_relative_path: proposalPath, role: 'candidate_insight', media_type: 'application/json',
+      canonical: true, privacy_classification: 'data_only',
+      occurred_at: (this.ids.now?.() ?? new Date()).toISOString()
     });
     return proposal;
   }

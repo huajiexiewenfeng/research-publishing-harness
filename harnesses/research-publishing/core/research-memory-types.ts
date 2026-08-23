@@ -18,6 +18,7 @@ export type ArtifactRole =
   | 'visual_asset'
   | 'publication_plan'
   | 'publication_receipt'
+  | 'publication_expression'
   | 'feedback_snapshot'
   | 'candidate_insight';
 
@@ -191,6 +192,17 @@ export interface PublicationExpressionV1 {
   readonly publication_receipt_ref: StableRef | null;
   readonly published_at: string | null;
   readonly expression_digest: Digest;
+}
+
+export interface OpenQuestionCandidateV1 {
+  readonly candidate_id: StableId;
+  readonly increment_ref: StableRef;
+  readonly question: string;
+  readonly rationale: string;
+  readonly origin_refs: readonly StableRef[];
+  readonly evidence_strength: 'anecdotal' | 'repeated_observation' | 'reproducible';
+  readonly limitations: readonly string[];
+  readonly data_classification: 'data_only';
 }
 
 export interface CanonicalDocumentChunkDescriptorV1 {
