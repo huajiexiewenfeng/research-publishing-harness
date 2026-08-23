@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-4-publication-migration`
-- active_task: `phase-4-task-2-terminal-feedback-loop`
+- active_task: `phase-4-task-3-v2-2-read-only-adapter`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
@@ -92,4 +92,11 @@
 - Task 1 verification: 4 files / 68 tests passed across contract regression and focused behavior;
   TypeScript and lint passed. Receipt V1/V2/V2.1/X Article dispatch, privacy downgrade, stale bytes,
   claim escalation and public verification conflicts are fail-closed.
-- Next action: Phase 4 Task 2 terminal hook idempotency and supervised flywheel RED tests.
+- Phase 4 Task 2 completed in commit `18f9219`: write-ahead terminal Hooks now capture Evidence
+  idempotently for Package, Article, Plan, Post/X Article Receipt, selected Feedback and Candidate Insight.
+- Existing terminal writers persist their own facts before invoking an optional bound Notifier; failures are
+  recorded as `evidence_capture_pending` and never rewrite publication/package outcomes.
+- The supervised Flywheel proposes `attach_publication` plus a Receipt/verification-bound
+  `publication_attached` lifecycle event and data-only next questions, ending at an unapproved Delta.
+- Task 2 verification: 10 files / 80 tests passed; TypeScript and lint passed.
+- Next action: Phase 4 Task 3 V2.2 exact-ref read-only adapter RED tests.

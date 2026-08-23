@@ -110,17 +110,17 @@ git commit -m "feat: model publication expressions as research evidence"
 - Consumes: Phase 1 capture, Task 1 expression assembly, Phase 2 Delta service and existing terminal artifacts.
 - Produces: idempotent terminal event queue/ledger, Evidence Snapshot and optional candidate Delta; never Promotion approval/execution.
 
-- [ ] **Step 1: Write failing terminal-hook idempotency tests**
+- [x] **Step 1: Write failing terminal-hook idempotency tests**
 
 Cover Package Finalized, Article Finalized, Publication Plan Approved, terminal Post Receipt, terminal X Article Receipt, Feedback Selected and Candidate Insight Created. Invoke every hook twice and assert one snapshot/event result with verified identical digest.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/research-terminal-hooks.test.ts tests/memory/research-flywheel-service.test.ts tests/integration/research-publication-loop.test.ts`
 
 Expected: FAIL because terminal hooks and flywheel orchestration are absent.
 
-- [ ] **Step 3: Implement explicit terminal event dispatch**
+- [x] **Step 3: Implement explicit terminal event dispatch**
 
 ```ts
 export type ResearchTerminalEvent =
@@ -135,7 +135,7 @@ export class ResearchTerminalHooks {
 
 Use event ID + source digest idempotency. Persist a local write-ahead ledger before capture. A terminal adapter writes its own receipt first, then records the hook; hook failure must not falsify publication status and must expose resumable `evidence_capture_pending`.
 
-- [ ] **Step 4: Implement supervised flywheel proposal**
+- [x] **Step 4: Implement supervised flywheel proposal**
 
 ```ts
 export class ResearchFlywheelService {
@@ -148,13 +148,13 @@ Candidate questions and feedback-derived operations carry evidence strength, lim
 
 For a terminal publication, the proposed Delta contains both `attach_publication` and a `publication_attached` lifecycle event bound to the terminal Receipt and its verification strength. It does not rewrite the immutable Increment revision.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/research-terminal-hooks.test.ts tests/memory/research-flywheel-service.test.ts tests/integration/research-publication-loop.test.ts`
 
 Expected: PASS; the loop ends at an unapproved Delta and preserves existing publication outcomes.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/adapters tests
