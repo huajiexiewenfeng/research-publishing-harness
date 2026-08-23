@@ -306,21 +306,21 @@ git commit -m "feat: add atomic resumable research promotion"
 **Interfaces:**
 - Produces: `memory delta propose/review`, `memory promotion plan/approve/execute/status/resume`.
 
-- [ ] **Step 1: Write failing CLI routing tests**
+- [x] **Step 1: Write failing CLI routing tests**
 
 Assert all seven operations consume JSON artifacts, produce machine-readable state, require explicit approval for execute/resume, and preserve legacy `memory ingest *` routes.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/cli/cli.test.ts tests/integration/research-promotion-cli.test.ts`
 
 Expected: FAIL because V2.3 CLI routes are absent.
 
-- [ ] **Step 3: Add thin CLI routing**
+- [x] **Step 3: Add thin CLI routing**
 
 CLI constructs the same services used by tests; it performs no duplicate digest, projection or approval logic.
 
-- [ ] **Step 4: Run Phase 2 verification**
+- [x] **Step 4: Run Phase 2 verification**
 
 Run: `pnpm vitest run tests/contracts tests/memory tests/security/memory-promotion-security.test.ts tests/integration/research-promotion-workflow.test.ts tests/integration/research-promotion-cli.test.ts tests/cli/cli.test.ts`
 
@@ -328,14 +328,14 @@ Run: `pnpm check`
 
 Expected: PASS and acceptance proves AC 8–11, 17–21, 26–30 and 35.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ```text
 git add harnesses/research-publishing/cli tests tools/acceptance.ts
 git commit -m "feat: expose governed research promotion workflow"
 ```
 
-- [ ] **Step 6: Inspect repository state**
+- [x] **Step 6: Inspect repository state**
 
 Run: `git diff --check && git status --short`
 

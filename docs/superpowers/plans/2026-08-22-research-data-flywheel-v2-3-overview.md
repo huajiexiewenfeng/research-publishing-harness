@@ -114,7 +114,7 @@ Run the exact commands in the Phase 1 plan, then `pnpm check`.
 
 Expected: Evidence and canonical document capabilities pass without changing V2.2 query/ingest behavior.
 
-- [ ] **Gate 3: Execute Phase 2 and verify atomic visibility**
+- [x] **Gate 3: Execute Phase 2 and verify atomic visibility**
 
 Run the exact commands in the Phase 2 plan, including crash-window and Catalog-last tests, then `pnpm check`.
 

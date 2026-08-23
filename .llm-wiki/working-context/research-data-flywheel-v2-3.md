@@ -4,17 +4,18 @@
 
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
-- active_phase: `phase-2-promotion-index`
-- active_task: `phase-2-task-5-cli-acceptance`
-- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
+- active_phase: `phase-3-progressive-query`
+- active_task: `phase-3-task-1-exact-runtime-reads`
+- active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-3-progressive-query.md`
 
 ## Scope Lock
 
 - completed: Phase 1 policy/contracts/lifecycle, Evidence Object Store, canonical document projection,
   local Working Increment assembly and CLI/acceptance coverage.
-- active: Phase 2 Semantic Delta, reviewed promotion, Runtime-backed immutable records and Catalog-last Index visibility.
+- completed: Phase 2 Semantic Delta, reviewed promotion, Runtime-backed immutable records and Catalog-last Index visibility.
+- active: Phase 3 Catalog-first progressive query and exact Runtime reads.
 - read-only: V2.2 implementation and `llm-wiki-runtime` source referenced by `edge-001`.
-- excluded: Phase 3 Progressive Query and Phase 4 Publication Flywheel until their preceding gates pass.
+- excluded: Phase 4 Publication Flywheel until the Phase 3 gate passes.
 
 ## Implementation Rules
 
@@ -55,4 +56,10 @@
 - Promotion binds one confirmation to the exact reviewed/staged bytes, persists step-start before Runtime calls,
   rechecks the base Catalog under the Track lock and commits Catalog last.
 - Register/Catalog uncertainty is terminal pending reconciliation; safe partial writes resume idempotently.
-- Next action: Task 5 thin CLI routes, offline acceptance and the complete Phase 2 gate.
+- Phase 2 Task 5 verification: CLI/acceptance suite 3 files / 12 tests passed; Phase 2 gate
+  29 files / 147 tests passed.
+- Full repository gate: 87 test files passed plus 1 skipped; 377 tests passed plus 1 skipped;
+  offline acceptance reported `research_promotion: simulated_complete`.
+- Phase 2 completed in commit `6a18180`; one confirmation now governs the exact reviewed/staged
+  Promotion Plan, with runtime-required execution/resume and local status inspection.
+- Next action: Phase 3 Task 1 exact Catalog, Shard, record, Manifest and Chunk Runtime reads.
