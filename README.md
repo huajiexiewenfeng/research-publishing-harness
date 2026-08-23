@@ -97,7 +97,7 @@ pnpm build
 node dist/harnesses/research-publishing/cli/index.js doctor --workspace ./publishing-workspace --output json
 ```
 
-See the [Quickstart](docs/guides/quickstart.md) for publication flows and the [V2.3 Memory Loop](docs/guides/memory-loop.md) for the governed research flywheel.
+See the [Quickstart](docs/guides/quickstart.md) for publication flows, the [V2.3 Memory Loop](docs/guides/memory-loop.md) for the governed research flywheel, and the [Chinese Skill + Harness integration guide](docs/guides/skill-harness-llm-wiki-runtime-integration.zh-CN.md) for a reusable Domain onboarding method.
 
 ## Security boundary
 
