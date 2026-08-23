@@ -55,6 +55,13 @@ describe('ResearchImportService', () => {
     );
     expect((expression.intended_content as { expected_item_order: number[] }).expected_item_order)
       .toEqual([1, 2, 3, 4, 5, 6]);
+    const manifestArtifact = await store.resolveExistingArtifact(
+      `memory/imports/${manifest.import_id}/manifest.json`
+    );
+    expect(expression.intended_content).toMatchObject({
+      local_content_path: manifestArtifact.relative_path,
+      content_digest: manifestArtifact.digest
+    });
     expect(expression.verification_level).toBe('manual_recorded');
     expect(expression.published_at).toBe(manifest.thread.published_at);
     expect(expression.published_at).not.toBe(manifest.imported_at);

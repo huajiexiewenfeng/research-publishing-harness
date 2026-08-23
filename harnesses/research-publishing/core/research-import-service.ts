@@ -293,8 +293,8 @@ export class ResearchImportService {
       intended_content: {
         approved_plan_ref: `${this.root(input.import_id)}/manifest.json`,
         approved_plan_digest: manifestArtifact.digest,
-        local_content_path: input.mother_article.path,
-        content_digest: input.mother_article.digest,
+        local_content_path: manifestArtifact.relative_path,
+        content_digest: manifestArtifact.digest,
         expected_item_order: input.thread.items.map((item) => item.ordinal),
         link_refs: [input.gist.url, input.thread.root_url], visual_refs: []
       },

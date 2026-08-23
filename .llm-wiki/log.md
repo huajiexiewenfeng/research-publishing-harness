@@ -64,3 +64,4 @@
 - 修复后 fresh `pnpm check` 通过：108 个测试文件 / 458 项测试通过，1 项 opt-in 跳过，AC 1–38 离线验收通过且 `network: unused`；验证级别为 `passed-agent-local`。
 - 首次真实 Capture 暴露 Gist/Thread canonical URL 与 Increment source refs 重复；Harness 在 Evidence 边界改为保持顺序的确定性去重。真实尝试仅写入本地 Import Manifest/gap report，未创建 Evidence/Delta/Review/Promotion，也未触发 Runtime 或 X。
 - source-ref 修复聚焦测试先复现 duplicate-items RED，再以 3/3 GREEN；随后 fresh `pnpm check` 再次通过 108 个测试文件 / 458 项测试及 AC 1–38 离线验收。
+- 首个未批准 Delta 的语义 Review 发现 X Thread `intended_content` 错绑母稿而非包含 6 条原文的 Import Manifest；修复后聚焦测试先 RED 后 3/3 GREEN，fresh `pnpm check` 再次通过。旧 Delta 保持未 Review/未批准，作为审计证据，不进入 Runtime。
