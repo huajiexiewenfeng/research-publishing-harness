@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-query-plan-v2/2.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "query_id", "track_id", "index_id", "query_intent", "view", "include_working", "selection_terms", "selection_rationale", "document_mode", "full_document_requested", "catalog_ref", "selected_shard_refs", "selected_record_refs", "selected_manifest_refs", "selected_chunk_refs", "policy_version", "budgets", "created_at", "plan_digest"],
+  "properties": {
+    "schema_version": { "const": "research-query-plan/v2" },
+    "query_id": { "$ref": "#/$defs/id" }, "track_id": { "$ref": "#/$defs/id" },
+    "index_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}:research$" },
+    "query_intent": { "$ref": "#/$defs/text" }, "view": { "$ref": "#/$defs/view" },
+    "include_working": { "type": "boolean" }, "selection_terms": { "$ref": "#/$defs/strings" },
+    "selection_rationale": { "$ref": "#/$defs/text" },
+    "document_mode": { "enum": ["none", "supporting_chunks", "full_explicit"] },
+    "full_document_requested": { "type": "boolean" },
+    "catalog_ref": { "anyOf": [{ "$ref": "#/$defs/indexRef" }, { "type": "null" }] },
+    "selected_shard_refs": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/shardRef" } },
+    "selected_record_refs": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/recordRef" } },
+    "selected_manifest_refs": { "type": "array", "items": { "$ref": "#/$defs/manifestRef" } },
+    "selected_chunk_refs": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/chunkRef" } },
+    "policy_version": { "const": "research-memory-policy/v1" }, "budgets": { "$ref": "#/$defs/budgets" },
+    "created_at": { "type": "string", "format": "date-time" }, "plan_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "path": { "type": "string", "minLength": 1 }, "view": { "enum": ["mainline", "history", "working", "publication", "feedback"] },
+    "strings": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "indexRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest", "generation"], "properties": { "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "generation": { "$ref": "#/$defs/id" } } },
+    "shardRef": { "type": "object", "additionalProperties": false, "required": ["shard_id", "path", "digest", "generation", "view"], "properties": { "shard_id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "generation": { "$ref": "#/$defs/id" }, "view": { "$ref": "#/$defs/view" } } },
+    "manifestRef": { "type": "object", "additionalProperties": false, "required": ["document_id", "path", "digest"], "properties": { "document_id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "recordRef": { "type": "object", "additionalProperties": false, "required": ["ref", "path", "digest", "evidence_refs", "document_manifest_ref"], "properties": { "ref": { "$ref": "#/$defs/text" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "evidence_refs": { "$ref": "#/$defs/strings" }, "document_manifest_ref": { "anyOf": [{ "$ref": "#/$defs/manifestRef" }, { "type": "null" }] } } },
+    "chunkRef": { "type": "object", "additionalProperties": false, "required": ["chunk_id", "path", "digest", "ordinal", "char_start", "char_end"], "properties": { "chunk_id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "ordinal": { "type": "integer", "minimum": 1 }, "char_start": { "type": "integer", "minimum": 0 }, "char_end": { "type": "integer", "minimum": 1 } } },
+    "budgets": { "type": "object", "additionalProperties": false, "required": ["max_shards", "max_records", "max_chunks", "max_chars_per_index_record", "max_reconstructed_document_chars"], "properties": { "max_shards": { "const": 4 }, "max_records": { "const": 12 }, "max_chunks": { "const": 6 }, "max_chars_per_index_record": { "const": 12000 }, "max_reconstructed_document_chars": { "const": 60000 } } }
+  }
+}

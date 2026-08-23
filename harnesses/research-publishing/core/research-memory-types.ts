@@ -222,6 +222,8 @@ export interface DerivedResearchLifecycleV1 {
 }
 
 export type ResearchIndexView = 'mainline' | 'history' | 'working' | 'publication' | 'feedback';
+export type ResearchQueryView = ResearchIndexView;
+export type DocumentLoadMode = 'none' | 'supporting_chunks' | 'full_explicit';
 export type SemanticOperationType =
   | 'add_record'
   | 'add_revision'

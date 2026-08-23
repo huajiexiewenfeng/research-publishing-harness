@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-context-snapshot-v2/2.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "query_plan_digest", "query_id", "query_intent", "track_id", "view", "index_refs", "selected_summary_refs", "selected_record_refs", "selected_evidence_refs", "context_items", "risk_flags", "budgets", "selection_rationale", "query_status", "runtime_version", "created_at", "snapshot_digest"],
+  "properties": {
+    "schema_version": { "const": "research-context-snapshot/v2" }, "snapshot_id": { "$ref": "#/$defs/id" },
+    "query_plan_digest": { "$ref": "#/$defs/digest" }, "query_id": { "$ref": "#/$defs/id" },
+    "query_intent": { "$ref": "#/$defs/text" }, "track_id": { "$ref": "#/$defs/id" }, "view": { "$ref": "#/$defs/view" },
+    "index_refs": { "type": "array", "items": { "$ref": "#/$defs/indexRef" } },
+    "selected_summary_refs": { "$ref": "#/$defs/strings" },
+    "selected_record_refs": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/recordRef" } },
+    "selected_evidence_refs": { "$ref": "#/$defs/strings" },
+    "context_items": { "type": "array", "items": { "$ref": "#/$defs/contextItem" } },
+    "risk_flags": { "$ref": "#/$defs/strings" }, "budgets": { "$ref": "#/$defs/budgets" },
+    "selection_rationale": { "$ref": "#/$defs/text" },
+    "query_status": { "enum": ["loaded", "empty", "runtime_unavailable", "index_unavailable", "index_rebuild_required", "context_budget_exceeded", "failed"] },
+    "runtime_version": { "enum": ["0.2.0", null] }, "created_at": { "type": "string", "format": "date-time" },
+    "snapshot_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "path": { "type": "string", "minLength": 1 },
+    "view": { "enum": ["mainline", "history", "working", "publication", "feedback"] },
+    "strings": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "indexRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest", "generation"], "properties": { "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "generation": { "$ref": "#/$defs/id" } } },
+    "manifestRef": { "type": "object", "additionalProperties": false, "required": ["document_id", "path", "digest"], "properties": { "document_id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "recordRef": { "type": "object", "additionalProperties": false, "required": ["ref", "path", "digest", "evidence_refs", "document_manifest_ref"], "properties": { "ref": { "$ref": "#/$defs/text" }, "path": { "$ref": "#/$defs/path" }, "digest": { "$ref": "#/$defs/digest" }, "evidence_refs": { "$ref": "#/$defs/strings" }, "document_manifest_ref": { "anyOf": [{ "$ref": "#/$defs/manifestRef" }, { "type": "null" }] } } },
+    "contextItem": { "type": "object", "additionalProperties": false, "required": ["context_ref", "relative_path", "content_digest", "content", "source_layer", "classification", "sanitized", "risk_flags"], "properties": { "context_ref": { "$ref": "#/$defs/text" }, "relative_path": { "$ref": "#/$defs/path" }, "content_digest": { "$ref": "#/$defs/digest" }, "content": { "type": "string" }, "source_layer": { "enum": ["semantic_record", "document_chunk"] }, "classification": { "const": "data_only" }, "sanitized": { "type": "boolean" }, "risk_flags": { "$ref": "#/$defs/strings" } } },
+    "budgets": { "type": "object", "additionalProperties": false, "required": ["max_shards", "max_records", "max_chunks", "max_chars_per_index_record", "max_reconstructed_document_chars"], "properties": { "max_shards": { "const": 4 }, "max_records": { "const": 12 }, "max_chunks": { "const": 6 }, "max_chars_per_index_record": { "const": 12000 }, "max_reconstructed_document_chars": { "const": 60000 } } }
+  }
+}

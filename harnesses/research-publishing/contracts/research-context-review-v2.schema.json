@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-context-review-v2/2.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "review_id", "query_id", "query_plan_digest", "snapshot_digest", "selected_context_refs", "reviewer", "reviewed_at", "review_digest"],
+  "properties": {
+    "schema_version": { "const": "research-context-review/v2" },
+    "review_id": { "$ref": "#/$defs/id" }, "query_id": { "$ref": "#/$defs/id" },
+    "query_plan_digest": { "$ref": "#/$defs/digest" }, "snapshot_digest": { "$ref": "#/$defs/digest" },
+    "selected_context_refs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "reviewer": { "type": "string", "minLength": 1 }, "reviewed_at": { "type": "string", "format": "date-time" },
+    "review_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}
