@@ -142,17 +142,50 @@ export interface ResearchEvolutionEdgeV1 {
   readonly edge_digest: Digest;
 }
 
+export type PublicationChannel =
+  | 'article'
+  | 'x_article'
+  | 'x_thread'
+  | 'x_single'
+  | 'x_reply'
+  | 'gist'
+  | 'github_article';
+
+export interface PublicationIntendedContentV1 {
+  readonly approved_plan_ref: StableRef;
+  readonly approved_plan_digest: Digest;
+  readonly local_content_path: string;
+  readonly content_digest: Digest;
+  readonly expected_item_order: readonly number[];
+  readonly link_refs: readonly StableRef[];
+  readonly visual_refs: readonly StableRef[];
+}
+
+export interface PublicationObservedContentV1 {
+  readonly source: 'public_page' | 'user_report';
+  readonly public_url: string;
+  readonly platform_ids: readonly StableRef[];
+  readonly observed_digest: Digest;
+  readonly actual_item_order: readonly number[];
+  readonly media_verification: 'matched' | 'unverified' | 'mismatch';
+  readonly link_verification: 'matched' | 'unverified' | 'mismatch';
+  readonly missing_content: readonly StableRef[];
+  readonly unexpected_content: readonly StableRef[];
+  readonly mismatches: readonly StableRef[];
+}
+
 export interface PublicationExpressionV1 {
   readonly schema_version: 'publication-expression/v1';
   readonly expression_id: StableId;
   readonly increment_ref: StableRef;
-  readonly channel: 'article' | 'x_article' | 'x_thread' | 'x_single' | 'x_reply' | 'gist' | 'github_article';
+  readonly channel: PublicationChannel;
   readonly language: string;
   readonly derivation_type: 'original' | 'translation' | 'compression' | 'adaptation';
   readonly claim_refs: readonly StableRef[];
   readonly visual_refs: readonly StableRef[];
-  readonly intended_content: Readonly<Record<string, unknown>>;
-  readonly observed_content: Readonly<Record<string, unknown>> | null;
+  readonly evidence_snapshot_refs: readonly StableRef[];
+  readonly intended_content: PublicationIntendedContentV1;
+  readonly observed_content: PublicationObservedContentV1 | null;
   readonly verification_level: 'planned' | 'manual_recorded' | 'public_verified' | 'outcome_unknown' | 'conflict';
   readonly platform_refs: readonly StableRef[];
   readonly publication_receipt_ref: StableRef | null;

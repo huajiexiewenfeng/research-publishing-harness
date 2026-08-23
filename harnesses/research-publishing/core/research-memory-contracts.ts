@@ -8,6 +8,7 @@ import type {
   ClaimVersionInput,
   ClaimVersionV1,
   PrivacyClassification,
+  PublicationExpressionV1,
   ReviewDeltaInput,
   ResearchIncrementRevisionInput,
   ResearchIncrementRevisionV1,
@@ -93,6 +94,23 @@ export function createClaimVersion(input: ClaimVersionInput): ClaimVersionV1 {
   return validateContract<ClaimVersionV1>('claim-version', {
     ...body,
     claim_digest: sha256(body)
+  });
+}
+
+export function createPublicationExpression(
+  input: Omit<PublicationExpressionV1, 'schema_version' | 'expression_digest'>
+): PublicationExpressionV1 {
+  assertStableId(input.expression_id, 'Publication Expression id');
+  assertUnique(input.claim_refs, 'Publication Expression claim refs');
+  assertUnique(input.visual_refs, 'Publication Expression visual refs');
+  assertUnique(input.evidence_snapshot_refs, 'Publication Expression Evidence refs');
+  const body = {
+    schema_version: 'publication-expression/v1' as const,
+    ...input
+  };
+  return validateContract<PublicationExpressionV1>('publication-expression', {
+    ...body,
+    expression_digest: sha256(body)
   });
 }
 
