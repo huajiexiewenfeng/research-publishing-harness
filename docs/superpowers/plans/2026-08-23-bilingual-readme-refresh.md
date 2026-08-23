@@ -1,6 +1,6 @@
 # Bilingual README Refresh Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Completed steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the version-list-first repository landing page with an onboarding-first English README and a semantically aligned Simplified Chinese README.
 
@@ -14,7 +14,7 @@
 - A reader must understand the project purpose and main workflow within 30 seconds and find the offline quick start within 5 minutes.
 - Keep `Pre-alpha` visible near the top of both files.
 - `README.md` remains the English default; `README.zh-CN.md` is the Simplified Chinese entry.
-- Both files use the same section order, commands, relative links, capability boundaries and maturity claims.
+- Both files use the same section order, commands, capability boundaries and maturity claims. All content-link targets are identical; the reciprocal language-switch links are explicitly exempt because each necessarily points to the opposite README.
 - Organize capabilities by user workflow, not by V1/V2.x release blocks.
 - Preserve a compact two-column evolution table covering V1, V2, V2.1, V2.2, V2.3 and V3.
 - State only capabilities supported by current source, contracts, tests and committed documentation.
@@ -86,7 +86,7 @@ Publication → Public Verification → Immutable Receipt
 - Consumes: the approved design at `docs/superpowers/specs/2026-08-23-bilingual-readme-refresh-design.zh-CN.md`, the Shared Section Contract above, and current repository facts.
 - Produces: the canonical English section order, commands, relative links, workflow groups and capability claims that Task 2 mirrors.
 
-- [ ] **Step 1: Capture the clean baseline and authoritative metadata**
+- [x] **Step 1: Capture the clean baseline and authoritative metadata**
 
 Run:
 
@@ -99,7 +99,7 @@ node -e 'const p=require("./package.json"); console.log(JSON.stringify({name:p.n
 
 Expected: the worktree contains only the already committed design and plan history, Node.js satisfies `>=20.19`, pnpm is `11.19.x`, and package metadata reports Apache-2.0.
 
-- [ ] **Step 2: Replace the version-list-first README with the approved reader flow**
+- [x] **Step 2: Replace the version-list-first README with the approved reader flow**
 
 Start the file with this exact positioning block:
 
@@ -128,7 +128,7 @@ Continue with the Shared Section Contract. Apply these exact content decisions:
 - Keep non-goals concise and explicit: no autonomous topic selection, scheduling, stored credentials, approval bypass, automatic Claim promotion, blind retry, arbitrary rich HTML, cloud/team memory or real publication from CI.
 - End with Node.js `20.19+`, pnpm `11.19`, optional `llm-wiki-runtime` `0.2.0` for governed-memory workflows, and Apache-2.0.
 
-- [ ] **Step 3: Verify the English document structure and links**
+- [x] **Step 3: Verify the English document structure and links**
 
 Run:
 
@@ -141,7 +141,7 @@ git diff --check -- README.md
 
 Expected: all thirteen sections appear in order, every local link exists, code fences are balanced and `git diff --check` exits 0.
 
-- [ ] **Step 4: Review the English diff against trust boundaries**
+- [x] **Step 4: Review the English diff against trust boundaries**
 
 Run:
 
@@ -152,7 +152,7 @@ git diff -- README.md
 
 Expected: the scan returns no matches; the diff contains only the approved onboarding rewrite and no unsupported capability claim.
 
-- [ ] **Step 5: Commit the English landing page**
+- [x] **Step 5: Commit the English landing page**
 
 Run:
 
@@ -175,7 +175,7 @@ Expected: staged scope is exactly `README.md`, the diff check exits 0 and the co
 - Consumes: Task 1's English section order, commands, relative links, evolution rows and capability claims.
 - Produces: a natural Chinese document with the same informational contract and a working two-way language switch.
 
-- [ ] **Step 1: Create the Chinese README with matching positioning**
+- [x] **Step 1: Create the Chinese README with matching positioning**
 
 Change the language line in `README.md` to:
 
@@ -213,7 +213,7 @@ Use this heading map exactly:
 
 Translate by meaning, not sentence order. Preserve technical anchors such as `Claim`, `Evidence`, `Human Review`, `Digest`, `Approval`, `Receipt`, `data_only`, `Catalog-last`, `Runtime`, `Query`, `Promotion` and `.llm-wiki` where they name actual contracts.
 
-- [ ] **Step 2: Copy invariant artifacts without translation drift**
+- [x] **Step 2: Copy invariant artifacts without translation drift**
 
 Copy these elements byte-for-byte from `README.md`:
 
@@ -226,7 +226,7 @@ Copy these elements byte-for-byte from `README.md`:
 
 The explanatory link labels and surrounding prose may be Chinese; the destination paths must be identical.
 
-- [ ] **Step 3: Verify two-way navigation, parity and local links**
+- [x] **Step 3: Verify two-way navigation, parity and local links**
 
 Run:
 
@@ -239,7 +239,7 @@ git diff --check -- README.md README.zh-CN.md
 
 Expected: language links work in both directions, both documents have the same number of level-two sections, all local links exist, all fences are balanced and the diff check exits 0.
 
-- [ ] **Step 4: Scan the Chinese README for unfinished or unsafe copy**
+- [x] **Step 4: Scan the Chinese README for unfinished or unsafe copy**
 
 Run:
 
@@ -250,7 +250,7 @@ git diff -- README.md README.zh-CN.md
 
 Expected: the scan returns no matches; the Chinese copy is a semantic mirror, not a claim-expanding translation.
 
-- [ ] **Step 5: Commit the Chinese README**
+- [x] **Step 5: Commit the Chinese README**
 
 Run:
 
@@ -274,7 +274,7 @@ Expected: staged scope contains exactly `README.md` and `README.zh-CN.md`; the c
 - Consumes: the committed English and Chinese README artifacts from Tasks 1 and 2.
 - Produces: fresh evidence that both files are structurally aligned, locally navigable, format-clean and compatible with the repository acceptance suite.
 
-- [ ] **Step 1: Run the complete focused README audit again from committed files**
+- [x] **Step 1: Run the complete focused README audit again from committed files**
 
 Run:
 
@@ -286,7 +286,7 @@ rg -n -i 'TB[D]|TO[D]O|FIXM[E]|XX[X]|[A-Za-z]:\\|/(Users|home)/|自动记忆|自
 
 Expected: diff and link/fence checks exit 0; the content scan returns no matches.
 
-- [ ] **Step 2: Run the full offline repository verification**
+- [x] **Step 2: Run the full offline repository verification**
 
 Run:
 
@@ -296,7 +296,7 @@ pnpm check
 
 Expected: lint, typecheck, build, Vitest and offline acceptance all exit 0; acceptance reports no real publication or user Wiki write.
 
-- [ ] **Step 3: Verify final repository state**
+- [x] **Step 3: Verify final repository state**
 
 Run:
 

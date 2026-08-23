@@ -44,7 +44,17 @@
 
 首屏避免堆叠版本号和内部类型名。`Pre-alpha` 必须保留，防止读者误判生产成熟度。
 
-### 4.2 30 秒心智模型
+### 4.2 为什么存在
+
+用首次访问者能理解的语言描述三个工程问题：
+
+- 生成文本不等于事实经过核验；
+- 点击“发布”不等于可证明地完成发布；
+- 外部反馈不等于可以自动升级为知识结论。
+
+随后说明 Harness 通过 Claim/Evidence、Human Gates、不可变 artifact、内容绑定审批和可恢复 Receipt 解决这些问题。
+
+### 4.3 30 秒心智模型
 
 用紧凑流程图表达主循环：
 
@@ -56,16 +66,6 @@ Publication → Verification → Receipt → Human-selected learning → Governe
 ```
 
 图后用短段落说明：模型可以辅助研究和写作，但 Harness 决定状态、Digest、审批和 Receipt；持久知识只通过受控 Runtime 变更。
-
-### 4.3 为什么存在
-
-用首次访问者能理解的语言描述三个工程问题：
-
-- 生成文本不等于事实经过核验；
-- 点击“发布”不等于可证明地完成发布；
-- 外部反馈不等于可以自动升级为知识结论。
-
-随后说明 Harness 通过 Claim/Evidence、Human Gates、不可变 artifact、内容绑定审批和可恢复 Receipt 解决这些问题。
 
 ### 4.4 当前可用工作流
 

@@ -119,25 +119,25 @@ node dist/harnesses/research-publishing/cli/index.js doctor \
 
 ```text
 .
-├── harnesses/research-publishing/  # deterministic domain Harness and CLI
-├── skills/                         # thin Agent Skill entry points
-├── tests/                          # unit, integration, security, and acceptance tests
+├── harnesses/research-publishing/  # 确定性的领域 Harness 与 CLI
+├── skills/                         # 精简的 Agent Skill 入口
+├── tests/                          # 单元、集成、安全和验收测试
 ├── docs/
-│   ├── guides/                     # onboarding and reusable workflow guides
-│   └── superpowers/                # design and implementation records
-└── registry/                       # verifiable manifests and Harness registration
+│   ├── guides/                     # 上手与可复用工作流指南
+│   └── superpowers/                # 设计与实施记录
+└── registry/                       # 可验证的 manifest 与 Harness 注册信息
 ```
 
 ## 项目演进
 
 | 阶段 | 主要新增内容 |
 | --- | --- |
-| V1 | Content packages and Manual publication |
-| V2 | Bounded Browser publishing and immutable Receipts |
-| V2.1 | Visual packaging and review |
-| V2.2 | Governed Runtime Query/Ingest |
-| V2.3 | Evidence flywheel and Catalog-first Query |
-| V3 | New-publication X Article workflow |
+| V1 | 内容包与 Manual 发布 |
+| V2 | 有边界的 Browser 发布与不可变 Receipts |
+| V2.1 | 视觉打包与审查 |
+| V2.2 | 受治理的 Runtime Query/Ingest |
+| V2.3 | Evidence 飞轮与 Catalog-first Query |
+| V3 | 新发布 X Article 工作流 |
 
 这些阶段说明了当前能力的来源；上面的工作流分组才是使用本仓库的推荐方式。
 
