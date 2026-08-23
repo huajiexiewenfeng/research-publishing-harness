@@ -62,3 +62,5 @@
 - development/testing/archive 已按 `passed-agent-local` 同步；未冒充 CI/独立复核，未 push、未访问真实 X 或执行真实 Wiki Promotion。
 - 首次真实 Import 前修复发布时间绑定：新增 `thread.published_at`，Publication Expression/Index 保留历史发布时间，`imported_at` 仅表示导入与生命周期时间；聚焦测试先 RED 后 GREEN。
 - 修复后 fresh `pnpm check` 通过：108 个测试文件 / 458 项测试通过，1 项 opt-in 跳过，AC 1–38 离线验收通过且 `network: unused`；验证级别为 `passed-agent-local`。
+- 首次真实 Capture 暴露 Gist/Thread canonical URL 与 Increment source refs 重复；Harness 在 Evidence 边界改为保持顺序的确定性去重。真实尝试仅写入本地 Import Manifest/gap report，未创建 Evidence/Delta/Review/Promotion，也未触发 Runtime 或 X。
+- source-ref 修复聚焦测试先复现 duplicate-items RED，再以 3/3 GREEN；随后 fresh `pnpm check` 再次通过 108 个测试文件 / 458 项测试及 AC 1–38 离线验收。

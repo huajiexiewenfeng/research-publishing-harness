@@ -36,6 +36,11 @@ describe('ResearchImportService', () => {
     expect(snapshot.artifact_refs.map((ref) => ref.role)).toEqual([
       'research_package', 'canonical_article', 'publication_receipt'
     ]);
+    expect(snapshot.source_refs).toEqual([
+      manifest.gist.url,
+      manifest.thread.root_url,
+      'source:implementation-evidence'
+    ]);
   });
 
   it('preserves six-item order and manual-recorded assertions in the proposed expression', async () => {

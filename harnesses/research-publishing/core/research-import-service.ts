@@ -195,7 +195,7 @@ export class ResearchImportService {
         { workspace_relative_path: input.mother_article.path, role: 'canonical_article', media_type: 'text/markdown', canonical: true, privacy_classification: 'internal' },
         { workspace_relative_path: input.thread.receipt.path, role: 'publication_receipt', media_type: 'application/json', canonical: true, privacy_classification: 'internal' }
       ],
-      source_refs: [input.gist.url, input.thread.root_url, ...input.increment.source_refs],
+      source_refs: [...new Set([input.gist.url, input.thread.root_url, ...input.increment.source_refs])],
       privacy_classification: 'internal'
     });
   }

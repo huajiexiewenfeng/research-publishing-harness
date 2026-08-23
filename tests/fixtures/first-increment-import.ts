@@ -26,7 +26,11 @@ export async function firstIncrementImportFixture(store: WorkspaceStore): Promis
       claim_refs: ['claim:skill-runtime-boundary@1'],
       boundary_refs: ['boundary:no-production-impact'],
       open_question_refs: ['question:trace@1', 'question:eval@1', 'question:controlled-loop@1'],
-      source_refs: ['gist:a507a4b080bdbd2e30cf8a05556b3f15']
+      source_refs: [
+        'https://gist.github.com/huajiexiewenfeng/a507a4b080bdbd2e30cf8a05556b3f15',
+        'https://x.com/Glen56121/status/2089976025677725798',
+        'source:implementation-evidence'
+      ]
     },
     mother_article: {
       path: mother.relative_path, digest: mother.digest, source_classification: 'local_verified' as const
