@@ -1,6 +1,6 @@
 # Research Publishing Harness
 
-> **Pre-alpha / V1 stable + V2.2 governed research memory available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
+> **Pre-alpha / V1 stable + V2.3 research data flywheel available** — local-first infrastructure for turning ongoing AI systems research into evidence-backed public artifacts and technical conversations.
 
 Research Publishing Harness separates generative work from deterministic publication controls. An agent can help frame a thesis and draft prose; the Harness owns versioned contracts, Claim/Evidence boundaries, privacy review, weighted X character validation, immutable artifacts, content-specific Approval, and manual receipts.
 
@@ -46,6 +46,15 @@ The initial research line is enterprise AI agent runtime. The architecture is do
 - Partial-failure Receipt and stepwise resume without replaying completed writes
 - Restricted `llm-wiki-runtime` 0.2.0 process adapter: fixed executable/argv, JSON envelope, timeout and output cap
 
+## Available in V2.3
+
+- Immutable Research Increment revisions, evidence objects, canonical documents and lifecycle lineage
+- Human-reviewed Semantic Delta with one digest-bound Promotion confirmation and Catalog-last visibility
+- Catalog-first progressive Query through exact Catalog, Shards, records and bounded document Chunks
+- Intended/observed Publication Expressions for Article, X and durable-link channels
+- Write-ahead terminal Evidence hooks with explicit pending status and safe resume
+- Read-only V2.2 compatibility and one-Increment, six-item historical Import with explicit gaps
+
 ## Explicit non-capabilities
 
 V1 does **not** call a model, choose topics autonomously, schedule posts, open a browser, use X OAuth/API, or claim that a manual handoff was published. It never stores publishing credentials.
@@ -88,7 +97,7 @@ pnpm build
 node dist/harnesses/research-publishing/cli/index.js doctor --workspace ./publishing-workspace --output json
 ```
 
-See the [Quickstart](docs/guides/quickstart.md) for publication flows and the V2.2 governed Memory loop.
+See the [Quickstart](docs/guides/quickstart.md) for publication flows and the [V2.3 Memory Loop](docs/guides/memory-loop.md) for the governed research flywheel.
 
 ## Security boundary
 
@@ -117,6 +126,7 @@ See the [Quickstart](docs/guides/quickstart.md) for publication flows and the V2
 - [V3 implementation plan](docs/superpowers/plans/2026-08-21-x-article-browser-publishing-v3.md)
 - [V2.2 governed memory design](docs/superpowers/specs/2026-08-22-llm-wiki-memory-adapter-v2-2-design.zh-CN.md)
 - [V2.2 implementation plan](docs/superpowers/plans/2026-08-22-llm-wiki-memory-adapter-v2-2.md)
+- [V2.3 research data flywheel design](docs/superpowers/specs/2026-08-22-research-data-flywheel-v2-3-design.zh-CN.md)
 - [JSON contracts](harnesses/research-publishing/contracts)
 - [Synthetic public fixtures](harnesses/research-publishing/examples/synthetic)
 

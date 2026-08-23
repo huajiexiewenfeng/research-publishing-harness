@@ -20,7 +20,7 @@ function run(args: readonly string[]) {
 }
 
 describe('research-publish CLI', () => {
-  it('exposes the V2.2 Memory command surface with JSON-only routing', async () => {
+  it('exposes the V2.2-compatible V2.3 Memory command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
     const workspace = join(parent, 'workspace');
     const input = join(parent, 'input.json');
@@ -35,7 +35,8 @@ describe('research-publish CLI', () => {
       'memory increment assemble', 'memory increment status', 'memory lineage show',
       'memory delta propose', 'memory delta review', 'memory promotion plan',
       'memory promotion approve', 'memory promotion execute', 'memory promotion status',
-      'memory promotion resume'
+      'memory promotion resume', 'memory terminal-hook status', 'memory terminal-hook resume',
+      'memory import inspect', 'memory import capture', 'memory import propose'
     ];
     for (const operation of operations) {
       const result = run([
@@ -45,7 +46,7 @@ describe('research-publish CLI', () => {
       expect(payload.operation).toBe(operation);
       expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
     }
-  }, 20_000);
+  }, 45_000);
 
   it('plans and degrades a Memory Query without configured Runtime', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-query-'));

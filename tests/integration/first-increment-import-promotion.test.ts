@@ -22,7 +22,7 @@ describe('first Increment import promotion', () => {
     const snapshot = await imports.capture(manifest);
     const delta = await imports.propose(manifest, snapshot.evidence_snapshot_id);
     const review = await new SemanticDeltaService(store).review(delta.delta_id, {
-      review_id: 'review_first_import',
+      review_id: 'review_import_first_runtime_boundary',
       accepted_operation_ids: delta.proposed_operations.map((operation) => operation.operation_id),
       rejected_operation_ids: [], rejection_reasons: [], operation_replacements: [],
       reviewer: 'human-reviewer', reviewed_at: '2026-08-23T04:10:00.000Z'
@@ -38,4 +38,3 @@ describe('first Increment import promotion', () => {
     expect(await promotion.status(plan.plan_id)).toMatchObject({ phase: 'planned', approval_digest: null });
   });
 });
-

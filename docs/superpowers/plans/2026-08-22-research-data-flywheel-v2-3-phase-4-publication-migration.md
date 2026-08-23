@@ -302,29 +302,29 @@ git commit -m "feat: add explicit first research increment import"
 **Interfaces:**
 - Produces: terminal-hook status/resume and import inspect/capture/propose routes; Article/X Skills route to the shared V2.3 CLI without duplicating Harness logic.
 
-- [ ] **Step 1: Write failing CLI/Skill/manifest tests**
+- [x] **Step 1: Write failing CLI/Skill/manifest tests**
 
 Assert all V2.3 commands from design section 18 are visible; Skills describe Catalog-first Query, terminal Evidence Capture, one Promotion confirmation and prohibition on direct `.llm-wiki` writes/automatic semantic promotion. Manifest must include every new shipped source/schema/reference.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/cli/cli.test.ts tests/skills/skill-boundary.test.ts tests/tools/manifest-content.test.ts tests/integration/research-data-flywheel-v2-3.test.ts tests/security/research-data-flywheel-v2-3-security.test.ts`
 
 Expected: FAIL because final routes/docs/manifest and full-loop evidence are absent.
 
-- [ ] **Step 3: Add thin CLI and Skill routing**
+- [x] **Step 3: Add thin CLI and Skill routing**
 
 Expose `memory evidence`, `increment`, `lineage`, `delta`, `promotion`, `query`, `index`, terminal-hook and import operations. Skills choose semantic inputs and ask for the single exact Promotion confirmation; they invoke CLI for all files, digests, Runtime access and state transitions.
 
-- [ ] **Step 4: Update operator and architecture documentation**
+- [x] **Step 4: Update operator and architecture documentation**
 
 Document the North Star, planes, lifecycle, intended/observed split, five Views, Catalog-last guarantee, exact progressive Query, feedback evidence limits, V2.2 compatibility, first Import runbook and failure/reconciliation responses. State Phase 3/4 product claims only after the corresponding tests pass.
 
-- [ ] **Step 5: Build full offline acceptance**
+- [x] **Step 5: Build full offline acceptance**
 
 Acceptance must execute: finalized synthetic Package → automatic Evidence → canonical document reconstruction → Delta/Review → exact Approval → injected mid-Promotion crash → safe resume → Catalog-last → progressive Query → Package binding → synthetic Article/Thread expressions → selected feedback → next unapproved Delta. Map each assertion to AC 1–38 in the acceptance output.
 
-- [ ] **Step 6: Run focused GREEN and regenerate manifest**
+- [x] **Step 6: Run focused GREEN and regenerate manifest**
 
 Run: `pnpm vitest run tests/cli/cli.test.ts tests/skills/skill-boundary.test.ts tests/tools/manifest-content.test.ts tests/integration/research-data-flywheel-v2-3.test.ts tests/security/research-data-flywheel-v2-3-security.test.ts`
 
@@ -332,7 +332,7 @@ Run: `pnpm manifest`
 
 Expected: PASS; manifest includes final V2.3 production/contracts/Skill/reference files with current hashes.
 
-- [ ] **Step 7: Run fresh full verification**
+- [x] **Step 7: Run fresh full verification**
 
 Run: `pnpm check`
 
@@ -340,7 +340,7 @@ Expected: lint, typecheck, all Vitest suites and offline acceptance PASS; no tes
 
 Acceptance output explicitly proves Phase 4 ownership of AC 12–16, 32–34 and 37, then reports the consolidated AC 1–38 result.
 
-- [ ] **Step 8: Audit safety and repository cleanliness**
+- [x] **Step 8: Audit safety and repository cleanliness**
 
 Run: `rg -n -i "cookie|password|private[_ -]?key|recovery[_ -]?code|C:\\\\Users\\\\admin|domains/research-publishing/\\*\\*" memory receipts registry docs/examples harnesses/research-publishing skills`
 

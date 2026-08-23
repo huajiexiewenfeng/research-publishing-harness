@@ -217,6 +217,15 @@ export class MemoryPromotionService {
       review.accepted_operation_ids.includes(operation.operation_id)
     );
     if (accepted.length === 0) throw new HarnessError('CONTRACT_INVALID', 'Promotion Plan has no accepted operations');
+    for (const operation of accepted) {
+      if (operation.record_type !== 'research_lifecycle_event') continue;
+      const semantic = (operation.target_content as { semantic_record?: {
+        event_type?: string; approval_ref?: string | null;
+      } }).semantic_record;
+      if (semantic?.event_type === 'accepted' && semantic.approval_ref !== `review:${review.review_id}`) {
+        throw new HarnessError('CONTRACT_INVALID', 'accepted lifecycle event must bind the exact Human Review');
+      }
+    }
     const replacements = new Map(review.operation_replacements.map((item) => [item.operation_id, item]));
     const rendered = accepted.map((operation) => this.renderOperation(operation, replacements.get(operation.operation_id)));
     const recordMap = new Map(priorRecords.map((record) => [record.ref, record]));

@@ -244,7 +244,7 @@ export class ResearchImportService {
       event_seq: 2,
       previous_event_ref: status.latest_event_ref,
       event_type: 'accepted', prior_state: 'working', resulting_state: 'accepted',
-      evidence_refs: [evidenceRef], approval_ref: `review:pending:${input.import_id}`,
+      evidence_refs: [evidenceRef], approval_ref: `review:review_${input.import_id}`,
       receipt_ref: null, occurred_at: input.imported_at
     });
     const claims = input.claims.map((claim) => createClaimVersion({

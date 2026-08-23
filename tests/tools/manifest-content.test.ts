@@ -41,5 +41,14 @@ describe('canonicalManifestBytes', () => {
       'skills/x-publishing-copilot/scp.yml',
       'skills/x-publishing-copilot/references/memory-loop.md'
     ]));
+    expect(paths).toEqual(expect.arrayContaining([
+      'harnesses/research-publishing/core/research-terminal-hooks.ts',
+      'harnesses/research-publishing/core/research-import-service.ts',
+      'harnesses/research-publishing/contracts/research-terminal-hook-receipt.schema.json',
+      'harnesses/research-publishing/contracts/research-import-manifest.schema.json',
+      'harnesses/research-publishing/contracts/research-import-gap-report.schema.json',
+      'docs/guides/memory-loop.md',
+      'docs/examples/research-import-manifest.example.json'
+    ]));
   });
 });

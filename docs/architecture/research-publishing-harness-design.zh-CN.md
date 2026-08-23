@@ -496,3 +496,13 @@ source/feedback/insight bytes → immutable staging + preview
 Approval 同时绑定 Plan digest、Workspace identity、Domain/Profile、资产 digests、Runtime 版本和动作。任一变化都会 stale。`already_exists` 是明确幂等成功；partial/failed 不得伪装完成。Harness 在每个副作用前后持久化步骤状态，恢复时跳过已确认步骤。由于 Runtime 0.2.0 的 `register-artifact` 本身尚无 idempotency key，进程若恰在该命令成功后、Harness 状态落盘前崩溃，不能证明安全自动重放；该极窄窗口必须停止并人工核对 artifact index，不能声称无条件 exactly-once。
 
 V2.2 不包含自动监控 X、自动选择反馈、向量/语义搜索、跨 Domain 写入、后台 daemon、云/团队同步或无人审批 Ingest。自动化测试只使用临时 Workspace 和 Fake Runtime；真实 Runtime integration 也只在显式路径启用后写系统临时目录。
+
+## Research Data Flywheel V2.3 增量
+
+V2.3 的 North Star 是：把持续的 AI 系统研究转成有证据的公开作品和技术对话，同时不丢失 lineage、boundary、privacy 与 Human control。Canonical Package 仍是事实源；Evidence、Semantic、Index 三个平面分别保存验证字节、研究语义和可检索投影。
+
+Research Increment 使用不可变 revision，并通过 Claim、Open Question、Decision、Lifecycle Event、Evolution Edge 与 Publication Expression 连接研究演进。Publication Expression 严格区分 intended 与 observed；反馈只能作为 `data_only` supporting evidence，不自动强化 Claim。
+
+长期语义更新必须经过 Semantic Delta → Human Review → exact Promotion Plan → 一次确认 → Runtime，Catalog 永远最后提交。Query 按 Catalog → Shard → exact record → bounded Chunk 渐进加载，默认 Mainline 不包含 Working。V2.2 数据只读兼容；历史迁移限定为一次显式 Import、一个 Increment 和六条有序 Thread，缺失字段保持 gap。
+
+CLI 还公开 `memory terminal-hook status|resume` 与 `memory import inspect|capture|propose`。Article/X Skills 只选择语义输入和请求一次 Promotion 确认，文件、Digest、Runtime 调用、状态迁移与恢复全部由 Harness 负责。

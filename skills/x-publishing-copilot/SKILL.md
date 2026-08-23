@@ -9,6 +9,8 @@ Use the repository Harness as the deterministic boundary. The Skill may help sha
 
 For research context and Human-selected discussion feedback, follow [the governed Memory loop](references/memory-loop.md). It applies equally to Single, Thread, Reply, and X Article branches.
 
+For V2.3, use Catalog-first Query, route terminal Plan/Receipt/feedback Evidence through `memory terminal-hook status|resume`, and keep every resulting Delta unapproved until one exact Promotion confirmation. Never write `.llm-wiki`, strengthen a Claim from engagement, or perform automatic semantic promotion.
+
 Choose the branch from the requested artifact. A Single, Thread, or Reply uses `x ...`. A finalized long-form Article Package uses `x-article ...` and [the X Article Browser flow](references/x-article-browser-flow.md), including `x-article browser next` → `x-article browser claim` → one Chrome action → `x-article browser report`. Never convert an X Article to a Thread.
 
 ## Browser Adapter required flow

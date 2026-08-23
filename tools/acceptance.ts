@@ -39,9 +39,12 @@ import { MemoryPromotionService } from '../harnesses/research-publishing/core/me
 import { ProgressiveResearchQueryService } from '../harnesses/research-publishing/core/progressive-research-query-service.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
 import { ResearchEvidenceService } from '../harnesses/research-publishing/core/research-evidence-service.js';
+import { ResearchFlywheelService } from '../harnesses/research-publishing/core/research-flywheel-service.js';
 import { ResearchIncrementService } from '../harnesses/research-publishing/core/research-increment-service.js';
 import { ResearchIndexProjector } from '../harnesses/research-publishing/core/research-index-projector.js';
+import { createPublicationExpression } from '../harnesses/research-publishing/core/research-memory-contracts.js';
 import { renderResearchRecord } from '../harnesses/research-publishing/core/research-record-renderer.js';
+import { ResearchTerminalHooks } from '../harnesses/research-publishing/core/research-terminal-hooks.js';
 import { SemanticDeltaService } from '../harnesses/research-publishing/core/semantic-delta-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
@@ -63,6 +66,10 @@ let memoryResumeComplete = false;
 let researchEvidenceFoundationComplete = false;
 let researchPromotionComplete = false;
 let progressiveQueryComplete = false;
+let promotionResumeComplete = false;
+let packageBindingComplete = false;
+let terminalHookResumeComplete = false;
+let publicationFlywheelComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
@@ -587,15 +594,19 @@ try {
     reviewer: 'acceptance-reviewer', reviewed_at: browserAt
   });
   let acceptanceCatalog: { path: string; digest: `sha256:${string}` } | null = null;
+  let promotionShardFailure = true;
+  const promotionRuntimeCalls: string[] = [];
   const acceptancePromotionRuntime = {
-    async version() { return '0.2.0' as const; },
-    async validateMapping() { return { status: 'ok' }; },
+    async version() { promotionRuntimeCalls.push('version'); return '0.2.0' as const; },
+    async validateMapping() { promotionRuntimeCalls.push('validate_mapping'); return { status: 'ok' }; },
     async findCatalog() {
+      promotionRuntimeCalls.push('find_catalog');
       return acceptanceCatalog === null
         ? { status: 'not_found' as const }
         : { status: 'found' as const, ...acceptanceCatalog };
     },
     async copySource(input: Readonly<Record<string, unknown>>) {
+      promotionRuntimeCalls.push('copy_source');
       return {
         status: 'ok', path: input.logical_path as string,
         checksum: sha256Bytes(await readFile(input.source as string))
@@ -604,12 +615,17 @@ try {
     async writeRecord(input: Readonly<Record<string, unknown>>) {
       const checksum = sha256Bytes(await readFile(input.content_file as string));
       const recordType = input.record_type as string;
+      promotionRuntimeCalls.push(`write_record:${recordType}`);
+      if (recordType === 'research_index_shard' && promotionShardFailure) {
+        promotionShardFailure = false;
+        throw new Error('synthetic promotion shard failure');
+      }
       const path = `acceptance/${recordType}.md`;
       if (recordType === 'research_index_catalog') acceptanceCatalog = { path, digest: checksum };
       return { status: 'ok', path, checksum };
     },
-    async registerArtifact() { return { status: 'ok' }; },
-    async appendLog() { return { status: 'ok', path: 'logs/research-promotion.jsonl' }; }
+    async registerArtifact() { promotionRuntimeCalls.push('register_artifact'); return { status: 'ok' }; },
+    async appendLog() { promotionRuntimeCalls.push('append_log'); return { status: 'ok', path: 'logs/research-promotion.jsonl' }; }
   };
   const promotionService = new MemoryPromotionService(store, acceptancePromotionRuntime, {
     profile_path: resolve('harnesses/research-publishing/memory/llm-wiki-profile.yml'),
@@ -627,14 +643,20 @@ try {
   const promotionApproval = await promotionService.approve(
     promotionPlan.plan_id, promotionPlan.plan_digest, 'acceptance-reviewer', 60_000
   );
-  const promotionReceipt = await promotionService.execute(promotionPlan.plan_id, promotionApproval);
+  const partialPromotionReceipt = await promotionService.execute(promotionPlan.plan_id, promotionApproval);
+  const copiedBeforeResume = promotionRuntimeCalls.filter((call) => call === 'copy_source').length;
+  const promotionReceipt = await promotionService.resume(promotionPlan.plan_id, promotionApproval);
   const observedCatalog = acceptanceCatalog as {
     path: string;
     digest: `sha256:${string}`;
   } | null;
   researchPromotionComplete =
     promotionReceipt.status === 'complete' &&
-    observedCatalog?.digest === promotionPlan.expected_final_catalog_digest;
+    observedCatalog?.digest === promotionPlan.expected_final_catalog_digest &&
+    promotionRuntimeCalls.filter((call) => call.startsWith('write_record:')).at(-1) === 'write_record:research_index_catalog';
+  promotionResumeComplete =
+    partialPromotionReceipt.status === 'partial' &&
+    promotionRuntimeCalls.filter((call) => call === 'copy_source').length === copiedBeforeResume;
 
   const queryRecordContent = renderResearchRecord({
     record_type: 'claim_version',
@@ -711,6 +733,19 @@ try {
     selected_context_refs: [progressiveSnapshot.context_items[0]!.context_ref],
     reviewer: 'acceptance-reviewer', reviewed_at: browserAt
   });
+  const packageDraftV1_1 = {
+    ...frozen.package,
+    schema_version: '1.1' as const,
+    status: 'draft' as const,
+    memory_context: {
+      query_plan_digest: null, context_snapshot_digest: null, context_refs: [],
+      status: 'not_configured' as const, reviewer: null, reviewed_at: null
+    }
+  };
+  const boundPackage = await progressiveQuery.bindPackage(progressivePlan.query_id, packageDraftV1_1);
+  packageBindingComplete =
+    boundPackage.memory_context.status === 'applied' &&
+    boundPackage.memory_context.context_refs.includes(progressiveSnapshot.context_items[0]!.context_ref);
   progressiveQueryComplete =
     progressiveSnapshot.query_status === 'loaded' &&
     progressiveReview.snapshot_digest === progressiveSnapshot.snapshot_digest &&
@@ -845,14 +880,118 @@ try {
     partialFeedbackReceipt.resume_cursor === 'append_log' &&
     resumedFeedbackReceipt.resume_cursor === null;
 
+  const foundationStatusPath = 'memory/increments/increment_acceptance_foundation/status.json';
+  const foundationStatus = await store.readJson<Record<string, unknown>>(foundationStatusPath);
+  await store.replaceAtomic(foundationStatusPath, {
+    ...foundationStatus, state: 'accepted', latest_event_seq: 2,
+    latest_event_ref: `lifecycle:event_acceptance_promoted@${promotionReceipt.receipt_digest}`,
+    updated_at: browserAt
+  });
+  const publicationExpression = createPublicationExpression({
+    expression_id: 'expression_acceptance_thread',
+    increment_ref: 'increment:enterprise-agent-runtime:increment_acceptance_foundation@1',
+    channel: 'x_thread', language: 'en', derivation_type: 'adaptation',
+    claim_refs: ['claim:claim_acceptance_promotion@1'], visual_refs: [],
+    evidence_snapshot_refs: [`evidence:${researchEvidence.evidence_snapshot_id}`],
+    intended_content: {
+      approved_plan_ref: 'x/acceptance/plan.json', approved_plan_digest: sha256('acceptance-plan'),
+      local_content_path: `${canonical.root}/article.md`, content_digest: sha256(canonical),
+      expected_item_order: [1, 2], link_refs: [memoryPublicationPath], visual_refs: []
+    },
+    observed_content: {
+      source: 'user_report', public_url: 'https://x.com/runtime_ai/status/900000000000000000',
+      platform_ids: ['900000000000000000', '900000000000000002'],
+      observed_digest: sha256(['acceptance-thread-1', 'acceptance-thread-2']),
+      actual_item_order: [1, 2], media_verification: 'unverified', link_verification: 'matched',
+      missing_content: [], unexpected_content: [], mismatches: []
+    },
+    verification_level: 'manual_recorded',
+    platform_refs: ['https://x.com/runtime_ai/status/900000000000000000'],
+    publication_receipt_ref: `receipt:${memoryPublicationPath}#${memoryPublication.digest}`,
+    published_at: browserAt
+  });
+  const expressionPath = 'receipts/acceptance-publication-expression.json';
+  await store.writeNew(expressionPath, publicationExpression);
+  const expressionArtifact = await store.resolveExistingArtifact(expressionPath);
+  let terminalCaptureFailure = true;
+  const terminalHooks = new ResearchTerminalHooks(store, {
+    now: () => new Date(browserAt),
+    capture: async (event, snapshotId) => {
+      if (terminalCaptureFailure) {
+        terminalCaptureFailure = false;
+        throw new Error('synthetic terminal Evidence failure');
+      }
+      return ResearchTerminalHooks.captureDefault(store, event, snapshotId, () => new Date(browserAt));
+    }
+  });
+  const terminalEvent = {
+    event_id: 'terminal_acceptance_publication', kind: 'publication_receipt_terminal' as const,
+    publication_kind: 'x_post' as const,
+    increment_id: 'increment_acceptance_foundation', increment_revision: 1,
+    workspace_identity_digest: `sha256:${'a'.repeat(64)}` as const,
+    source_digest: memoryPublication.digest,
+    artifacts: [
+      { workspace_relative_path: memoryPublication.relative_path, digest: memoryPublication.digest,
+        role: 'publication_receipt' as const, media_type: 'application/json', canonical: true,
+        privacy_classification: 'internal' as const },
+      { workspace_relative_path: expressionArtifact.relative_path, digest: expressionArtifact.digest,
+        role: 'publication_expression' as const, media_type: 'application/json', canonical: true,
+        privacy_classification: 'internal' as const }
+    ],
+    source_refs: ['publication:acceptance-thread'], privacy_classification: 'internal' as const,
+    occurred_at: browserAt
+  };
+  const pendingTerminal = await terminalHooks.record(terminalEvent);
+  const completedTerminal = await terminalHooks.resume(terminalEvent.event_id);
+  terminalHookResumeComplete =
+    pendingTerminal.status === 'evidence_capture_pending' && completedTerminal.status === 'complete';
+  const publicationEvidenceId = completedTerminal.evidence_snapshot_ref!.slice('evidence:'.length);
+  const nextDelta = await new ResearchFlywheelService(store, {
+    deltaId: () => 'delta_acceptance_next_unapproved',
+    lifecycleEventId: () => 'event_acceptance_publication_attached',
+    now: () => new Date(browserAt),
+    baseCatalogDigest: async () => promotionPlan.expected_final_catalog_digest
+  }).proposeFromEvidence(publicationEvidenceId);
+  const nextQuestions = await new ResearchFlywheelService(store).proposeNextQuestions(
+    'increment:enterprise-agent-runtime:increment_acceptance_foundation@1'
+  );
+  publicationFlywheelComplete =
+    acceptanceFeedback.entries.length === 1 &&
+    nextDelta.proposed_operations.some((operation) => operation.operation_type === 'attach_publication') &&
+    nextQuestions.every((question) => question.data_classification === 'data_only') &&
+    !(await store.exists('memory/reviews/review_acceptance_next_unapproved/review.json')) &&
+    !(await store.exists('memory/promotions/delta_acceptance_next_unapproved/approval.json'));
+
   if (
     !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
     !memoryQueryComplete || !publicationCheckpointComplete ||
     !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete ||
-    !researchPromotionComplete || !progressiveQueryComplete
+    !researchPromotionComplete || !progressiveQueryComplete || !promotionResumeComplete ||
+    !packageBindingComplete || !terminalHookResumeComplete || !publicationFlywheelComplete
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
+  const acceptanceCriteria = {
+    AC01: 'canonical Package source', AC02: 'immutable Increment revision',
+    AC03: 'content-addressed Evidence', AC04: 'lossless canonical reconstruction',
+    AC05: 'workspace-relative persistence', AC06: 'Evidence and Promotion separated',
+    AC07: 'terminal Evidence hook', AC08: 'unapproved Delta excluded',
+    AC09: 'Review-bound one-confirmation Promotion', AC10: 'Working excluded by default',
+    AC11: 'lifecycle and Claim status separated', AC12: 'intended and observed expression',
+    AC13: 'observation does not overwrite intent', AC14: 'adaptation preserves Claim strength',
+    AC15: 'Human-selected feedback only', AC16: 'metrics remain non-technical evidence',
+    AC17: 'versioned evolution contracts', AC18: 'history remains auditable',
+    AC19: 'semantic records create-only', AC20: 'digest-bound derived Index',
+    AC21: 'generation-bound Shards and Catalog', AC22: 'Catalog-first exact Query',
+    AC23: 'bounded document retrieval', AC24: 'no broad research glob',
+    AC25: 'budget fail-closed', AC26: 'Catalog committed last',
+    AC27: 'partial Promotion invisible', AC28: 'digest changes stale Approval',
+    AC29: 'safe Resume skips confirmed work', AC30: 'registration reconciliation contract',
+    AC31: 'reviewed Context bound to Package', AC32: 'V2.2 read-only compatibility',
+    AC33: 'bounded one-Increment six-item Import', AC34: 'offline fake-only acceptance',
+    AC35: 'Runtime-only Wiki access', AC36: 'monotonic lifecycle chain',
+    AC37: 'next question and Delta remain unapproved', AC38: 'enterprise runtime default Track isolation'
+  } as const;
   process.stdout.write(
     `${JSON.stringify({
       ok: true,
@@ -867,7 +1006,13 @@ try {
       memory_resume: 'simulated_complete',
       research_evidence_foundation: 'simulated_complete',
       research_promotion: 'simulated_complete',
+      promotion_resume: 'simulated_complete',
       progressive_query: 'simulated_complete',
+      package_binding: 'simulated_complete',
+      terminal_hook_resume: 'simulated_complete',
+      publication_flywheel: 'simulated_complete',
+      phase4_owned_acceptance: ['AC12', 'AC13', 'AC14', 'AC15', 'AC16', 'AC32', 'AC33', 'AC34', 'AC37'],
+      acceptance_criteria: acceptanceCriteria,
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,

@@ -9,6 +9,8 @@ Use the repository Harness as the deterministic boundary. The agent may help sha
 
 For durable research context and post-publication learning, follow [the governed Memory loop](references/memory-loop.md). Memory Query is optional and degradable; Memory Ingest is approval-gated and fail-closed.
 
+For V2.3, use Catalog-first Query, route terminal Evidence Capture and recovery through `memory terminal-hook status|resume`, and route semantic changes through `memory delta ...` and `memory promotion ...`. Ask for one exact Promotion confirmation. Never write `.llm-wiki` or perform automatic semantic promotion.
+
 ## Required flow
 
 1. Locate a compatible runtime with `scripts/invoke.mjs doctor --workspace <path> --output json`. If discovery or compatibility fails, stop and report it.

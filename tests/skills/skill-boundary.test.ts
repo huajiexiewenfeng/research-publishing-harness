@@ -27,6 +27,10 @@ describe('article-publishing-copilot boundary', () => {
     expect(memory).toMatch(/Candidate Insight.*not.*conclusion/is);
     expect(memory).toMatch(/exact.*preview.*approval/is);
     expect(memory).toMatch(/never.*\.llm-wiki/is);
+    expect(memory).toMatch(/Catalog-first/i);
+    expect(memory).toMatch(/terminal.*Evidence Capture/is);
+    expect(memory).toMatch(/one.*Promotion confirmation/is);
+    expect(memory).toMatch(/never.*automatic semantic promotion/is);
   });
 });
 
@@ -57,6 +61,10 @@ describe('x-publishing-copilot boundary', () => {
     expect(memory).toMatch(/Candidate Insight.*not.*conclusion/is);
     expect(memory).toMatch(/exact.*preview.*approval/is);
     expect(memory).toMatch(/never.*\.llm-wiki/is);
+    expect(memory).toMatch(/Catalog-first/i);
+    expect(memory).toMatch(/terminal.*Evidence Capture/is);
+    expect(memory).toMatch(/one.*Promotion confirmation/is);
+    expect(memory).toMatch(/never.*automatic semantic promotion/is);
   });
 
   it('documents the exact claim loop and forbids a second Submit claim', async () => {

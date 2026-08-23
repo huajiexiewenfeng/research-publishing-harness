@@ -194,3 +194,7 @@ memory ingest plan → inspect preview.md and exact plan_digest
 ```
 
 Any change to Workspace identity, Profile, SCP, Mapping, source bytes, staged content or Plan digest invalidates Approval. A `partial` Receipt records the last failed step; after correcting the external Runtime condition, use `memory ingest status` and `memory ingest resume` with the same still-valid Approval. Completed steps are not replayed. Never work around a failure by writing `.llm-wiki` directly.
+
+## 12. V2.3 research data flywheel
+
+V2.3 adds evidence-backed Research Increments, semantic Review/Promotion, Catalog-first progressive Query, publication expressions and a bounded historical Import. Follow the complete [Memory Loop guide](memory-loop.md). The only semantic write path is Delta → Human Review → exact Promotion Plan → one confirmation → Runtime, with the Catalog committed last.

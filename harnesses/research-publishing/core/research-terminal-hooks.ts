@@ -226,6 +226,14 @@ export class ResearchTerminalHooks {
     return this.record(event);
   }
 
+  async status(eventId: string): Promise<ResearchTerminalHookReceiptV1> {
+    const receipt = await this.readReceipt(eventId);
+    if (receipt === null) {
+      throw new HarnessError('ARTIFACT_NOT_FOUND', `terminal hook Receipt not found: ${eventId}`);
+    }
+    return receipt;
+  }
+
   bind(context: BoundResearchTerminalContext): ResearchTerminalNotifier {
     return {
       notify: async (input) => {

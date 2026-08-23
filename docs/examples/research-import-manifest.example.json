@@ -1,13 +1,38 @@
 {
   "schema_version": "research-import-manifest/v1",
+  "import_id": "import_first_runtime_boundary",
   "import_scope": "single_increment",
-  "operator_inputs": {
-    "mother_article": "user-selected canonical Markdown path plus exact digest",
-    "gist": "https://gist.github.com/huajiexiewenfeng/a507a4b080bdbd2e30cf8a05556b3f15",
-    "thread_root": "https://x.com/Glen56121/status/2089976025677725798",
-    "thread_shape": "exactly 6 ordered items",
-    "track": "enterprise-agent-runtime",
-    "open_questions": ["Trace", "Eval", "Controlled Loop remain planned research"]
+  "workspace_identity_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "track_id": "enterprise-agent-runtime",
+  "increment": {
+    "increment_id": "increment_skill_runtime_boundary", "revision": 1,
+    "title": "Where should Skill memory end?",
+    "research_question": "Which knowledge concerns belong in a Skill versus a deterministic Runtime?",
+    "thesis": "Domain semantics belong in the Skill; deterministic knowledge access belongs in the Runtime.",
+    "summary": "The first bounded research increment and its publication lineage.",
+    "tags": ["enterprise-agent-runtime", "memory"],
+    "claim_refs": ["claim:skill-runtime-boundary@1"],
+    "boundary_refs": ["boundary:no-production-impact"],
+    "open_question_refs": ["question:trace@1", "question:eval@1", "question:controlled-loop@1"],
+    "source_refs": ["gist:a507a4b080bdbd2e30cf8a05556b3f15"]
   },
-  "execution_note": "Resolve local artifact and Receipt bindings, inspect gaps, then confirm the exact ordinary Research Promotion Plan digest."
+  "mother_article": {"path": "articles/import/mother.md", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "source_classification": "local_verified"},
+  "gist": {"url": "https://gist.github.com/huajiexiewenfeng/a507a4b080bdbd2e30cf8a05556b3f15", "source_classification": "user_asserted"},
+  "thread": {
+    "root_url": "https://x.com/Glen56121/status/2089976025677725798", "source_classification": "user_asserted",
+    "receipt": {"path": "receipts/import-thread.json", "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+    "items": [
+      {"ordinal": 1, "text": "Imported research thread item 1", "content_digest": "sha256:6be06e6e0563c35d4736ad5bd2b3340e53a0fda6971a897be91a9ab47b642a8a", "platform_id": "2089976025677725798", "public_url": "https://x.com/Glen56121/status/2089976025677725798", "metrics": null, "source_classification": "receipt_backed"},
+      {"ordinal": 2, "text": "Imported research thread item 2", "content_digest": "sha256:82e69254635b084e3b1545317ac0ace76113779ac4e90e51eaa4eb84acf9b23a", "platform_id": null, "public_url": null, "metrics": null, "source_classification": "user_asserted"},
+      {"ordinal": 3, "text": "Imported research thread item 3", "content_digest": "sha256:c462e6d919f6f1e0a362c6950b5865c5a1c8f1ee6a8a38feb45e6f644ed02251", "platform_id": null, "public_url": null, "metrics": null, "source_classification": "user_asserted"},
+      {"ordinal": 4, "text": "Imported research thread item 4", "content_digest": "sha256:256e51b79d81a88615e5472c8a500591e392647a802aa915c03faccb52992f19", "platform_id": null, "public_url": null, "metrics": null, "source_classification": "user_asserted"},
+      {"ordinal": 5, "text": "Imported research thread item 5", "content_digest": "sha256:8a21e2312644b9c06018031d991500988b0151abcddf481aaec70252a7a04588", "platform_id": null, "public_url": null, "metrics": null, "source_classification": "user_asserted"},
+      {"ordinal": 6, "text": "Imported research thread item 6", "content_digest": "sha256:b7ac3cb5d5a90040cfe316ee7b107854dbbcce01d3f6531d9c77ea9c4a65a126", "platform_id": null, "public_url": null, "metrics": null, "source_classification": "user_asserted"}
+    ]
+  },
+  "claims": [{"claim_id": "skill_runtime_boundary", "version": 1, "statement": "Domain semantics belong in the Skill; deterministic knowledge access belongs in the Runtime.", "claim_status": "observed", "evidence_refs": ["evidence:import"], "boundary_refs": ["boundary:no-production-impact"], "summary": "A working boundary, not a production benchmark."}],
+  "boundaries": {"established": ["The HR Skill integration works in the author's own use."], "not_established": ["No public production benchmark or business-impact evidence."], "planned_work": ["Trace", "Eval", "Controlled Loop"]},
+  "explicit_assertions": [{"field": "thread.item_order", "value": "The supplied six items are in publication order.", "source_classification": "user_asserted"}],
+  "imported_at": "2026-08-23T04:00:00.000Z",
+  "manifest_digest": "sha256:dd6b2bbb03415d469c59a6c43682200c808087f36d875c9ca843c19763f9febc"
 }

@@ -38,6 +38,11 @@ import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memor
 import { MemoryPromotionService } from '../core/memory-promotion-service.js';
 import { ProgressiveResearchQueryService } from '../core/progressive-research-query-service.js';
 import { ResearchIndexMaintenanceService } from '../core/research-index-maintenance-service.js';
+import { ResearchTerminalHooks } from '../core/research-terminal-hooks.js';
+import {
+  ResearchImportService,
+  type ResearchImportManifestV1
+} from '../core/research-import-service.js';
 import { SemanticDeltaService } from '../core/semantic-delta-service.js';
 import type { PlanResearchQueryInput } from '../core/research-query-types.js';
 import type {
@@ -356,6 +361,8 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       store,
       (runtime ?? unavailableProgressiveRuntime) as ConstructorParameters<typeof ResearchIndexMaintenanceService>[1]
     );
+    const terminalHooks = new ResearchTerminalHooks(store);
+    const researchImport = new ResearchImportService(store);
     const ingest = new MemoryIngestService(
       store,
       (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryIngestService>[1],
@@ -383,6 +390,31 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const input = await readInput<{ evidence_snapshot_id: string }>(options);
       const artifact = await evidence.status(input.evidence_snapshot_id);
       return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory terminal-hook status') {
+      const input = await readInput<{ event_id: string }>(options);
+      const artifact = await terminalHooks.status(input.event_id);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory terminal-hook resume') {
+      const input = await readInput<{ event_id: string }>(options);
+      const artifact = await terminalHooks.resume(input.event_id);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory import inspect') {
+      const artifact = await researchImport.inspect(await readInput<ResearchImportManifestV1>(options));
+      return { ok: true, operation, artifact, state: 'inspected' };
+    }
+    if (operation === 'memory import capture') {
+      const artifact = await researchImport.capture(await readInput<ResearchImportManifestV1>(options));
+      return { ok: true, operation, artifact, state: 'evidence_captured' };
+    }
+    if (operation === 'memory import propose') {
+      const input = await readInput<{
+        manifest: ResearchImportManifestV1; evidence_snapshot_id: string;
+      }>(options);
+      const artifact = await researchImport.propose(input.manifest, input.evidence_snapshot_id);
+      return { ok: true, operation, artifact, state: 'delta_proposed' };
     }
     if (operation === 'memory increment assemble') {
       const artifact = await increments.assemble(

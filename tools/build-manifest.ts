@@ -9,7 +9,9 @@ const output = resolve(root, 'registry/manifests/research-publishing.json');
 const sourceRoots = [
   'harnesses/research-publishing',
   'skills/article-publishing-copilot',
-  'skills/x-publishing-copilot'
+  'skills/x-publishing-copilot',
+  'docs/guides',
+  'docs/examples'
 ];
 const excludedNames = new Set(['.git', 'dist', 'node_modules', 'workspaces', 'receipts', 'secrets']);
 
