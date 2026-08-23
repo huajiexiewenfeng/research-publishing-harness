@@ -28,12 +28,15 @@ import { XService, type XDraft } from '../harnesses/research-publishing/branches
 import { approvePublication } from '../harnesses/research-publishing/core/approval.js';
 import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
 import { approveXArticlePublication } from '../harnesses/research-publishing/core/x-article-approval.js';
+import { CanonicalDocumentService } from '../harnesses/research-publishing/core/canonical-document-service.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
 import { MemoryFeedbackService } from '../harnesses/research-publishing/core/memory-feedback-service.js';
 import { MemoryIngestService } from '../harnesses/research-publishing/core/memory-ingest-service.js';
 import { MemoryInsightService } from '../harnesses/research-publishing/core/memory-insight-service.js';
 import { MemoryQueryService } from '../harnesses/research-publishing/core/memory-query-service.js';
 import { PackageService } from '../harnesses/research-publishing/core/package-service.js';
+import { ResearchEvidenceService } from '../harnesses/research-publishing/core/research-evidence-service.js';
+import { ResearchIncrementService } from '../harnesses/research-publishing/core/research-increment-service.js';
 import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
 
@@ -51,6 +54,7 @@ let memoryQueryComplete = false;
 let publicationCheckpointComplete = false;
 let feedbackInsightComplete = false;
 let memoryResumeComplete = false;
+let researchEvidenceFoundationComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
@@ -493,6 +497,49 @@ try {
     visualReceipt.media_evidence.composer_attachment_verified &&
     visualReceipt.media_evidence.public_media_verified;
 
+  const researchEvidencePath = 'packages/acceptance_research_evidence.md';
+  const researchEvidenceText = '# Runtime boundary\n\nDeterministic access belongs in the Runtime.\n';
+  await store.writeNew(researchEvidencePath, researchEvidenceText);
+  const researchEvidence = await new ResearchEvidenceService(store, {
+    evidenceSnapshotId: () => 'evidence_acceptance_foundation',
+    now: () => new Date(browserAt)
+  }).capture({
+    increment_id: 'increment_acceptance_foundation', increment_revision: 1,
+    capture_event: 'research_package_finalized', capture_kind: 'automatic_terminal',
+    workspace_identity_digest: `sha256:${'a'.repeat(64)}`,
+    artifacts: [{
+      workspace_relative_path: researchEvidencePath, role: 'research_package',
+      media_type: 'text/markdown', canonical: true, privacy_classification: 'internal'
+    }],
+    source_refs: ['acceptance:research-package'], privacy_classification: 'internal'
+  });
+  const canonicalDocuments = new CanonicalDocumentService(store);
+  const canonicalProjection = await canonicalDocuments.project({
+    document_id: 'document_acceptance_foundation', document_role: 'research_package',
+    track_id: 'enterprise-agent-runtime',
+    increment_ref: 'increment:enterprise-agent-runtime:increment_acceptance_foundation@1',
+    artifact_ref: researchEvidence.artifact_refs[0]!, language: 'en'
+  });
+  if (canonicalProjection.status !== 'projected') {
+    throw new Error('acceptance canonical research document was not projected');
+  }
+  const increment = await new ResearchIncrementService(store, {
+    lifecycleEventId: () => 'event_acceptance_foundation',
+    now: () => new Date(browserAt)
+  }).assemble({
+    increment_id: 'increment_acceptance_foundation', revision: 1,
+    title: 'Runtime boundary', research_question: 'Where should deterministic access live?',
+    thesis: 'Deterministic knowledge access belongs in the Runtime.',
+    summary: 'Human-promoted acceptance summary for the Runtime boundary.',
+    document_manifest_refs: [`document:${canonicalProjection.manifest.document_id}@${canonicalProjection.manifest.manifest_digest}`],
+    tags: ['agent-runtime'], claim_refs: [], decision_refs: [], boundary_refs: [],
+    open_question_refs: [], source_refs: ['acceptance:research-package'],
+    evidence_snapshot_refs: [`evidence:${researchEvidence.evidence_snapshot_id}`], predecessor_refs: []
+  });
+  researchEvidenceFoundationComplete =
+    increment.revision === 1 &&
+    await canonicalDocuments.reconstruct(canonicalProjection.manifest) === researchEvidenceText;
+
   const memoryQuery = new MemoryQueryService(store, {
     async query() {
       return {
@@ -625,7 +672,7 @@ try {
   if (
     !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
     !memoryQueryComplete || !publicationCheckpointComplete ||
-    !feedbackInsightComplete || !memoryResumeComplete
+    !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
@@ -641,6 +688,7 @@ try {
       publication_checkpoint: 'simulated_complete',
       feedback_insight: 'simulated_complete',
       memory_resume: 'simulated_complete',
+      research_evidence_foundation: 'simulated_complete',
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,

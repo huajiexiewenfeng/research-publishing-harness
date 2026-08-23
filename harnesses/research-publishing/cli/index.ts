@@ -35,6 +35,14 @@ import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpo
 import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-insight-service.js';
 import { MemoryQueryService } from '../core/memory-query-service.js';
 import type { MemoryIngestApprovalV1, RuntimeContextResult } from '../core/memory-types.js';
+import {
+  ResearchEvidenceService,
+  type CaptureResearchEvidenceInput
+} from '../core/research-evidence-service.js';
+import {
+  ResearchIncrementService,
+  type AssembleResearchIncrementInput
+} from '../core/research-increment-service.js';
 import { PackageService } from '../core/package-service.js';
 import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
@@ -306,6 +314,8 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const query = new MemoryQueryService(store, runtime ?? unavailableQueryRuntime);
     const feedback = new MemoryFeedbackService(store);
     const insight = new MemoryInsightService(store);
+    const evidence = new ResearchEvidenceService(store);
+    const increments = new ResearchIncrementService(store);
     const ingest = new MemoryIngestService(
       store,
       (runtime ?? unavailableIngestRuntime) as ConstructorParameters<typeof MemoryIngestService>[1],
@@ -324,6 +334,31 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
           }
         : await runtime.doctor();
       return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'memory evidence capture') {
+      const artifact = await evidence.capture(await readInput<CaptureResearchEvidenceInput>(options));
+      return { ok: true, operation, artifact, state: 'evidence_captured' };
+    }
+    if (operation === 'memory evidence status') {
+      const input = await readInput<{ evidence_snapshot_id: string }>(options);
+      const artifact = await evidence.status(input.evidence_snapshot_id);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory increment assemble') {
+      const artifact = await increments.assemble(
+        await readInput<AssembleResearchIncrementInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'working' };
+    }
+    if (operation === 'memory increment status') {
+      const input = await readInput<{ increment_id: string }>(options);
+      const artifact = await increments.status(input.increment_id);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'memory lineage show') {
+      const input = await readInput<{ increment_id: string }>(options);
+      const artifact = await increments.lineage(input.increment_id);
+      return { ok: true, operation, artifact, state: artifact.state };
     }
     if (operation === 'memory query plan') {
       const input = await readInput<{

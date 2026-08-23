@@ -18,6 +18,7 @@ describe('offline acceptance', () => {
       publication_checkpoint: 'simulated_complete',
       feedback_insight: 'simulated_complete',
       memory_resume: 'simulated_complete',
+      research_evidence_foundation: 'simulated_complete',
       network: 'unused'
     });
   }, 20_000);

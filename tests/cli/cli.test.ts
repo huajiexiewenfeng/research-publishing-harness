@@ -29,7 +29,9 @@ describe('research-publish CLI', () => {
       'memory doctor', 'memory query plan', 'memory query execute', 'memory query status',
       'memory query bind-package', 'memory feedback capture', 'memory feedback review',
       'memory insight propose', 'memory insight review', 'memory ingest plan',
-      'memory ingest approve', 'memory ingest execute', 'memory ingest status', 'memory ingest resume'
+      'memory ingest approve', 'memory ingest execute', 'memory ingest status', 'memory ingest resume',
+      'memory evidence capture', 'memory evidence status',
+      'memory increment assemble', 'memory increment status', 'memory lineage show'
     ];
     for (const operation of operations) {
       const result = run([
