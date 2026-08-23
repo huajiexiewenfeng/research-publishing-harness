@@ -44,7 +44,9 @@ const names = [
   'semantic-promotion-review',
   'memory-promotion-plan-v2',
   'memory-promotion-approval-v2',
-  'memory-promotion-receipt-v2'
+  'memory-promotion-receipt-v2',
+  'research-index-catalog',
+  'research-index-shard'
 ] as const;
 
 const v1Names = new Set([
@@ -72,7 +74,9 @@ const v1Names = new Set([
   'queryable-canonical-document',
   'research-lifecycle-event',
   'semantic-memory-delta',
-  'semantic-promotion-review'
+  'semantic-promotion-review',
+  'research-index-catalog',
+  'research-index-shard'
 ]);
 
 describe('public contracts', () => {

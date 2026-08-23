@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-2-promotion-index`
-- active_task: `phase-2-task-3-five-view-index`
+- active_task: `phase-2-task-4-atomic-promotion`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
 
 ## Scope Lock
@@ -47,3 +47,7 @@
 - Runtime Profile now exposes eleven V2.3 record types, Catalog exact lookup and a 12,000-char
   per-record ceiling while preserving Runtime 0.2.0 and V2.2 record routes.
 - Next action: Task 3 deterministic five-view generation Index projector RED tests.
+- Phase 2 Task 3 verification: projector + contract suites, 48 tests passed; TypeScript passed.
+- Five Views share one deterministic generation; Shards are quarter/budget bounded and content-addressed;
+  Catalog contains promoted summaries only and retracted records remain outside Mainline.
+- Next action: Task 4 exact Plan/Approval, write-ahead Catalog-last execution and safe resume RED tests.

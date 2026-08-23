@@ -179,7 +179,7 @@ git commit -m "feat: add V2.3 runtime record projection"
 - Consumes: reviewed operations, prior exact Catalog, active semantic/lifecycle states and policy thresholds.
 - Produces: one candidate Catalog and immutable `mainline|history|working|publication|feedback` generation shards.
 
-- [ ] **Step 1: Write failing projection and threshold tests**
+- [x] **Step 1: Write failing projection and threshold tests**
 
 ```ts
 it('projects all views under one generation and leaves retracted records out of mainline', () => {
@@ -190,13 +190,13 @@ it('projects all views under one generation and leaves retracted records out of 
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/research-index-projector.test.ts`
 
 Expected: FAIL because projector and index schemas do not exist.
 
-- [ ] **Step 3: Implement stable projection**
+- [x] **Step 3: Implement stable projection**
 
 ```ts
 export class ResearchIndexProjector {
@@ -206,17 +206,17 @@ export class ResearchIndexProjector {
 
 Use `index_id=<track_id>:research`; bucket by view and calendar quarter, stable-sort refs, split at 64 entries or 96,000 UTF-8 bytes, render each index record at most 12,000 chars, derive generation from canonical projection content, and path shards by generation plus rendered digest. Catalog contains shard summaries only.
 
-- [ ] **Step 4: Add determinism and adversarial tests**
+- [x] **Step 4: Add determinism and adversarial tests**
 
 Shuffle input order, cross quarter boundaries, hit each threshold exactly, exceed by one, include CJK byte counts, superseded/retracted/working/publication/feedback states, and assert identical projection bytes for equivalent sets.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/research-index-projector.test.ts tests/contracts/contracts.test.ts`
 
 Expected: PASS; no Index body contains canonical article full text or unreviewed generated summaries.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests

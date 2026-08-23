@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-index-catalog/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "index_id", "track_id", "generation", "index_policy_version", "views", "catalog_digest"],
+  "properties": {
+    "schema_version": { "const": "research-index-catalog/v1" },
+    "index_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}:research$" },
+    "track_id": { "$ref": "#/$defs/id" }, "generation": { "$ref": "#/$defs/id" },
+    "index_policy_version": { "const": "research-index-policy/v1" },
+    "views": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mainline", "history", "working", "publication", "feedback"],
+      "properties": {
+        "mainline": { "$ref": "#/$defs/catalogView" }, "history": { "$ref": "#/$defs/catalogView" },
+        "working": { "$ref": "#/$defs/catalogView" }, "publication": { "$ref": "#/$defs/catalogView" },
+        "feedback": { "$ref": "#/$defs/catalogView" }
+      }
+    },
+    "catalog_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "strings": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "descriptor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["shard_id", "path", "digest", "generation", "topic_summary", "time_start", "time_end", "entry_count", "status_tags", "category_tags"],
+      "properties": {
+        "shard_id": { "$ref": "#/$defs/id" }, "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" }, "generation": { "$ref": "#/$defs/id" },
+        "topic_summary": { "$ref": "#/$defs/text" }, "time_start": { "type": "string", "format": "date-time" }, "time_end": { "type": "string", "format": "date-time" },
+        "entry_count": { "type": "integer", "minimum": 1 }, "status_tags": { "$ref": "#/$defs/strings" }, "category_tags": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "catalogView": {
+      "type": "object", "additionalProperties": false, "required": ["generation", "shards"],
+      "properties": { "generation": { "$ref": "#/$defs/id" }, "shards": { "type": "array", "items": { "$ref": "#/$defs/descriptor" } } }
+    }
+  }
+}

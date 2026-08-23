@@ -49,7 +49,9 @@ export const CONTRACT_NAMES = [
   'semantic-promotion-review',
   'memory-promotion-plan-v2',
   'memory-promotion-approval-v2',
-  'memory-promotion-receipt-v2'
+  'memory-promotion-receipt-v2',
+  'research-index-catalog',
+  'research-index-shard'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

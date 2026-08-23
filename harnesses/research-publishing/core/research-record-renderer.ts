@@ -20,7 +20,7 @@ const REQUIRED_IDENTITIES: Readonly<Record<ResearchRuntimeRecordType, readonly s
   canonical_document_chunk: ['document_id', 'chunk_id', 'ordinal'],
   research_lifecycle_event: ['event_id', 'increment_ref', 'event_seq'],
   research_index_catalog: ['index_id', 'track_id', 'generation', 'catalog_digest'],
-  research_index_shard: ['shard_id', 'track_id', 'generation', 'view', 'shard_digest']
+  research_index_shard: ['shard_id', 'track_id', 'generation', 'view']
 };
 
 const FRONTMATTER_KEY = /^[a-z][a-z0-9_]*$/;
