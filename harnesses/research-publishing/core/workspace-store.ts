@@ -13,6 +13,7 @@ const ALLOWED_TOP_LEVEL = new Set([
   'feedback',
   'memory',
   'packages',
+  'program',
   'receipts',
   'reviews',
   'runs',
