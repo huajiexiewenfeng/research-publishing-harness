@@ -5,6 +5,7 @@
 - title: Build the deterministic six-month research program control plane
 - status: executing
 - phase_1_status: implemented and passed-agent-local
+- phase_2_status: executing
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -99,3 +100,5 @@ The external planning documents were reviewed as temporary local sources and are
 - The research execution clock is evidence-gated; week ranges are target windows only.
 - Roadmap bootstrap stores titles and short planning abstracts, not twenty-four finished articles.
 - Phase 1 is complete within its locked scope. Monthly Review verifies contained opaque Outcome bytes in this phase; Phase 4 owns Outcome schema and Roadmap/month/cycle binding.
+- Phase 2 is authorized from the confirmed plan-suite commit `38a3efb`. It owns Weekly Cycle, 2–3 Candidate Briefs, explicit Human Selection, Research Content Package V1.2, four pre-publication content gates, local Article finalization, weekly CLI and the Article Skill route.
+- Phase 2 does not own Publication Bundle approval/execution, Browser writes, Weekly Outcome, Memory Promotion, public bootstrap content, or Runtime source changes.
