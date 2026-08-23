@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/semantic-promotion-review/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "review_id", "delta_id", "delta_digest", "accepted_operation_ids", "rejected_operation_ids", "rejection_reasons", "operation_replacements", "reviewer", "reviewed_at", "review_digest"],
+  "properties": {
+    "schema_version": { "const": "semantic-promotion-review/v1" },
+    "review_id": { "$ref": "#/$defs/id" },
+    "delta_id": { "$ref": "#/$defs/id" },
+    "delta_digest": { "$ref": "#/$defs/digest" },
+    "accepted_operation_ids": { "$ref": "#/$defs/ids" },
+    "rejected_operation_ids": { "$ref": "#/$defs/ids" },
+    "rejection_reasons": { "type": "array", "items": { "$ref": "#/$defs/rejection" } },
+    "operation_replacements": { "type": "array", "items": { "$ref": "#/$defs/replacement" } },
+    "reviewer": { "$ref": "#/$defs/text" },
+    "reviewed_at": { "type": "string", "format": "date-time" },
+    "review_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "rejection": {
+      "type": "object", "additionalProperties": false, "required": ["operation_id", "reason"],
+      "properties": { "operation_id": { "$ref": "#/$defs/id" }, "reason": { "$ref": "#/$defs/text" } }
+    },
+    "replacement": {
+      "type": "object", "additionalProperties": false, "required": ["operation_id", "evidence_refs"],
+      "properties": {
+        "operation_id": { "$ref": "#/$defs/id" },
+        "claim_status": { "enum": ["verified", "observed", "inferred", "hypothesis", "planned"] },
+        "evidence_refs": { "$ref": "#/$defs/refs" }
+      }
+    }
+  }
+}

@@ -44,7 +44,12 @@ export const CONTRACT_NAMES = [
   'research-evolution-edge',
   'publication-expression',
   'queryable-canonical-document',
-  'research-lifecycle-event'
+  'research-lifecycle-event',
+  'semantic-memory-delta',
+  'semantic-promotion-review',
+  'memory-promotion-plan-v2',
+  'memory-promotion-approval-v2',
+  'memory-promotion-receipt-v2'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/memory-promotion-plan-v2/2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "plan_id", "track_id", "workspace_identity_digest", "runtime_requirement", "profile_digest", "mapping_digest", "scp_digests", "evidence_snapshots", "delta_ref", "delta_digest", "review_ref", "review_digest", "base_catalog_ref", "base_catalog_digest", "source_artifact", "immutable_record_operations", "document_record_operations", "index_shard_operations", "catalog_operation", "artifact_operation", "log_event", "action_sequence", "expected_final_catalog_digest", "planned_at", "plan_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-promotion-plan/v2" },
+    "kind": { "const": "research_increment_promotion" },
+    "plan_id": { "$ref": "#/$defs/id" }, "track_id": { "$ref": "#/$defs/id" },
+    "workspace_identity_digest": { "$ref": "#/$defs/digest" },
+    "runtime_requirement": { "type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "const": "0.2.0" } } },
+    "profile_digest": { "$ref": "#/$defs/digest" }, "mapping_digest": { "$ref": "#/$defs/digest" },
+    "scp_digests": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } },
+    "evidence_snapshots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/digestRef" } },
+    "delta_ref": { "$ref": "#/$defs/text" }, "delta_digest": { "$ref": "#/$defs/digest" },
+    "review_ref": { "$ref": "#/$defs/text" }, "review_digest": { "$ref": "#/$defs/digest" },
+    "base_catalog_ref": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "base_catalog_digest": { "$ref": "#/$defs/digest" },
+    "source_artifact": { "$ref": "#/$defs/artifact" },
+    "immutable_record_operations": { "$ref": "#/$defs/operations" },
+    "document_record_operations": { "$ref": "#/$defs/operations" },
+    "index_shard_operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/operation" } },
+    "catalog_operation": { "$ref": "#/$defs/operation" },
+    "artifact_operation": { "type": "object", "additionalProperties": false, "required": ["artifact_id", "artifact_type"], "properties": { "artifact_id": { "$ref": "#/$defs/id" }, "artifact_type": { "const": "research_promotion" } } },
+    "log_event": { "type": "object", "additionalProperties": false, "required": ["event_id", "log_type"], "properties": { "event_id": { "$ref": "#/$defs/id" }, "log_type": { "const": "memory_event" } } },
+    "action_sequence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } },
+    "expected_final_catalog_digest": { "$ref": "#/$defs/digest" },
+    "planned_at": { "type": "string", "format": "date-time" }, "plan_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "artifact": { "type": "object", "additionalProperties": false, "required": ["relative_path", "digest"], "properties": { "relative_path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "digestRef": { "type": "object", "additionalProperties": false, "required": ["ref", "digest"], "properties": { "ref": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "recordType": { "enum": ["research_increment", "claim_version", "research_decision", "open_question", "publication_expression", "research_evolution_edge", "canonical_document_manifest", "canonical_document_chunk", "research_lifecycle_event", "research_index_catalog", "research_index_shard"] },
+    "operation": { "type": "object", "additionalProperties": false, "required": ["operation_id", "record_type", "variables", "refs", "content_artifact", "expected_digest", "write_mode"], "properties": { "operation_id": { "$ref": "#/$defs/id" }, "record_type": { "$ref": "#/$defs/recordType" }, "variables": { "$ref": "#/$defs/stringMap" }, "refs": { "$ref": "#/$defs/stringMap" }, "content_artifact": { "$ref": "#/$defs/artifact" }, "expected_digest": { "$ref": "#/$defs/digest" }, "write_mode": { "enum": ["create_only", "update_allowed"] } } },
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "action": { "enum": ["validate_mapping", "verify_evidence", "copy_source", "write_semantic_records", "write_document_records", "register_artifact", "append_log", "write_index_shards", "recheck_base_catalog", "commit_catalog"] }
+  }
+}

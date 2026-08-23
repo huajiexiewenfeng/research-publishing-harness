@@ -40,7 +40,7 @@
 - Consumes: Phase 1 V2.3 records and canonical digest functions.
 - Produces: `SemanticMemoryDeltaV1`, `SemanticPromotionReviewV1`, `MemoryPromotionPlanV2`, `MemoryPromotionApprovalV2`, `MemoryPromotionReceiptV2` and transition guards.
 
-- [ ] **Step 1: Write failing contract and transition tests**
+- [x] **Step 1: Write failing contract and transition tests**
 
 ```ts
 it('cannot strengthen a claim during review without new evidence', () => {
@@ -55,13 +55,13 @@ it('does not allow complete before catalog commit', () => {
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/contracts/contracts.test.ts tests/memory/research-promotion-contracts.test.ts tests/memory/research-promotion-state.test.ts`
 
 Expected: FAIL because Promotion contracts and state transitions are absent.
 
-- [ ] **Step 3: Implement exact schemas and guards**
+- [x] **Step 3: Implement exact schemas and guards**
 
 ```ts
 export function createSemanticMemoryDelta(input: SemanticMemoryDeltaInput): SemanticMemoryDeltaV1;
@@ -71,13 +71,13 @@ export function transitionResearchPromotion(from: ResearchPromotionState, event:
 
 Validate operation IDs, full target content/digests, Evidence lineage, index impact, privacy non-downgrade, lifecycle legality and edge endpoint resolvability. Rejected operations never enter Plan.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `pnpm vitest run tests/contracts tests/memory/research-promotion-contracts.test.ts tests/memory/research-promotion-state.test.ts`
 
 Expected: PASS with V2.2 schema regression.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```text
 git add harnesses/research-publishing/core harnesses/research-publishing/contracts tests/contracts tests/memory

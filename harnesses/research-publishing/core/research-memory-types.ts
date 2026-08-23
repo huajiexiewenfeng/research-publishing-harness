@@ -220,3 +220,189 @@ export interface DerivedResearchLifecycleV1 {
   readonly latest_event_ref: StableRef;
   readonly next_event_seq: number;
 }
+
+export type ResearchIndexView = 'mainline' | 'history' | 'working' | 'publication' | 'feedback';
+export type SemanticOperationType =
+  | 'add_record'
+  | 'add_revision'
+  | 'add_edge'
+  | 'change_lifecycle'
+  | 'attach_publication'
+  | 'attach_feedback'
+  | 'open_question'
+  | 'close_question'
+  | 'retract_record';
+
+export type ResearchRuntimeRecordType =
+  | 'research_increment'
+  | 'claim_version'
+  | 'research_decision'
+  | 'open_question'
+  | 'publication_expression'
+  | 'research_evolution_edge'
+  | 'canonical_document_manifest'
+  | 'canonical_document_chunk'
+  | 'research_lifecycle_event'
+  | 'research_index_catalog'
+  | 'research_index_shard';
+
+export interface SemanticMemoryOperationV1 {
+  readonly operation_id: StableId;
+  readonly operation_type: SemanticOperationType;
+  readonly target_id: StableId;
+  readonly record_type: ResearchRuntimeRecordType;
+  readonly target_content: Readonly<Record<string, unknown>>;
+  readonly target_content_digest: Digest;
+  readonly evidence_refs: readonly StableRef[];
+  readonly evidence_privacy_classification: PrivacyClassification;
+  readonly target_privacy_classification: PrivacyClassification;
+  readonly index_impact: readonly ResearchIndexView[];
+}
+
+export interface SemanticMemoryDeltaInput {
+  readonly delta_id: StableId;
+  readonly increment_ref: StableRef;
+  readonly base_catalog_digest: Digest;
+  readonly evidence_snapshot_refs: readonly StableRef[];
+  readonly proposed_operations: readonly SemanticMemoryOperationV1[];
+  readonly generated_by: string;
+  readonly generated_at: string;
+  readonly policy_version: 'semantic-promotion/v1';
+}
+
+export interface SemanticMemoryDeltaV1 extends SemanticMemoryDeltaInput {
+  readonly schema_version: 'semantic-memory-delta/v1';
+  readonly delta_digest: Digest;
+}
+
+export interface SemanticOperationReplacementV1 {
+  readonly operation_id: StableId;
+  readonly claim_status?: ClaimStatus;
+  readonly evidence_refs: readonly StableRef[];
+}
+
+export interface SemanticPromotionRejectionV1 {
+  readonly operation_id: StableId;
+  readonly reason: string;
+}
+
+export interface ReviewDeltaInput {
+  readonly review_id: StableId;
+  readonly accepted_operation_ids: readonly StableId[];
+  readonly rejected_operation_ids: readonly StableId[];
+  readonly rejection_reasons: readonly SemanticPromotionRejectionV1[];
+  readonly operation_replacements: readonly SemanticOperationReplacementV1[];
+  readonly reviewer: string;
+  readonly reviewed_at: string;
+}
+
+export interface SemanticPromotionReviewV1 extends ReviewDeltaInput {
+  readonly schema_version: 'semantic-promotion-review/v1';
+  readonly delta_id: StableId;
+  readonly delta_digest: Digest;
+  readonly review_digest: Digest;
+}
+
+export interface PromotionArtifactRefV2 {
+  readonly relative_path: string;
+  readonly digest: Digest;
+}
+
+export interface PromotionRecordOperationV2 {
+  readonly operation_id: StableId;
+  readonly record_type: ResearchRuntimeRecordType;
+  readonly variables: Readonly<Record<string, string>>;
+  readonly refs: Readonly<Record<string, string>>;
+  readonly content_artifact: PromotionArtifactRefV2;
+  readonly expected_digest: Digest;
+  readonly write_mode: 'create_only' | 'update_allowed';
+}
+
+export type ResearchPromotionAction =
+  | 'validate_mapping'
+  | 'verify_evidence'
+  | 'copy_source'
+  | 'write_semantic_records'
+  | 'write_document_records'
+  | 'register_artifact'
+  | 'append_log'
+  | 'write_index_shards'
+  | 'recheck_base_catalog'
+  | 'commit_catalog';
+
+export interface MemoryPromotionPlanV2 {
+  readonly schema_version: 'memory-promotion-plan/v2';
+  readonly kind: 'research_increment_promotion';
+  readonly plan_id: StableId;
+  readonly track_id: StableId;
+  readonly workspace_identity_digest: Digest;
+  readonly runtime_requirement: Readonly<{ name: 'llm-wiki-runtime'; version: '0.2.0' }>;
+  readonly profile_digest: Digest;
+  readonly mapping_digest: Digest;
+  readonly scp_digests: readonly Digest[];
+  readonly evidence_snapshots: ReadonlyArray<{ readonly ref: StableRef; readonly digest: Digest }>;
+  readonly delta_ref: StableRef;
+  readonly delta_digest: Digest;
+  readonly review_ref: StableRef;
+  readonly review_digest: Digest;
+  readonly base_catalog_ref: StableRef | null;
+  readonly base_catalog_digest: Digest;
+  readonly source_artifact: PromotionArtifactRefV2;
+  readonly immutable_record_operations: readonly PromotionRecordOperationV2[];
+  readonly document_record_operations: readonly PromotionRecordOperationV2[];
+  readonly index_shard_operations: readonly PromotionRecordOperationV2[];
+  readonly catalog_operation: PromotionRecordOperationV2;
+  readonly artifact_operation: Readonly<{ artifact_id: StableId; artifact_type: 'research_promotion' }>;
+  readonly log_event: Readonly<{ event_id: StableId; log_type: 'memory_event' }>;
+  readonly action_sequence: readonly ResearchPromotionAction[];
+  readonly expected_final_catalog_digest: Digest;
+  readonly planned_at: string;
+  readonly plan_digest: Digest;
+}
+
+export interface MemoryPromotionApprovalV2 {
+  readonly schema_version: 'memory-promotion-approval/v2';
+  readonly approval_id: StableId;
+  readonly plan_id: StableId;
+  readonly plan_digest: Digest;
+  readonly review_digest: Digest;
+  readonly workspace_identity_digest: Digest;
+  readonly confirmation_text: string;
+  readonly approved_action: 'promote_once';
+  readonly approved_by: string;
+  readonly approved_at: string;
+  readonly expires_at: string;
+  readonly approval_digest: Digest;
+}
+
+export type MemoryPromotionStepStatus =
+  | 'pending'
+  | 'started'
+  | 'succeeded'
+  | 'already_exists'
+  | 'failed'
+  | 'uncertain';
+
+export interface MemoryPromotionReceiptV2 {
+  readonly schema_version: 'memory-promotion-receipt/v2';
+  readonly receipt_id: StableId;
+  readonly plan_id: StableId;
+  readonly plan_digest: Digest;
+  readonly approval_digest: Digest;
+  readonly runtime_version: '0.2.0';
+  readonly status: 'complete' | 'partial' | 'failed' | 'reconciliation_required';
+  readonly steps: ReadonlyArray<{
+    readonly name: ResearchPromotionAction;
+    readonly status: MemoryPromotionStepStatus;
+    readonly artifact_ref: StableRef | null;
+    readonly checksum: Digest | null;
+    readonly error_code: string | null;
+    readonly runtime_status: string | null;
+  }>;
+  readonly record_refs: readonly StableRef[];
+  readonly prior_catalog_digest: Digest;
+  readonly final_catalog_digest: Digest | null;
+  readonly reconciliation_required: boolean;
+  readonly resume_cursor: ResearchPromotionAction | null;
+  readonly receipt_digest: Digest;
+}

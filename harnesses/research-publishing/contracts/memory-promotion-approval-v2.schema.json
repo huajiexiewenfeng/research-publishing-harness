@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/memory-promotion-approval-v2/2.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "plan_id", "plan_digest", "review_digest", "workspace_identity_digest", "confirmation_text", "approved_action", "approved_by", "approved_at", "expires_at", "approval_digest"],
+  "properties": {
+    "schema_version": { "const": "memory-promotion-approval/v2" },
+    "approval_id": { "$ref": "#/$defs/id" }, "plan_id": { "$ref": "#/$defs/id" },
+    "plan_digest": { "$ref": "#/$defs/digest" }, "review_digest": { "$ref": "#/$defs/digest" },
+    "workspace_identity_digest": { "$ref": "#/$defs/digest" },
+    "confirmation_text": { "type": "string", "pattern": "^确认 Research Promotion Plan sha256:[a-f0-9]{64}$" },
+    "approved_action": { "const": "promote_once" }, "approved_by": { "$ref": "#/$defs/text" },
+    "approved_at": { "type": "string", "format": "date-time" }, "expires_at": { "type": "string", "format": "date-time" },
+    "approval_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": { "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" }, "text": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }
+}

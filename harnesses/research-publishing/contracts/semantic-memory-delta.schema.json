@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/semantic-memory-delta/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "delta_id", "increment_ref", "base_catalog_digest", "evidence_snapshot_refs", "proposed_operations", "generated_by", "generated_at", "policy_version", "delta_digest"],
+  "properties": {
+    "schema_version": { "const": "semantic-memory-delta/v1" },
+    "delta_id": { "$ref": "#/$defs/id" },
+    "increment_ref": { "$ref": "#/$defs/text" },
+    "base_catalog_digest": { "$ref": "#/$defs/digest" },
+    "evidence_snapshot_refs": { "$ref": "#/$defs/nonEmptyRefs" },
+    "proposed_operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/operation" } },
+    "generated_by": { "$ref": "#/$defs/text" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "policy_version": { "const": "semantic-promotion/v1" },
+    "delta_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "nonEmptyRefs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "privacy": { "enum": ["public", "internal", "restricted", "data_only"] },
+    "operation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation_id", "operation_type", "target_id", "record_type", "target_content", "target_content_digest", "evidence_refs", "evidence_privacy_classification", "target_privacy_classification", "index_impact"],
+      "properties": {
+        "operation_id": { "$ref": "#/$defs/id" },
+        "operation_type": { "enum": ["add_record", "add_revision", "add_edge", "change_lifecycle", "attach_publication", "attach_feedback", "open_question", "close_question", "retract_record"] },
+        "target_id": { "$ref": "#/$defs/id" },
+        "record_type": { "enum": ["research_increment", "claim_version", "research_decision", "open_question", "publication_expression", "research_evolution_edge", "canonical_document_manifest", "canonical_document_chunk", "research_lifecycle_event", "research_index_catalog", "research_index_shard"] },
+        "target_content": { "type": "object" },
+        "target_content_digest": { "$ref": "#/$defs/digest" },
+        "evidence_refs": { "$ref": "#/$defs/nonEmptyRefs" },
+        "evidence_privacy_classification": { "$ref": "#/$defs/privacy" },
+        "target_privacy_classification": { "$ref": "#/$defs/privacy" },
+        "index_impact": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["mainline", "history", "working", "publication", "feedback"] } }
+      }
+    }
+  }
+}

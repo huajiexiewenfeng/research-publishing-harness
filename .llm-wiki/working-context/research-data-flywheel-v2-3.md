@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-2-promotion-index`
-- active_task: `phase-2-context-handoff`
+- active_task: `phase-2-task-2-runtime-projection`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
 
 ## Scope Lock
@@ -39,3 +39,7 @@
 - One existing long X Browser integration test received an explicit 15-second budget after it
   reproducibly exceeded the default 5 seconds only under the full parallel suite; isolated behavior passed.
 - Next action: re-read the Runtime dependency boundary and execute Phase 2 Task 1 with RED tests.
+- Runtime boundary re-verified at local `llm-wiki-runtime` 0.2.0 commit `1ebcb04`;
+  its unrelated untracked assessment document was preserved.
+- Phase 2 Task 1 verification: 4 test files / 49 tests passed; TypeScript and focused ESLint passed.
+- Next action: Task 2 Runtime Profile, fixed Adapter writes and deterministic record renderer RED tests.
