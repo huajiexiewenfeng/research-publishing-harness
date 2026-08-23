@@ -167,4 +167,26 @@ describe('LLMWikiRuntimeAdapter', () => {
       resolve(paths().workspace, 'memory/staging/catalog.md')
     ]);
   });
+
+  it('finds the exact current Catalog checksum for Promotion rechecks', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({
+      status: 'found', matches: [{
+        path: 'domains/research-publishing/tracks/runtime/indexes/catalog.md',
+        checksum: 'd'.repeat(64), identity: 'runtime:research', display: 'runtime:research', fields: {}
+      }]
+    }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'console-script', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.findCatalog('runtime')).resolves.toEqual({
+      status: 'found', path: 'domains/research-publishing/tracks/runtime/indexes/catalog.md',
+      digest: `sha256:${'d'.repeat(64)}`
+    });
+    expect(runner.calls[0]!.args).toEqual([
+      'find-records', '--scope-root', paths().workspace,
+      '--record-type', 'research_index_catalog', '--lookup-value-json', '"runtime:research"',
+      '--caller-domain', 'research-publishing', '--target-domain', 'research-publishing'
+    ]);
+  });
 });

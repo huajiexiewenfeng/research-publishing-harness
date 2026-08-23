@@ -71,6 +71,10 @@ export interface RuntimeWriteResult extends RuntimeEnvelope {
   readonly checksum: `sha256:${string}`;
 }
 
+export type RuntimeCatalogLookupResult =
+  | Readonly<{ status: 'not_found' }>
+  | Readonly<{ status: 'found'; path: string; digest: `sha256:${string}` }>;
+
 const RUNTIME_RECORD_TYPES = new Set<LegacyRuntimeRecordType | ResearchRuntimeRecordType>([
   'publication_evidence', 'feedback_snapshot', 'candidate_insight',
   'research_increment', 'claim_version', 'research_decision', 'open_question',
@@ -294,6 +298,33 @@ export class LLMWikiRuntimeAdapter {
     ]);
     if (result.status !== 'ok') throw statusFailure('validate-mapping', result);
     return normalizeEnvelopeChecksum(result);
+  }
+
+  async findCatalog(trackId: string): Promise<RuntimeCatalogLookupResult> {
+    if (!SAFE_SLUG.test(trackId)) {
+      throw new HarnessError('CONTRACT_INVALID', 'Catalog Track id must be a safe slug');
+    }
+    const result = await this.invoke('find-records', [
+      '--scope-root', this.config.workspace,
+      '--record-type', 'research_index_catalog',
+      '--lookup-value-json', JSON.stringify(`${trackId}:research`),
+      '--caller-domain', DOMAIN,
+      '--target-domain', DOMAIN
+    ]);
+    if (result.status === 'not_found') return { status: 'not_found' };
+    if (result.status !== 'found' || !Array.isArray(result.matches) || result.matches.length !== 1) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup was not exact');
+    }
+    const match = result.matches[0];
+    if (match === null || typeof match !== 'object' || Array.isArray(match)) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup match is invalid');
+    }
+    const value = match as Record<string, unknown>;
+    const digest = normalizedDigest(value.checksum);
+    if (typeof value.path !== 'string' || digest === null) {
+      throw new HarnessError('MEMORY_RUNTIME_PROTOCOL_ERROR', 'Runtime Catalog lookup lacks path or checksum');
+    }
+    return { status: 'found', path: value.path, digest };
   }
 
   async copySource(input: RuntimeCopySourceInput): Promise<RuntimeWriteResult> {

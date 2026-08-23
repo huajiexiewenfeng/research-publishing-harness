@@ -5,7 +5,7 @@
 - flow_id: `research-data-flywheel-v2-3`
 - status: in-progress
 - active_phase: `phase-2-promotion-index`
-- active_task: `phase-2-task-4-atomic-promotion`
+- active_task: `phase-2-task-5-cli-acceptance`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-2-promotion-index.md`
 
 ## Scope Lock
@@ -51,3 +51,8 @@
 - Five Views share one deterministic generation; Shards are quarter/budget bounded and content-addressed;
   Catalog contains promoted summaries only and retracted records remain outside Mainline.
 - Next action: Task 4 exact Plan/Approval, write-ahead Catalog-last execution and safe resume RED tests.
+- Phase 2 Task 4 verification: 5 test files / 14 tests passed; TypeScript and focused ESLint passed.
+- Promotion binds one confirmation to the exact reviewed/staged bytes, persists step-start before Runtime calls,
+  rechecks the base Catalog under the Track lock and commits Catalog last.
+- Register/Catalog uncertainty is terminal pending reconciliation; safe partial writes resume idempotently.
+- Next action: Task 5 thin CLI routes, offline acceptance and the complete Phase 2 gate.

@@ -241,17 +241,17 @@ git commit -m "feat: project generation-addressed research indexes"
 - Consumes: Tasks 1–3 contracts, renderer/projector and Runtime Adapter.
 - Produces: `delta propose/review`, exact Plan/Approval, write-ahead execution state, terminal Receipt, safe resume.
 
-- [ ] **Step 1: Write failing stale, ordering, crash-window and idempotency tests**
+- [x] **Step 1: Write failing stale, ordering, crash-window and idempotency tests**
 
 Assert exact call order; Catalog is last; base Catalog is rechecked in lock; mismatched existing checksum fails; crash after shard keeps old Catalog; crash after register marks reconciliation; resume skips confirmed steps; approval becomes stale after any bound digest changes.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `pnpm vitest run tests/memory/semantic-delta-service.test.ts tests/memory/memory-promotion-service.test.ts tests/security/memory-promotion-security.test.ts tests/integration/research-promotion-workflow.test.ts`
 
 Expected: FAIL because Promotion orchestration does not exist.
 
-- [ ] **Step 3: Implement Delta and Review artifacts**
+- [x] **Step 3: Implement Delta and Review artifacts**
 
 ```ts
 export class SemanticDeltaService {
@@ -262,7 +262,7 @@ export class SemanticDeltaService {
 
 Write immutable artifacts under `memory/deltas/<delta_id>/` and include explicit non-memory content, unresolved questions, index impacts and evidence refs.
 
-- [ ] **Step 4: Implement exact Promotion Plan and approval**
+- [x] **Step 4: Implement exact Promotion Plan and approval**
 
 ```ts
 export class MemoryPromotionService implements ResearchPromotionPort {
@@ -276,17 +276,17 @@ export class MemoryPromotionService implements ResearchPromotionPort {
 
 Plan persists every staged byte/digest and exact action sequence. Approval only accepts the exact confirmation digest and expires fail-closed.
 
-- [ ] **Step 5: Implement locked write-ahead execution**
+- [x] **Step 5: Implement locked write-ahead execution**
 
 Persist step `started` before Runtime call and terminal result after. Hold `memory/promotions/locks/<track_id>.lock` from base Catalog validation until Receipt. Sequence exactly: validate → Evidence → local assets → copy source → semantic records → document records → register → log → Shards → recheck old Catalog → Catalog last → Receipt.
 
-- [ ] **Step 6: Run GREEN**
+- [x] **Step 6: Run GREEN**
 
 Run: `pnpm vitest run tests/memory/semantic-delta-service.test.ts tests/memory/memory-promotion-service.test.ts tests/security/memory-promotion-security.test.ts tests/integration/research-promotion-workflow.test.ts`
 
 Expected: PASS; partial/uncertain states never issue a complete Receipt or switch Catalog.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```text
 git add harnesses/research-publishing/core tests/memory tests/security tests/integration
