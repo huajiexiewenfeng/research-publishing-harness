@@ -350,13 +350,13 @@ Run: `git diff --check && git status --short`
 
 Expected: only intended final Task 5 files are uncommitted.
 
-- [ ] **Step 9: Commit Task 5**
+- [x] **Step 9: Commit Task 5**
 
 ```text
 git add harnesses/research-publishing skills docs README.md tests tools registry
 git commit -m "feat: complete V2.3 research data flywheel"
 ```
 
-- [ ] **Step 10: Close with project-finish**
+- [x] **Step 10: Close with project-finish**
 
 Use `$project-finish` to sync actual files/tests/acceptance evidence to the project-local LLM Wiki and requirements traceability. Do not mark V2.3 complete until `pnpm check`, manifest verification and AC 1–38 audit all pass.

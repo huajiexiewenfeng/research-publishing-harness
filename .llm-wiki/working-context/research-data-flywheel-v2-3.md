@@ -3,9 +3,9 @@
 ## Flow
 
 - flow_id: `research-data-flywheel-v2-3`
-- status: in-progress
-- active_phase: `phase-4-publication-migration`
-- active_task: `phase-4-task-5-cli-skills-acceptance`
+- status: complete
+- active_phase: `complete`
+- active_task: `none`
 - active_plan: `docs/superpowers/plans/2026-08-22-research-data-flywheel-v2-3-phase-4-publication-migration.md`
 
 ## Scope Lock
@@ -14,9 +14,9 @@
   local Working Increment assembly and CLI/acceptance coverage.
 - completed: Phase 2 Semantic Delta, reviewed promotion, Runtime-backed immutable records and Catalog-last Index visibility.
 - completed: Phase 3 Catalog-first progressive query and exact Runtime reads.
-- active: Phase 4 Publication Flywheel and historical migration.
+- completed: Phase 4 Publication Flywheel and bounded historical migration.
 - read-only: V2.2 implementation and `llm-wiki-runtime` source referenced by `edge-001`.
-- excluded: none within the approved V2.3 plan; final project finish remains gated on Phase 4.
+- excluded: autonomous promotion/publication, automatic feedback selection, broad V2.3 Query and bulk historical migration.
 
 ## Implementation Rules
 
@@ -112,4 +112,14 @@
   Semantic Delta that passed Review and generated the existing approval-required Promotion Plan.
 - Task 4 verification: 6 files / 68 tests passed across Import, Evidence and contract regression;
   TypeScript and lint passed; all fixtures were local and network-free.
-- Next action: Phase 4 Task 5 CLI, thin Skills, docs, manifest, AC 1–38 acceptance and full gate.
+- Phase 4 Task 5 completed: CLI adds terminal-hook status/resume and Import inspect/capture/propose;
+  both Skills route Catalog-first Query, terminal Evidence and one exact Promotion confirmation through Harness.
+- Operator/architecture docs and a complete bounded Import example are shipped in the deterministic manifest.
+- Full `pnpm check` passed: 108 test files / 457 tests, 1 explicit opt-in test skipped; offline
+  acceptance executed Promotion crash/resume, Catalog-last, progressive Query Package binding,
+  terminal Evidence crash/resume and a next unapproved publication Delta with AC 1–38 mapping.
+- Security audit found only intentional secret detectors and documented V2.2 broad-glob compatibility;
+  no V2.3 broad Query, credential, user absolute path, real Chrome/X/Wiki access or direct `.llm-wiki` write.
+- Verification authority remains `passed-agent-local`; no CI or independent reviewer result is claimed.
+- Final Task 5 implementation commit: `304cfa8`.
+- Archive: `.llm-wiki/handoff/research-data-flywheel-v2-3-handoff.md`.

@@ -51,3 +51,12 @@
 - 根因定位在 Adapter wire normalization；增加 raw SHA-256 → `sha256:<hex>` 规范化及 unit/real integration 断言。同一 Approval 从 `write_records` 恢复，已完成 source copy 未重放，record 返回 `already_exists` 并安全完成 register/log。
 - 后续真实 Query 返回 `loaded`，读取到首篇 Thread 的 `publication_evidence`，分类保持 `data_only` 且未提升 `manual_recorded` 的公开验证等级。
 - 修复后 fresh `pnpm check`：69 个测试文件 / 297 项测试通过，离线 acceptance 通过；显式 Runtime integration 1/1 通过。
+
+## 2026-08-23
+
+- 完成 Research Data Flywheel V2.3 四个阶段：Evidence/Increment、Review/Promotion/Index、Catalog-first progressive Query、Publication Flywheel 与显式历史 Import。
+- Task 5 补齐 terminal-hook 与 Import CLI、Article/X 薄 Skill 路由、Memory Loop 指南、完整 Import 示例及 167 文件确定性 manifest。
+- 完整离线 acceptance 真实经过 Promotion 中断/恢复、Catalog-last、Query 回绑 Package、terminal Evidence 中断/恢复、Publication Expression 与下一条未批准 Delta，并输出 AC 1–38 映射。
+- fresh `pnpm check` 通过：108 个测试文件 / 457 项测试通过，1 项显式 opt-in 测试跳过；`network: unused`。
+- 安全审计未发现 V2.3 宽目录 Query、直接 `.llm-wiki` 写入、凭据或用户绝对路径；命中项仅为防护检测器和 V2.2 兼容声明。
+- development/testing/archive 已按 `passed-agent-local` 同步；未冒充 CI/独立复核，未 push、未访问真实 X 或执行真实 Wiki Promotion。
