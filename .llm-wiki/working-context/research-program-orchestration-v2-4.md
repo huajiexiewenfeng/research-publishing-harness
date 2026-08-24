@@ -3,41 +3,39 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: awaiting-next-phase
-- active_phase: `phase-2-weekly-cycle-complete`
-- active_task: `none`
-- active_plan: external plan-suite commit `38a3efb`, Phase 2 Weekly Article Cycle
+- status: design-review
+- active_phase: `phase-3-publication-bundle-design`
+- active_task: `user-review`
+- active_plan: external plan-suite commit `38a3efb`, calibrated by the Phase 3 child Change Brief
 
 ## Context Handoff
 
-- user_intent: continue the confirmed V2.4 implementation with Phase 2 inline
-- active_sources: approved V2.4 design and plan suite, Phase 1 handoff/current source/tests, current V2.3 Query/Package/Article behavior
-- active_scope: Weekly Cycle contracts/service, Candidate Set, explicit Human Selection/cancellation, Package V1.2 and claim boundary semantics, four content gates, selected-Brief compiler, local Article finalization, weekly CLI/Article Skill, focused tests and Phase 2 handoff
-- read_only_scope: Phase 1 truth/projections, existing V1.0/V1.1 package behavior, V2.3 Query artifacts and `llm-wiki-runtime` 0.2.0
+- user_intent: complete the source-calibrated Phase 3 design before implementation
+- active_sources: approved V2.4 design and plan suite, Phase 2 handoff, current Bundle-adjacent source/tests at `5c07034`
+- active_scope: Phase 3 child Change Brief and parent lifecycle linkage only
+- read_only_scope: all production source, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 behavior, V2.3 Query artifacts and `llm-wiki-runtime` 0.2.0
 - candidate_scope: none
-- excluded_scope: Phase 3–4 Publication Bundle/Outcome/bootstrap, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: Scope Lock Gate
-- requested_stage_or_bridge: executing-plans with test-driven-development
-- constraints: current `main`, inline, no subagents, immutable revisions, closed schemas, deterministic digests, no automatic research choice
+- excluded_scope: Phase 3 implementation, Phase 4 Outcome/bootstrap, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
+- current_gate: User Review Gate
+- requested_stage_or_bridge: brainstorming design completion; writing-plans only after explicit design approval
+- constraints: current `main`, design-only, no subagents, no production or test edits, no external side effects
 
 ## Scope Lock
 
-- locked_active_scope: only files named by Phase 2 Tasks 1–5 plus this Change Brief, working context, verification and Phase 2 handoff
-- locked_read_only_scope: Phase 1 sources of truth, V1.0/V1.1 compatibility behavior, V2.3 Query artifacts and Runtime `edge-001`
+- locked_active_scope: Phase 3 child Change Brief plus parent requirement and working-context linkage
+- locked_read_only_scope: all production source and tests, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 contracts, V2.3 Query artifacts and Runtime `edge-001`
 - locked_candidate_scope: none
-- locked_excluded_scope: Phase 3–4 and all external side effects
-- accepted_assumptions: target baseline `94f3c9e`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb`; add the two overview-defined port interfaces omitted from the Phase 2 type snippet
-- escalation_rule: stop before modifying any excluded/read-only scope or changing an approved public contract
+- locked_excluded_scope: Phase 3 implementation, Phase 4 and all external side effects
+- accepted_assumptions: design source HEAD `5c07034`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb`; current child Browser protocols remain unchanged
+- escalation_rule: obtain explicit design approval before writing an execution plan, and explicit implementation authorization before modifying production source or tests
 
 ## Implementation Rules
 
-- Execute Phase 2 Task 1 through Task 5 in order.
-- Write the failing behavior test before production code and record the expected RED reason.
-- Preserve all existing contract names and CLI routes.
-- Use `WorkspaceStore` containment, locks, atomic writes, and create-only behavior; do not add bypass APIs.
-- Stage and commit only each task's exact pathset.
-- Do not generate public bootstrap content, Publication Bundles, Weekly Outcomes or external publication artifacts; Phase 3–4 own them.
-- Adapt plan examples to the existing lifecycle method names without bypassing Package/Article state transitions.
+- Keep this stage design-only; do not modify production source, tests, Skills or external systems.
+- Treat the current source as authority when it conflicts with examples in the external Phase 3 plan.
+- Preserve existing Browser page contracts, Submit barriers, public verification and direct publication compatibility.
+- Require create-only execution bindings, a Plan-locked authorization TTL and a rebuildable week-to-Bundle link before Phase 3 can enter implementation planning.
+- After user approval, use `writing-plans` to replace source-stale task examples with an executable TDD plan.
 
 ## Current Checkpoint
 
@@ -52,22 +50,23 @@
 - Phase 2 commits: lifecycle `cfc8e9a`; contracts `d5ee69c`; Weekly Cycle Service `bd87bd6`; Package V1.2 `2825454`; Compiler/Gates `753fff6`; CLI/Skill/integration `511ece8`
 - Phase 2 verification: focused GREEN 27 files / 206 tests; repository 121 passed + 1 skipped files, 545 passed + 1 skipped tests; lint/typecheck/Skill validator passed
 - Phase 2 external effects: none; integration stopped at a finalized local Article Package with empty `x/` and `receipts/`
-- Next action: review and explicitly authorize the confirmed Phase 3 Publication Bundle plan before implementation
+- Phase 3 design correction: bind Article and Single Browser executions create-only because Article `outcome_unknown` has no Receipt; lock authorization TTL inside the confirmed Bundle Plan.
+- Phase 3 child specification: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`.
+- Next action: user reviews and explicitly approves the Phase 3 child specification; only then write the source-calibrated execution plan.
 
 ## Verification Plan
 
-- Task 1: weekly contract/schema tests plus typecheck.
-- Task 2: Weekly Cycle behavior, security, recovery and Human Selection tests.
-- Task 3: Package V1.2 compatibility, Context binding and partial-order Claim semantics.
-- Task 4: selected-Brief compiler, four Gate coverage and Article/X compatibility.
-- Task 5: weekly CLI, Article Skill boundary and local finalized-Article integration.
-- Final: Phase 2 focused gate, lint, typecheck, repository test, `git diff --check`, verification record and Phase 2 handoff.
+- Verify every design claim against current Phase 2, X Article and X V2/V2.1 source/tests.
+- Scan the child specification for placeholders, ambiguous ranges, contradictory state transitions and scope leakage.
+- Verify the child Flow Record, parent link, implementation authorization flag and next Gate agree.
+- Run `git diff --check`; no code tests are claimed for this design-only stage.
 
 ## Escalation Log
 
 - 2026-08-23: No scope escalation. External V2.4 plan documents remain temporary local sources; compact lifecycle links are stored here instead of duplicating the full plan suite.
 - 2026-08-23: Phase 1 stayed within scope. No Article/X/Browser or Runtime source was modified; no real external write occurred.
 - 2026-08-24: User requested continuation. Phase 2 scope activated inline on current `main`; the two overview-defined ports omitted from the task type snippet will be included, with no scope expansion.
+- 2026-08-24: Phase 3 design review found that Article `outcome_unknown` has no Receipt and that the external plan did not bind its displayed TTL. The child specification adds create-only child Execution Bindings, a Plan-locked TTL and a week-to-Bundle binding; production implementation remains unauthorized.
 
 ## Phase 1 Result
 
