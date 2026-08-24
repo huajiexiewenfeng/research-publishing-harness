@@ -1,7 +1,7 @@
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
 import { validateContract } from './schema-validator.js';
-import type { ClaimStatus } from './types.js';
+import type { LegacyClaimStatus as ClaimStatus } from './types.js';
 import type {
   ArtifactRefV2,
   ArtifactRefV2Input,

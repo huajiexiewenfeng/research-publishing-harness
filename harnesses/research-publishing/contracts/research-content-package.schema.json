@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "rph://contracts/research-content-package/1.1",
+  "$id": "rph://contracts/research-content-package/1.2",
   "title": "Research Content Package",
   "type": "object",
   "additionalProperties": false,
@@ -25,7 +25,7 @@
     "updated_at"
   ],
   "properties": {
-    "schema_version": { "enum": ["1.0", "1.1"] },
+    "schema_version": { "enum": ["1.0", "1.1", "1.2"] },
     "package_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
     "version": { "type": "integer", "minimum": 1 },
     "status": { "enum": ["draft", "evidence_ready", "reviewed", "frozen"] },
@@ -33,8 +33,8 @@
     "topic": { "type": "string", "minLength": 1, "maxLength": 500 },
     "research_question": { "type": "string", "minLength": 1, "maxLength": 2000 },
     "content_intent": { "$ref": "#/$defs/contentIntent" },
-    "thesis": { "$ref": "#/$defs/thesis" },
-    "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/claim" } },
+    "thesis": true,
+    "claims": true,
     "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
     "boundaries": { "$ref": "#/$defs/boundaries" },
     "research_lineage": { "type": "array", "items": { "$ref": "#/$defs/lineage" } },
@@ -43,16 +43,44 @@
     "privacy": { "$ref": "#/$defs/privacy" },
     "created_at": { "type": "string", "format": "date-time" },
     "updated_at": { "type": "string", "format": "date-time" },
-    "memory_context": { "$ref": "#/$defs/memoryContext" }
+    "memory_context": { "$ref": "#/$defs/memoryContext" },
+    "research_program_binding": { "$ref": "#/$defs/researchProgramBinding" }
   },
   "allOf": [
     {
       "if": { "properties": { "schema_version": { "const": "1.0" } }, "required": ["schema_version"] },
-      "then": { "properties": { "memory_context": false } }
+      "then": {
+        "properties": {
+          "thesis": { "$ref": "#/$defs/legacyThesis" },
+          "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legacyClaim" } },
+          "memory_context": false,
+          "research_program_binding": false
+        }
+      }
     },
     {
       "if": { "properties": { "schema_version": { "const": "1.1" } }, "required": ["schema_version"] },
-      "then": { "properties": { "memory_context": { "$ref": "#/$defs/memoryContext" } }, "required": ["memory_context"] }
+      "then": {
+        "properties": {
+          "thesis": { "$ref": "#/$defs/legacyThesis" },
+          "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legacyClaim" } },
+          "memory_context": { "$ref": "#/$defs/memoryContext" },
+          "research_program_binding": false
+        },
+        "required": ["memory_context"]
+      }
+    },
+    {
+      "if": { "properties": { "schema_version": { "const": "1.2" } }, "required": ["schema_version"] },
+      "then": {
+        "properties": {
+          "thesis": { "$ref": "#/$defs/boundaryThesis" },
+          "claims": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/boundaryClaim" } },
+          "memory_context": { "$ref": "#/$defs/memoryContext" },
+          "research_program_binding": { "$ref": "#/$defs/researchProgramBinding" }
+        },
+        "required": ["memory_context", "research_program_binding"]
+      }
     }
   ],
   "$defs": {
@@ -135,8 +163,31 @@
         { "properties": { "status": { "const": "reviewed_not_applied" }, "context_refs": { "type": "array", "maxItems": 0 } } }
       ]
     },
-    "claimStatus": {
+    "legacyClaimStatus": {
       "enum": ["verified", "observed", "inferred", "hypothesis", "planned"]
+    },
+    "claimBoundaryStatus": {
+      "enum": ["shipped", "validated", "observed", "exploring", "planned", "hypothesis"]
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "researchProgramBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roadmap_ref", "topic_ref", "candidate_set_ref", "selection_ref"],
+      "properties": {
+        "roadmap_ref": { "$ref": "#/$defs/artifactRef" },
+        "topic_ref": { "$ref": "#/$defs/artifactRef" },
+        "candidate_set_ref": { "$ref": "#/$defs/artifactRef" },
+        "selection_ref": { "$ref": "#/$defs/artifactRef" }
+      }
     },
     "researchTrack": {
       "type": "object",
@@ -167,23 +218,52 @@
         }
       }
     },
-    "thesis": {
+    "legacyThesis": {
       "type": "object",
       "additionalProperties": false,
       "required": ["summary", "claim_status"],
       "properties": {
         "summary": { "type": "string", "minLength": 1 },
-        "claim_status": { "$ref": "#/$defs/claimStatus" }
+        "claim_status": { "$ref": "#/$defs/legacyClaimStatus" }
       }
     },
-    "claim": {
+    "boundaryThesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "claim_status"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "claim_status": { "$ref": "#/$defs/claimBoundaryStatus" }
+      }
+    },
+    "legacyClaim": {
       "type": "object",
       "additionalProperties": false,
       "required": ["claim_id", "statement", "claim_status", "evidence_refs"],
       "properties": {
         "claim_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
         "statement": { "type": "string", "minLength": 1 },
-        "claim_status": { "$ref": "#/$defs/claimStatus" },
+        "claim_status": { "$ref": "#/$defs/legacyClaimStatus" },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "allowed_language": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "boundaryClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "statement", "claim_status", "evidence_refs"],
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{2,127}$" },
+        "statement": { "type": "string", "minLength": 1 },
+        "claim_status": { "$ref": "#/$defs/claimBoundaryStatus" },
         "evidence_refs": {
           "type": "array",
           "uniqueItems": true,

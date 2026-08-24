@@ -46,7 +46,11 @@ import { createPublicationExpression } from '../harnesses/research-publishing/co
 import { renderResearchRecord } from '../harnesses/research-publishing/core/research-record-renderer.js';
 import { ResearchTerminalHooks } from '../harnesses/research-publishing/core/research-terminal-hooks.js';
 import { SemanticDeltaService } from '../harnesses/research-publishing/core/semantic-delta-service.js';
-import type { Candidate, ResearchContentPackage } from '../harnesses/research-publishing/core/types.js';
+import type {
+  Candidate,
+  ResearchContentPackage,
+  ResearchContentPackageV1_1
+} from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
 
 const examples = resolve(import.meta.dirname, '../harnesses/research-publishing/examples/synthetic');
@@ -733,7 +737,10 @@ try {
     selected_context_refs: [progressiveSnapshot.context_items[0]!.context_ref],
     reviewer: 'acceptance-reviewer', reviewed_at: browserAt
   });
-  const packageDraftV1_1 = {
+  if (frozen.package.schema_version === '1.2') {
+    throw new Error('legacy acceptance package unexpectedly resolved to V1.2');
+  }
+  const packageDraftV1_1: ResearchContentPackageV1_1 = {
     ...frozen.package,
     schema_version: '1.1' as const,
     status: 'draft' as const,

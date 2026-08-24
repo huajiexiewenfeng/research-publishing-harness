@@ -36,5 +36,19 @@ describe('PublicationExpressionService', () => {
       expect(expression.claim_refs).toEqual(['claim:runtime-boundary@1']);
     }
   );
-});
 
+  it('uses claim-boundary partial order instead of treating shipped as validated', async () => {
+    const { store, fixtures } = await createPublicationExpressionFixtures();
+    const input = {
+      ...fixtures.x_single,
+      source_claim_statuses: { 'claim:runtime-boundary@1': 'shipped' as const },
+      expression_claim_statuses: { 'claim:runtime-boundary@1': 'validated' as const }
+    };
+    await expect(new PublicationExpressionService(store).assemble(input))
+      .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(new PublicationExpressionService(store).assemble({
+      ...input,
+      expression_claim_statuses: { 'claim:runtime-boundary@1': 'observed' }
+    })).resolves.toMatchObject({ claim_refs: ['claim:runtime-boundary@1'] });
+  });
+});

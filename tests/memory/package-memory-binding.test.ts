@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { createContextSnapshot, createMemoryQueryPlan } from '../../harnesses/research-publishing/core/memory-contracts.js';
 import { bindMemoryContext, bindResearchMemoryContext, validatePackageMemoryBinding } from '../../harnesses/research-publishing/core/memory-package.js';
-import type { ResearchContentPackageV1_1 } from '../../harnesses/research-publishing/core/types.js';
+import type {
+  ResearchContentPackageV1_1,
+  ResearchContentPackageV1_2
+} from '../../harnesses/research-publishing/core/types.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
 const digest = (seed: string) => `sha256:${seed.repeat(64).slice(0, 64)}` as const;
@@ -126,5 +129,42 @@ describe('Package 1.1 memory binding', () => {
     expect(draft.memory_context.status).toBe('not_configured');
     expect(() => bindResearchMemoryContext({ ...draft, status: 'frozen' }, snapshot, review))
       .toThrowError(/draft/);
+  });
+
+  it('preserves a V1.2 Research Program binding while applying reviewed Context', () => {
+    const { draft } = fixture();
+    const snapshot = {
+      schema_version: 'research-context-snapshot/v2' as const,
+      snapshot_id: 'snapshot_v12', query_id: 'query_v12', query_plan_digest: digest('a'),
+      query_intent: 'test', track_id: 'enterprise-agent-runtime', view: 'mainline' as const,
+      index_refs: [], selected_summary_refs: [], selected_record_refs: [], selected_evidence_refs: [],
+      context_items: [{ context_ref: 'claim:test@1', relative_path: 'claims/test.md', content_digest: digest('c'), content: 'test', source_layer: 'semantic_record' as const, classification: 'data_only' as const, sanitized: true, risk_flags: [] }],
+      risk_flags: [], budgets: { max_shards: 4, max_records: 12, max_chunks: 6, max_chars_per_index_record: 12000, max_reconstructed_document_chars: 60000 } as const,
+      selection_rationale: 'test', query_status: 'loaded' as const, runtime_version: '0.2.0' as const,
+      created_at: '2026-08-24T00:00:00.000Z', snapshot_digest: digest('b')
+    };
+    const review = {
+      schema_version: 'research-context-review/v2' as const, review_id: 'review_v12', query_id: 'query_v12',
+      query_plan_digest: digest('a'), snapshot_digest: digest('b'), selected_context_refs: ['claim:test@1'],
+      reviewer: 'human', reviewed_at: '2026-08-24T00:01:00.000Z', review_digest: digest('d')
+    };
+    const binding = {
+      roadmap_ref: { path: 'program/roadmaps/runtime/revisions/1.json', digest: digest('1') },
+      topic_ref: { path: 'program/backlog/topics/runtime/revisions/1.json', digest: digest('2') },
+      candidate_set_ref: { path: 'program/weeks/week_01/candidates.json', digest: digest('3') },
+      selection_ref: { path: 'program/weeks/week_01/selection.json', digest: digest('4') }
+    };
+    const draft12 = {
+      ...draft, schema_version: '1.2',
+      thesis: { ...draft.thesis, claim_status: 'observed' },
+      claims: draft.claims.map((claim) => ({
+        ...claim, claim_status: claim.claim_status === 'planned' ? 'planned' as const : 'observed' as const
+      })),
+      research_program_binding: binding
+    } as ResearchContentPackageV1_2;
+    const bound = bindResearchMemoryContext(draft12, snapshot, review);
+    expect(bound.schema_version).toBe('1.2');
+    expect(bound.research_program_binding).toEqual(binding);
+    expect(bound.memory_context).toMatchObject({ status: 'applied' });
   });
 });

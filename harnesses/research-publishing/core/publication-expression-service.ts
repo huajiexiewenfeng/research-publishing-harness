@@ -1,4 +1,5 @@
 import type { ClaimStatus } from './types.js';
+import { canExpressClaimAs } from './claim-boundary.js';
 import { HarnessError } from './errors.js';
 import {
   VersionedPublicationEvidenceReader,
@@ -39,14 +40,6 @@ const PRIVACY_RANK: Readonly<Record<PrivacyClassification, number>> = {
   restricted: 2
 };
 
-const CLAIM_RANK: Readonly<Record<ClaimStatus, number>> = {
-  planned: 0,
-  hypothesis: 1,
-  inferred: 2,
-  observed: 3,
-  verified: 4
-};
-
 export class PublicationExpressionService {
   private readonly reader: PublicationEvidenceReader;
 
@@ -69,7 +62,7 @@ export class PublicationExpressionService {
     for (const ref of input.claim_refs) {
       const source = input.source_claim_statuses[ref]!;
       const expression = input.expression_claim_statuses[ref];
-      if (expression === undefined || CLAIM_RANK[expression] > CLAIM_RANK[source]) {
+      if (expression === undefined || !canExpressClaimAs(source, expression)) {
         throw new HarnessError('CONTRACT_INVALID', 'Publication Expression cannot strengthen source claim status');
       }
     }

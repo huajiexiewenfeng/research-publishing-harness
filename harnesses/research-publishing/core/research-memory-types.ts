@@ -1,4 +1,4 @@
-import type { ClaimStatus } from './types.js';
+import type { LegacyClaimStatus as ClaimStatus } from './types.js';
 import type { Digest } from './memory-types.js';
 
 export type StableId = string;

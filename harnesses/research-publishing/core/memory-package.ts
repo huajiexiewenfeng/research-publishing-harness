@@ -4,8 +4,11 @@ import type { ContextSnapshotV1 } from './memory-types.js';
 import type { ResearchContextReviewV2, ResearchContextSnapshotV2 } from './research-query-types.js';
 import type {
   ResearchContentPackage,
-  ResearchContentPackageV1_1
+  ResearchContentPackageV1_1,
+  ResearchContentPackageV1_2
 } from './types.js';
+
+type MemoryBindablePackage = ResearchContentPackageV1_1 | ResearchContentPackageV1_2;
 
 const MEMORY_REF_PREFIX = 'llm-wiki:';
 
@@ -27,11 +30,11 @@ export function validatePackageMemoryBinding<T extends ResearchContentPackage>(
   return valid;
 }
 
-export function bindResearchMemoryContext(
-  packageDraft: ResearchContentPackageV1_1,
+export function bindResearchMemoryContext<T extends MemoryBindablePackage>(
+  packageDraft: T,
   snapshot: ResearchContextSnapshotV2,
   review: ResearchContextReviewV2
-): ResearchContentPackageV1_1 {
+): T {
   if (packageDraft.status !== 'draft') {
     throw new HarnessError('STATE_TRANSITION_INVALID', 'memory may bind to a draft package only');
   }
@@ -61,16 +64,16 @@ export function bindResearchMemoryContext(
       reviewer: review.reviewer,
       reviewed_at: review.reviewed_at
     }
-  });
+  } as T);
 }
 
-export function bindMemoryContext(
-  packageDraft: ResearchContentPackageV1_1,
+export function bindMemoryContext<T extends MemoryBindablePackage>(
+  packageDraft: T,
   snapshot: ContextSnapshotV1,
   selectedRefs: readonly string[],
   reviewer: string,
   now: Date
-): ResearchContentPackageV1_1 {
+): T {
   if (packageDraft.status !== 'draft') {
     throw new HarnessError('STATE_TRANSITION_INVALID', 'memory may bind to a draft package only');
   }
@@ -88,7 +91,7 @@ export function bindMemoryContext(
   const ordered = snapshot.items
     .map((item) => item.context_ref)
     .filter((ref) => selected.includes(ref));
-  const bound: ResearchContentPackageV1_1 = {
+  const bound = {
     ...packageDraft,
     memory_context: {
       query_plan_digest: snapshot.query_plan_digest,
@@ -98,6 +101,6 @@ export function bindMemoryContext(
       reviewer: reviewer.trim(),
       reviewed_at: now.toISOString()
     }
-  };
+  } as T;
   return validatePackageMemoryBinding(bound);
 }

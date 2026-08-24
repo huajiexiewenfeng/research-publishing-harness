@@ -8,6 +8,8 @@ import { ProgressiveResearchQueryService } from '../../harnesses/research-publis
 import { renderResearchRecord } from '../../harnesses/research-publishing/core/research-record-renderer.js';
 import type { QueryableCanonicalDocumentV1 } from '../../harnesses/research-publishing/core/research-memory-types.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
+import type { ResearchContentPackageV1_2 } from '../../harnesses/research-publishing/core/types.js';
+import { researchPackage } from '../fixtures/research-package.js';
 import { progressiveQueryFixture } from './progressive-query-fixture.js';
 
 describe('ProgressiveResearchQueryService', () => {
@@ -124,5 +126,40 @@ describe('ProgressiveResearchQueryService', () => {
       `load:${manifestPath}`,
       `load:${chunks.map((chunk) => chunk.record_path).join(',')}`
     ]);
+  });
+
+  it('binds reviewed Context to V1.2 without dropping Research Program lineage', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-progressive-v12-')));
+    const fixture = progressiveQueryFixture();
+    const service = new ProgressiveResearchQueryService(store, fixture.runtime, {
+      snapshotId: () => 'snapshot_progressive_v12', reviewId: () => 'review_progressive_v12',
+      now: () => new Date('2026-08-24T10:00:00.000Z')
+    });
+    const plan = await service.plan(fixture.input);
+    const snapshot = await service.execute(plan.query_id);
+    await service.review(plan.query_id, {
+      selected_context_refs: [snapshot.context_items[0]!.context_ref],
+      reviewer: 'human', reviewed_at: '2026-08-24T10:01:00.000Z'
+    });
+    const binding = {
+      roadmap_ref: { path: 'program/roadmaps/runtime/revisions/1.json', digest: `sha256:${'1'.repeat(64)}` as const },
+      topic_ref: { path: 'program/backlog/topics/runtime/revisions/1.json', digest: `sha256:${'2'.repeat(64)}` as const },
+      candidate_set_ref: { path: 'program/weeks/week_01/candidates.json', digest: `sha256:${'3'.repeat(64)}` as const },
+      selection_ref: { path: 'program/weeks/week_01/selection.json', digest: `sha256:${'4'.repeat(64)}` as const }
+    };
+    const draft = {
+      ...researchPackage, schema_version: '1.2', status: 'draft',
+      thesis: { ...researchPackage.thesis, claim_status: 'observed' },
+      claims: researchPackage.claims.map((claim) => ({
+        ...claim, claim_status: claim.claim_status === 'planned' ? 'planned' as const : 'observed' as const
+      })),
+      memory_context: {
+        query_plan_digest: null, context_snapshot_digest: null, context_refs: [],
+        status: 'not_configured', reviewer: null, reviewed_at: null
+      },
+      research_program_binding: binding
+    } as ResearchContentPackageV1_2;
+    const bound = await service.bindPackage(plan.query_id, draft);
+    expect(bound).toMatchObject({ schema_version: '1.2', research_program_binding: binding });
   });
 });

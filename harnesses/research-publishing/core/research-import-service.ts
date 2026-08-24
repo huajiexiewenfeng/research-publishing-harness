@@ -21,7 +21,7 @@ import type {
 } from './research-memory-types.js';
 import { SemanticDeltaService } from './semantic-delta-service.js';
 import { validateContract } from './schema-validator.js';
-import type { ClaimStatus } from './types.js';
+import type { LegacyClaimStatus as ClaimStatus } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 
 export interface ResearchImportManifestV1 {

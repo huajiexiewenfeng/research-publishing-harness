@@ -1,4 +1,8 @@
 import type { MemoryContextV1, MemoryContextV2 } from './memory-types.js';
+import type {
+  ClaimBoundaryStatus as ProgramClaimBoundaryStatus,
+  ResearchArtifactRefV1
+} from './research-program-types.js';
 
 export const CONTRACT_NAMES = [
   'candidate',
@@ -75,12 +79,15 @@ export const CONTRACT_NAMES = [
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];
 
-export type ClaimStatus =
+export type LegacyClaimStatus =
   | 'verified'
   | 'observed'
   | 'inferred'
   | 'hypothesis'
   | 'planned';
+
+export type ClaimBoundaryStatus = ProgramClaimBoundaryStatus;
+export type ClaimStatus = LegacyClaimStatus | ClaimBoundaryStatus;
 
 export type SourcePublicationPolicy =
   | 'cite'
@@ -132,7 +139,7 @@ export interface Candidate {
   readonly captured_at: string;
 }
 
-interface ResearchContentPackageBase {
+export interface ResearchContentPackageCommon<TClaimStatus extends ClaimStatus> {
   readonly package_id: string;
   readonly version: number;
   readonly status: PackageState;
@@ -144,11 +151,11 @@ interface ResearchContentPackageBase {
     readonly audience: readonly string[];
     readonly desired_discussion: readonly string[];
   };
-  readonly thesis: { readonly summary: string; readonly claim_status: ClaimStatus };
+  readonly thesis: { readonly summary: string; readonly claim_status: TClaimStatus };
   readonly claims: ReadonlyArray<{
     readonly claim_id: string;
     readonly statement: string;
-    readonly claim_status: ClaimStatus;
+    readonly claim_status: TClaimStatus;
     readonly evidence_refs: readonly string[];
     readonly allowed_language?: Readonly<Record<string, string>>;
     readonly notes?: string;
@@ -186,16 +193,52 @@ interface ResearchContentPackageBase {
   readonly updated_at: string;
 }
 
-export interface ResearchContentPackageV1_0 extends ResearchContentPackageBase {
+export interface ResearchContentPackageV1_0
+  extends ResearchContentPackageCommon<LegacyClaimStatus> {
   readonly schema_version: '1.0';
 }
 
-export interface ResearchContentPackageV1_1 extends ResearchContentPackageBase {
+export interface ResearchContentPackageV1_1
+  extends ResearchContentPackageCommon<LegacyClaimStatus> {
   readonly schema_version: '1.1';
   readonly memory_context: MemoryContextV1 | MemoryContextV2;
 }
 
-export type ResearchContentPackage = ResearchContentPackageV1_0 | ResearchContentPackageV1_1;
+export interface ResearchProgramBindingV1 {
+  readonly roadmap_ref: ResearchArtifactRefV1;
+  readonly topic_ref: ResearchArtifactRefV1;
+  readonly candidate_set_ref: ResearchArtifactRefV1;
+  readonly selection_ref: ResearchArtifactRefV1;
+}
+
+export interface ResearchContentPackageV1_2
+  extends ResearchContentPackageCommon<ClaimBoundaryStatus> {
+  readonly schema_version: '1.2';
+  readonly memory_context: MemoryContextV1 | MemoryContextV2;
+  readonly research_program_binding: ResearchProgramBindingV1;
+}
+
+export type ResearchContentPackageV1_2DraftInput = Omit<
+  ResearchContentPackageV1_2,
+  'schema_version' | 'memory_context' | 'research_program_binding'
+>;
+
+export interface CompileWeeklyPackageInput {
+  readonly cycle_id: string;
+  readonly selected_brief_id: string;
+  readonly candidate_set_digest: `sha256:${string}`;
+  readonly selection_digest: `sha256:${string}`;
+  readonly package: ResearchContentPackageV1_2DraftInput;
+}
+
+export interface WeeklyPackageCompilerPort {
+  compile(input: CompileWeeklyPackageInput): Promise<ResearchContentPackageV1_2>;
+}
+
+export type ResearchContentPackage =
+  | ResearchContentPackageV1_0
+  | ResearchContentPackageV1_1
+  | ResearchContentPackageV1_2;
 
 export interface ReviewReport {
   readonly schema_version: '1.0';

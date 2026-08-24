@@ -124,7 +124,7 @@ describe('public contracts', () => {
       const version = name === 'artifact-ref-v2'
         ? '2.3'
         : name === 'research-content-package'
-        ? '1.1'
+        ? '1.2'
         : v1Names.has(name)
         ? '1.0'
         : name.endsWith('v2-1')

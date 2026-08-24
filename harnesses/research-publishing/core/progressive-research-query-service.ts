@@ -18,7 +18,10 @@ import {
 } from './research-query-types.js';
 import type { QueryableCanonicalDocumentV1 } from './research-memory-types.js';
 import { validateContract } from './schema-validator.js';
-import type { ResearchContentPackageV1_1 } from './types.js';
+import type {
+  ResearchContentPackageV1_1,
+  ResearchContentPackageV1_2
+} from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 
 interface ProgressiveQueryRuntime {
@@ -322,10 +325,10 @@ export class ProgressiveResearchQueryService {
     return review;
   }
 
-  async bindPackage(
+  async bindPackage<T extends ResearchContentPackageV1_1 | ResearchContentPackageV1_2>(
     queryId: string,
-    draft: ResearchContentPackageV1_1
-  ): Promise<ResearchContentPackageV1_1> {
+    draft: T
+  ): Promise<T> {
     const [snapshot, review] = await Promise.all([
       this.store.readJson<ResearchContextSnapshotV2>(this.snapshotPath(queryId)),
       this.store.readJson<ResearchContextReviewV2>(this.reviewPath(queryId))
