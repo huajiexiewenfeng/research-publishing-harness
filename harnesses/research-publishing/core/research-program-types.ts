@@ -332,6 +332,7 @@ export interface WeeklyPublicationBundleBindingV1 {
   readonly cycle_ref: ResearchArtifactRefV1;
   readonly selection_ref: ResearchArtifactRefV1;
   readonly research_content_package_ref: ResearchArtifactRefV1;
+  readonly weekly_article_ref: ResearchArtifactRefV1;
   readonly article_package_ref: ResearchArtifactRefV1;
   readonly bundle_plan_ref: ResearchArtifactRefV1;
   readonly bound_at: string;

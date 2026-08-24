@@ -142,6 +142,10 @@ describe('Publication Bundle contracts', () => {
       cycle_ref: plan.cycle_ref,
       selection_ref: plan.selection_ref,
       research_content_package_ref: plan.research_content_package_ref,
+      weekly_article_ref: {
+        path: `program/weeks/${plan.cycle_id}/article.json`,
+        digest: digest('f')
+      },
       article_package_ref: plan.canonical_article_package.package_ref,
       bundle_plan_ref: {
         path: `runs/${plan.bundle_id}/publication-bundle/plan.json`,
@@ -159,6 +163,10 @@ describe('Publication Bundle contracts', () => {
       cycle_ref: plan.cycle_ref,
       selection_ref: plan.selection_ref,
       research_content_package_ref: plan.research_content_package_ref,
+      weekly_article_ref: {
+        path: `program/weeks/${plan.cycle_id}/article.json`,
+        digest: digest('f')
+      },
       article_package_ref: {
         path: '../outside/package-ref.json',
         digest: digest('e')

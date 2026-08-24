@@ -553,6 +553,7 @@ export function createWeeklyPublicationBundleBinding(
   if (
     input.selection_ref.path !== `program/weeks/${cycleId}/selection.json` ||
     input.research_content_package_ref.path !== `program/weeks/${cycleId}/package.json` ||
+    input.weekly_article_ref.path !== `program/weeks/${cycleId}/article.json` ||
     !/^runs\/[a-z0-9][a-z0-9_-]*\/publication-bundle\/plan\.json$/.test(input.bundle_plan_ref.path)
   ) {
     fail('Weekly Publication Bundle Binding refs do not match the exact Cycle and Bundle layout');
@@ -561,6 +562,7 @@ export function createWeeklyPublicationBundleBinding(
     input.cycle_ref,
     input.selection_ref,
     input.research_content_package_ref,
+    input.weekly_article_ref,
     input.article_package_ref,
     input.bundle_plan_ref
   ]) {

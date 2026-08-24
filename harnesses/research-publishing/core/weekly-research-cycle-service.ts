@@ -5,6 +5,7 @@ import {
   createWeeklyCandidateSet,
   createWeeklyCycleCancellation,
   createWeeklyCycleStatus,
+  createWeeklyPublicationBundleBinding,
   createWeeklyResearchCycle,
   createWeeklyTopicSelection
 } from './research-program-contracts.js';
@@ -12,6 +13,7 @@ import type {
   AddResearchTopicInput,
   CancelWeeklyCycleInput,
   CreateWeeklyCycleStatusInput,
+  CreateWeeklyPublicationBundleBindingInput,
   OpenWeeklyCycleInput,
   ResearchArtifactRefV1,
   ResearchBacklogPort,
@@ -23,6 +25,7 @@ import type {
   WeeklyCandidateSetV1,
   WeeklyCycleCancellationV1,
   WeeklyCycleStatusV1,
+  WeeklyPublicationBundleBindingV1,
   WeeklyResearchCyclePort,
   WeeklyResearchCycleV1,
   WeeklyTopicSelectionV1
@@ -231,6 +234,23 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
     const cancellation = selection === null
       ? null
       : await this.optionalCancellation(cycleId, cycle, selection);
+    const bundleBinding = await this.store.exists(`${root}/publication-bundle-binding.json`)
+      ? await this.readPublicationBundleBinding(cycleId)
+      : null;
+    if (bundleBinding !== null) {
+      if (
+        candidateSet === null || selection === null || cancellation !== null ||
+        !exactRef(bundleBinding.cycle_ref, {
+          path: `${root}/cycle.json`, digest: cycle.cycle_digest
+        }) ||
+        !exactRef(bundleBinding.selection_ref, {
+          path: `${root}/selection.json`, digest: selection.selection_digest
+        })
+      ) {
+        fail('APPROVAL_STALE', 'Weekly Publication Bundle Binding lineage is stale');
+      }
+      return this.projectPublicationPlanned(cycle, candidateSet, selection, bundleBinding);
+    }
     const phase = cancellation !== null
       ? 'cancelled'
       : selection !== null
@@ -320,6 +340,39 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
     return this.readStatus(cycle.cycle_id);
   }
 
+  private async projectPublicationPlanned(
+    cycle: WeeklyResearchCycleV1,
+    candidateSet: WeeklyCandidateSetV1,
+    selection: WeeklyTopicSelectionV1,
+    binding: WeeklyPublicationBundleBindingV1
+  ): Promise<WeeklyCycleStatusV1> {
+    const root = cycleRoot(cycle.cycle_id);
+    const status = createWeeklyCycleStatus({
+      cycle_ref: { path: `${root}/cycle.json`, digest: cycle.cycle_digest },
+      phase: 'publication_planned',
+      candidate_set_ref: {
+        path: `${root}/candidates.json`,
+        digest: candidateSet.candidate_set_digest
+      },
+      selection_ref: {
+        path: `${root}/selection.json`,
+        digest: selection.selection_digest
+      },
+      cancellation_ref: null,
+      package_ref: binding.research_content_package_ref,
+      article_ref: binding.weekly_article_ref,
+      bundle_ref: {
+        path: `${root}/publication-bundle-binding.json`,
+        digest: binding.binding_digest
+      },
+      outcome_ref: null,
+      blocked_reason: null,
+      updated_at: binding.bound_at
+    });
+    await this.store.replaceAtomic(`${root}/status.json`, status);
+    return this.readStatus(cycle.cycle_id);
+  }
+
   private async readCycle(cycleId: string): Promise<WeeklyResearchCycleV1> {
     const value = await this.readContract<WeeklyResearchCycleV1>(
       `${cycleRoot(cycleId)}/cycle.json`, 'weekly-research-cycle'
@@ -390,6 +443,23 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
     );
     if (verified.projection_digest !== value.projection_digest) {
       fail('APPROVAL_STALE', 'Weekly Cycle Status digest no longer matches its content');
+    }
+    return value;
+  }
+
+  private async readPublicationBundleBinding(
+    cycleId: string
+  ): Promise<WeeklyPublicationBundleBindingV1> {
+    const value = await this.readContract<WeeklyPublicationBundleBindingV1>(
+      `${cycleRoot(cycleId)}/publication-bundle-binding.json`,
+      'weekly-publication-bundle-binding'
+    );
+    const verified = createWeeklyPublicationBundleBinding(
+      omitFields(value, ['schema_version', 'binding_digest']) as unknown as
+        CreateWeeklyPublicationBundleBindingInput
+    );
+    if (verified.binding_digest !== value.binding_digest) {
+      fail('APPROVAL_STALE', 'Weekly Publication Bundle Binding digest is stale');
     }
     return value;
   }

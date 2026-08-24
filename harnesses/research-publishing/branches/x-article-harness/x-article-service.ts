@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { sha256, sha256Bytes } from '../../core/digest.js';
+import { sha256 } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import { validateContract } from '../../core/schema-validator.js';
 import type { ArticleVisualManifest, VisualAssetRef } from '../../core/types.js';
@@ -14,6 +14,7 @@ import type {
   ArticleDraft,
   ArticlePackageRef
 } from '../article-harness/article-service.js';
+import { verifyFinalizedArticlePackage } from '../article-harness/article-package-verifier.js';
 import { compileXArticleDocument } from './article-compiler.js';
 
 interface XArticleServiceOptions {
@@ -41,7 +42,7 @@ export class XArticleService {
     if (sha256(storedRef) !== sha256(packageRef)) {
       throw new HarnessError('CONTRACT_INVALID', 'Article Package reference differs from its finalized artifact');
     }
-    await this.verifyPackageDigest(packageRef);
+    await verifyFinalizedArticlePackage(this.store, packageRef);
     const [markdown, manifest, draft] = await Promise.all([
       this.store.readText(`${packageRef.root}/article.md`),
       this.store.readJson<ArticleVisualManifest>(`${packageRef.root}/visual-manifest.json`),
@@ -92,29 +93,4 @@ export class XArticleService {
     return asset;
   }
 
-  private async verifyPackageDigest(packageRef: ArticlePackageRef): Promise<void> {
-    const manifest = await this.store.readJson<ArticleVisualManifest>(`${packageRef.root}/visual-manifest.json`);
-    const binaryPaths = new Set(manifest.bindings.flatMap((binding) => [
-      binding.asset.relative_path,
-      ...(binding.editable_source === null ? [] : [binding.editable_source.relative_path])
-    ]));
-    const prefix = `${packageRef.root}/`;
-    const entries: Array<{ path: string; digest: string }> = [];
-    for (const artifact of packageRef.artifacts) {
-      if (!artifact.startsWith(prefix)) {
-        throw new HarnessError('CONTRACT_INVALID', 'Article Package artifact escapes its finalized root');
-      }
-      const path = artifact.slice(prefix.length);
-      const digest = binaryPaths.has(path)
-        ? sha256Bytes(await this.store.readBytes(artifact))
-        : path.endsWith('.json')
-          ? sha256(await this.store.readJson<object>(artifact))
-          : sha256(await this.store.readText(artifact));
-      entries.push({ path, digest });
-    }
-    entries.sort((left, right) => left.path.localeCompare(right.path));
-    if (sha256(entries) !== packageRef.digest) {
-      throw new HarnessError('CONTRACT_INVALID', 'Finalized Article Package Digest does not match its artifacts');
-    }
-  }
 }
