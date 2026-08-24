@@ -93,3 +93,5 @@
 - X Publishing Skill 固化一次确认、bind-before-next、unknown 只读恢复、禁止重放 Submit、Memory Promotion 另行确认；Fake Host 观察到 `publish_article_once` → `submit_once` 且 `network: unused`。
 - fresh 验证：Phase 3 聚焦 21 个测试文件 / 59 项测试通过；最终 141 个测试文件 / 611 项测试通过，1 个文件 / 1 项测试显式跳过；ESLint、typecheck、build、Skill validator 与 diff check 通过。
 - Phase 3 handoff 已归档；未执行真实 Browser/X/GitHub/Runtime/Wiki 操作，Weekly Cycle 未越过 `publication_planned`。Phase 4 尚未开始，仍需独立确认。
+- Phase 4 进入设计审阅：提出事实型 Weekly Outcome、默认一 Outcome 一 Increment、保守 Claim Projection、Article/Single 双 Publication Expression、Evidence、可产生新知识但不强制创新的 AI Research Synthesis，以及独立可忽略的 Continuation Proposal。
+- 设计明确“固化已发生事实、保持未来研究方向可调整”：发布后 Topic 返回 `available` 而非自动 `completed`；Roadmap、下一篇文章、Claim 与 Memory Promotion 均不自动变更。规格尚待用户书面确认，未创建实施计划或修改生产代码。
