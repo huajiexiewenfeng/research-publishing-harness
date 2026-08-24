@@ -4,7 +4,8 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-3`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `design-awaiting-user-review`
+- status: `plan-awaiting-execution-authorization`
+- design_status: `confirmed`
 - implementation_authorized: false
 - source_head: `5c07034`
 - trust: source-verified design; no implementation or external execution claimed
@@ -121,7 +122,9 @@ Binding happens immediately after Browser `start` and before `next`, `claim` or 
 
 Receipt Bindings are create-only and contain the file-byte digest plus parsed identity evidence. They never trust a caller-provided status.
 
-`PublicationBundleReceiptV1` includes the previously omitted field `status: 'completed'`, exact refs to both child Receipts, ordered public URLs, honest child statuses, issue time and self-excluding Receipt digest.
+`PublicationBundleReceiptV1` includes the previously omitted field `status: 'completed'`, the exact Cycle ref, both child Plan refs, both child Receipt refs, ordered public URLs, honest child statuses, issue time and self-excluding Receipt digest. Phase 4 consumes the child Plan/Receipt pairs separately; it never treats the Bundle Receipt as merged publication content.
+
+Program refs use their contract-declared semantic digest. Child publication Plan/Receipt refs consumed by `VersionedPublicationEvidenceReader` use the exact contained file-byte digest returned by `WorkspaceStore.readContainedArtifact`; their separate `plan_digest` or `receipt_digest` fields retain semantic identity. Implementations must not substitute one digest class for the other.
 
 ## Artifact Layout
 
@@ -309,7 +312,7 @@ The Skill checks Bundle status before every child `start`. It never keeps the on
 15. URL materialization accepts only the two canonical X Article URL forms already accepted by the verifier.
 16. Article and Single Receipt Bindings verify exact Plan, execution, authorization and public evidence.
 17. `published_media_unverified` remains visible in the joint Receipt and is never upgraded to fully media-verified.
-18. Joint Receipt contains `status: 'completed'` and exactly two ordered public URLs.
+18. Joint Receipt contains `status: 'completed'`, exact Article/Single Plan and Receipt refs, and exactly two ordered public URLs.
 19. Weekly Cycle advances only to `publication_planned`; Phase 3 creates no Outcome or Memory Promotion.
 20. Fake-Host acceptance observes exactly two Submit commands in Article-first order, derived from one Bundle Approval.
 21. Existing direct X Article and X Single/Thread/Reply flows remain backward compatible.
@@ -345,12 +348,12 @@ This is decomposition only, not implementation authorization. A source-calibrate
 | Step | Status | Evidence | Updated |
 |---|---|---|---|
 | source | done | Phase 2 handoff and current child publication source at `5c07034` | 2026-08-24 |
-| design | awaiting-user-review | this child Change Brief corrects Receipt-only recovery and unlocked TTL | 2026-08-24 |
-| plan | pending | write only after explicit design approval | 2026-08-24 |
+| design | done | user confirmed `确认 Phase 3 设计规格`; child brief corrects Receipt-only recovery and unlocked TTL | 2026-08-24 |
+| plan | done | `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md` | 2026-08-24 |
 | development | pending | not authorized | 2026-08-24 |
 | testing | pending | acceptance criteria defined above | 2026-08-24 |
 | archive | pending | Phase 3 handoff after verified implementation | 2026-08-24 |
 
 ## Open Questions
 
-- None in the proposed design. The next gate is explicit user review and approval of this written specification.
+- None. The next gate is explicit Phase 3 implementation authorization for the source-calibrated plan.

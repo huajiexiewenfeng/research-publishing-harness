@@ -3,39 +3,39 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: design-review
-- active_phase: `phase-3-publication-bundle-design`
-- active_task: `user-review`
+- status: plan-ready
+- active_phase: `phase-3-publication-bundle-plan`
+- active_task: `execution-authorization`
 - active_plan: external plan-suite commit `38a3efb`, calibrated by the Phase 3 child Change Brief
 
 ## Context Handoff
 
-- user_intent: complete the source-calibrated Phase 3 design before implementation
-- active_sources: approved V2.4 design and plan suite, Phase 2 handoff, current Bundle-adjacent source/tests at `5c07034`
-- active_scope: Phase 3 child Change Brief and parent lifecycle linkage only
+- user_intent: convert the confirmed Phase 3 design into a source-calibrated implementation plan
+- active_sources: confirmed Phase 3 child Change Brief, Phase 2 handoff, current Bundle-adjacent source/tests at `5c07034`
+- active_scope: Phase 3 implementation plan and lifecycle linkage only
 - read_only_scope: all production source, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 behavior, V2.3 Query artifacts and `llm-wiki-runtime` 0.2.0
 - candidate_scope: none
 - excluded_scope: Phase 3 implementation, Phase 4 Outcome/bootstrap, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: User Review Gate
-- requested_stage_or_bridge: brainstorming design completion; writing-plans only after explicit design approval
+- current_gate: Implementation Confirmation Gate
+- requested_stage_or_bridge: executing-plans with test-driven-development after explicit authorization
 - constraints: current `main`, design-only, no subagents, no production or test edits, no external side effects
 
 ## Scope Lock
 
-- locked_active_scope: Phase 3 child Change Brief plus parent requirement and working-context linkage
+- locked_active_scope: Phase 3 child Change Brief, source-calibrated implementation plan and parent lifecycle linkage
 - locked_read_only_scope: all production source and tests, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 contracts, V2.3 Query artifacts and Runtime `edge-001`
 - locked_candidate_scope: none
 - locked_excluded_scope: Phase 3 implementation, Phase 4 and all external side effects
-- accepted_assumptions: design source HEAD `5c07034`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb`; current child Browser protocols remain unchanged
+- accepted_assumptions: design source HEAD `5c07034`; confirmed design commit `f44c672`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb`; current child Browser protocols remain unchanged
 - escalation_rule: obtain explicit design approval before writing an execution plan, and explicit implementation authorization before modifying production source or tests
 
 ## Implementation Rules
 
-- Keep this stage design-only; do not modify production source, tests, Skills or external systems.
+- Keep this stage planning-only; do not modify production source, tests, Skills or external systems.
 - Treat the current source as authority when it conflicts with examples in the external Phase 3 plan.
 - Preserve existing Browser page contracts, Submit barriers, public verification and direct publication compatibility.
 - Require create-only execution bindings, a Plan-locked authorization TTL and a rebuildable week-to-Bundle link before Phase 3 can enter implementation planning.
-- After user approval, use `writing-plans` to replace source-stale task examples with an executable TDD plan.
+- Execute the source-calibrated plan only after explicit implementation authorization.
 
 ## Current Checkpoint
 
@@ -52,7 +52,8 @@
 - Phase 2 external effects: none; integration stopped at a finalized local Article Package with empty `x/` and `receipts/`
 - Phase 3 design correction: bind Article and Single Browser executions create-only because Article `outcome_unknown` has no Receipt; lock authorization TTL inside the confirmed Bundle Plan.
 - Phase 3 child specification: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`.
-- Next action: user reviews and explicitly approves the Phase 3 child specification; only then write the source-calibrated execution plan.
+- Phase 3 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md`.
+- Next action: user explicitly authorizes Phase 3 implementation; then execute inline with TDD checkpoints.
 
 ## Verification Plan
 
