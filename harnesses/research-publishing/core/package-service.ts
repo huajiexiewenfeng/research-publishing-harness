@@ -1,6 +1,12 @@
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
-import { runEvidenceGate, runPrivacyGate, runResearchGate } from './gates.js';
+import {
+  runClaimBoundaryGate,
+  runEvidenceGate,
+  runPrivacyGate,
+  runResearchGate,
+  runResearchLineageGate
+} from './gates.js';
 import { validatePackageMemoryBinding } from './memory-package.js';
 import {
   notifyTerminalSafely,
@@ -83,11 +89,18 @@ export class PackageService {
       throw new HarnessError('STATE_TRANSITION_INVALID', 'only an evidence-ready package may be reviewed');
     }
     validatePackageMemoryBinding(packageValue);
-    const gates = [
-      runResearchGate(packageValue),
-      runEvidenceGate(packageValue),
-      runPrivacyGate(packageValue)
-    ];
+    const gates = packageValue.schema_version === '1.2'
+      ? [
+          runResearchLineageGate(packageValue),
+          runEvidenceGate(packageValue),
+          runClaimBoundaryGate(packageValue),
+          runPrivacyGate(packageValue)
+        ]
+      : [
+          runResearchGate(packageValue),
+          runEvidenceGate(packageValue),
+          runPrivacyGate(packageValue)
+        ];
     const findings = gates.flatMap((gate) => gate.findings);
     const passed = gates.every((gate) => gate.passed);
     const reviewedAt = this.now().toISOString();
@@ -108,9 +121,9 @@ export class PackageService {
     if (!passed) {
       const firstFailed = gates.find((gate) => !gate.passed)?.gate;
       const code =
-        firstFailed === 'research'
+        firstFailed === 'research' || firstFailed === 'research_lineage'
           ? 'RESEARCH_GATE_BLOCKED'
-          : firstFailed === 'evidence'
+          : firstFailed === 'evidence' || firstFailed === 'claim_boundary'
             ? 'EVIDENCE_GATE_BLOCKED'
             : 'PRIVACY_GATE_BLOCKED';
       throw new HarnessError(code, `${firstFailed ?? 'review'} gate blocked package`, report);

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { sha256, sha256Bytes } from '../../core/digest.js';
+import { claimLanguageMatchesBoundary } from '../../core/claim-boundary.js';
 import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runEvidenceGate, runPrivacyGate } from '../../core/gates.js';
@@ -99,9 +100,6 @@ interface RunMetadata {
   readonly package_version: number;
   readonly created_at: string;
 }
-
-const SHIPPED_LANGUAGE =
-  /\b(is implemented|is available|has shipped|currently supports|already provides|is production-ready)\b/i;
 
 function slugify(value: string): string {
   const slug = value
@@ -315,16 +313,17 @@ export class ArticleService {
           path: `/claims/${claim.claim_id}`
         });
       }
-      if (claim.claim_status === 'planned') {
-        for (const [index, section] of draft.sections.entries()) {
-          if (section.claim_refs.includes(claim.claim_id) && SHIPPED_LANGUAGE.test(section.markdown)) {
+      for (const [index, section] of draft.sections.entries()) {
+        if (
+          section.claim_refs.includes(claim.claim_id) &&
+          !claimLanguageMatchesBoundary(claim.claim_status, section.markdown)
+        ) {
             findings.push({
               code: 'CLAIM_STATUS_LANGUAGE_MISMATCH',
               severity: 'error',
-              message: `planned Claim ${claim.claim_id} is presented as shipped`,
+              message: `${claim.claim_status} Claim ${claim.claim_id} is presented as shipped`,
               path: `/sections/${index}/markdown`
             });
-          }
         }
       }
     }
@@ -424,6 +423,13 @@ export class ArticleService {
       ...manifestBase,
       manifest_digest: sha256(manifestBase)
     });
+    const structuredV1_2: Readonly<Record<string, object>> = packageValue.schema_version === '1.2'
+      ? {
+          'evidence.json': packageValue.evidence,
+          'claim-boundaries.json': packageValue.boundaries,
+          'source-refs.json': packageValue.sources
+        }
+      : {};
     const files: Readonly<Record<string, string | object>> = {
       'article.md': this.renderArticle(draft, new Map(selected.map(({ slot, candidate }) => [slot.slot_id, candidate.asset]))),
       'article.meta.yaml': this.renderMetadata(draft, metadata),
@@ -439,7 +445,8 @@ export class ArticleService {
       'visual-review-report.json': visualReview,
       'visual-manifest.json': manifest,
       'generation-task.json': task,
-      'draft-candidate.json': draft
+      'draft-candidate.json': draft,
+      ...structuredV1_2
     };
     const digestEntries = [
       ...Object.entries(files).map(([path, value]) => ({ path, digest: sha256(value) })),

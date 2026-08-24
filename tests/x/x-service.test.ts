@@ -176,6 +176,33 @@ describe('XService', () => {
     expect(plan.items).toEqual(plan.intent.items);
   });
 
+  it('uses the shared Claim Boundary language rule for exploring V1.2 claims', async () => {
+    const x = await service('x_boundary_v12');
+    const packageV1_2 = {
+      ...frozenPackage, schema_version: '1.2' as const,
+      thesis: { ...frozenPackage.thesis, claim_status: 'exploring' as const },
+      claims: [{ ...frozenPackage.claims[0], claim_status: 'exploring' as const }],
+      memory_context: { query_plan_digest: null, context_snapshot_digest: null, context_refs: [], status: 'not_configured' as const, reviewer: null, reviewed_at: null },
+      research_program_binding: {
+        roadmap_ref: { path: 'program/roadmaps/runtime/revisions/1.json', digest: `sha256:${'1'.repeat(64)}` as const },
+        topic_ref: { path: 'program/backlog/topics/runtime/revisions/1.json', digest: `sha256:${'2'.repeat(64)}` as const },
+        candidate_set_ref: { path: 'program/weeks/week_01/candidates.json', digest: `sha256:${'3'.repeat(64)}` as const },
+        selection_ref: { path: 'program/weeks/week_01/selection.json', digest: `sha256:${'4'.repeat(64)}` as const }
+      }
+    };
+    const run = await x.prepareX(packageV1_2, {
+      contentType: 'research_note', format: 'single', language: 'en', targetAccount: '@runtime_ai'
+    });
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0', run_id: run.run_id, content_type: 'research_note', format: 'single', language: 'en',
+      items: [{ ordinal: 1, text: 'This runtime is production-ready.', claim_refs: ['claim_verified'] }]
+    });
+    await expect(x.reviewX(run.run_id)).resolves.toMatchObject({
+      passed: false,
+      findings: expect.arrayContaining([expect.objectContaining({ code: 'CLAIM_STATUS_LANGUAGE_MISMATCH' })])
+    });
+  });
+
   it('creates V2.1 only from an explicit Article asset handoff', async () => {
     const x = await service('x_visual_good');
     const run = await x.prepareX(frozenPackage, {

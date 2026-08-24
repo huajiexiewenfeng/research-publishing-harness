@@ -119,10 +119,18 @@ export interface Finding {
   path?: string;
 }
 
+export type GateName =
+  | 'research'
+  | 'research_lineage'
+  | 'evidence'
+  | 'claim_boundary'
+  | 'privacy'
+  | 'publish';
+
 export interface GateResult {
-  gate: 'research' | 'evidence' | 'privacy' | 'publish';
-  passed: boolean;
-  findings: Finding[];
+  readonly gate: GateName;
+  readonly passed: boolean;
+  readonly findings: readonly Finding[];
 }
 
 export interface Candidate {

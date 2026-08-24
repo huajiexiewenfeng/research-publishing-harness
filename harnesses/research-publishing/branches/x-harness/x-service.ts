@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { sha256 } from '../../core/digest.js';
+import { claimLanguageMatchesBoundary } from '../../core/claim-boundary.js';
 import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runPrivacyGate } from '../../core/gates.js';
@@ -86,9 +87,6 @@ interface XRunMetadata {
 }
 
 const ACCOUNT_PATTERN = /^@[A-Za-z0-9_]{1,15}$/;
-const SHIPPED_LANGUAGE =
-  /\b(is implemented|is available|has shipped|currently supports|already provides|is production-ready)\b/i;
-
 export class XService {
   private readonly runId: () => string;
   private readonly planId: () => string;
@@ -214,11 +212,11 @@ export class XService {
       }
       for (const claimId of item.claim_refs) {
         const claim = packageValue.claims.find((candidate) => candidate.claim_id === claimId);
-        if (claim?.claim_status === 'planned' && SHIPPED_LANGUAGE.test(item.text)) {
+        if (claim !== undefined && !claimLanguageMatchesBoundary(claim.claim_status, item.text)) {
           findings.push({
             code: 'CLAIM_STATUS_LANGUAGE_MISMATCH',
             severity: 'error',
-            message: `planned Claim ${claimId} is presented as shipped`,
+            message: `${claim.claim_status} Claim ${claimId} is presented as shipped`,
             path: `/items/${index}/text`
           });
         }

@@ -1,4 +1,5 @@
-import type { Finding, GateResult } from './types.js';
+import type { ClaimStatus, Finding, GateResult } from './types.js';
+import { claimLanguageMatchesBoundary } from './claim-boundary.js';
 
 interface ClaimLike {
   readonly claim_id: string;
@@ -21,12 +22,17 @@ interface SourceLike {
 }
 
 interface ResearchPackageLike {
+  readonly schema_version?: string;
   readonly research_track: { readonly id: string };
   readonly topic: string;
   readonly thesis: { readonly summary: string; readonly claim_status: string };
   readonly claims: readonly ClaimLike[];
   readonly evidence: readonly EvidenceLike[];
   readonly sources: readonly SourceLike[];
+  readonly boundaries?: {
+    readonly not_established: readonly string[];
+  };
+  readonly research_lineage?: readonly object[];
   readonly memory_context?: {
     readonly status: string;
     readonly context_refs: readonly string[];
@@ -53,6 +59,15 @@ function result(
     passed: findings.every((finding) => finding.severity !== 'error'),
     findings
   };
+}
+
+const CLAIM_STATUSES = new Set<ClaimStatus>([
+  'verified', 'shipped', 'validated', 'observed',
+  'inferred', 'exploring', 'hypothesis', 'planned'
+]);
+
+function isClaimStatus(value: string): value is ClaimStatus {
+  return CLAIM_STATUSES.has(value as ClaimStatus);
 }
 
 export function runResearchGate(packageValue: ResearchPackageLike): GateResult {
@@ -92,9 +107,6 @@ export function runResearchGate(packageValue: ResearchPackageLike): GateResult {
   return result('research', findings);
 }
 
-const SHIPPED_LANGUAGE =
-  /\b(is implemented|is available|has shipped|currently supports|already provides|is production-ready)\b/i;
-
 export function runEvidenceGate(packageValue: ResearchPackageLike): GateResult {
   const findings: Finding[] = [];
   const evidenceById = new Map(
@@ -114,7 +126,10 @@ export function runEvidenceGate(packageValue: ResearchPackageLike): GateResult {
       });
     }
 
-    if (claim.claim_status === 'planned' && SHIPPED_LANGUAGE.test(claim.statement)) {
+    if (
+      isClaimStatus(claim.claim_status) &&
+      !claimLanguageMatchesBoundary(claim.claim_status, claim.statement)
+    ) {
       findings.push({
         code: 'CLAIM_STATUS_LANGUAGE_MISMATCH',
         severity: 'error',
@@ -154,6 +169,73 @@ export function runEvidenceGate(packageValue: ResearchPackageLike): GateResult {
   }
 
   return result('evidence', findings);
+}
+
+export function runResearchLineageGate(packageValue: ResearchPackageLike): GateResult {
+  const findings: Finding[] = [];
+  if (packageValue.schema_version === '1.2' && (packageValue.research_lineage?.length ?? 0) === 0) {
+    findings.push({
+      code: 'RESEARCH_LINEAGE_REQUIRED',
+      severity: 'error',
+      message: 'V1.2 requires explicit Research Lineage',
+      path: '/research_lineage'
+    });
+  }
+  return result('research_lineage', findings);
+}
+
+export function runClaimBoundaryGate(packageValue: ResearchPackageLike): GateResult {
+  const findings: Finding[] = [];
+  const evidenceById = new Map(
+    packageValue.evidence.map((evidence) => [evidence.evidence_id, evidence])
+  );
+  for (const claim of packageValue.claims) {
+    const evidenceTypes = claim.evidence_refs.flatMap((ref) => {
+      const evidence = evidenceById.get(ref);
+      return evidence === undefined ? [] : [evidence.evidence_type];
+    });
+    if (
+      claim.claim_status === 'shipped' &&
+      !evidenceTypes.some((type) => type === 'implementation' || type === 'test')
+    ) {
+      findings.push({
+        code: 'SHIPPED_EVIDENCE_REQUIRED', severity: 'error',
+        message: `shipped claim ${claim.claim_id} requires implementation or test Evidence`,
+        path: `/claims/${claim.claim_id}`
+      });
+    }
+    if (
+      claim.claim_status === 'validated' &&
+      !evidenceTypes.some((type) => type === 'test' || type === 'usage_observation')
+    ) {
+      findings.push({
+        code: 'VALIDATION_EVIDENCE_REQUIRED', severity: 'error',
+        message: `validated claim ${claim.claim_id} requires test or usage-observation Evidence`,
+        path: `/claims/${claim.claim_id}`
+      });
+    }
+    if (
+      claim.claim_status === 'observed' &&
+      (claim.evidence_refs.length === 0 || (packageValue.boundaries?.not_established.length ?? 0) === 0)
+    ) {
+      findings.push({
+        code: 'OBSERVATION_BOUNDARY_REQUIRED', severity: 'error',
+        message: `observed claim ${claim.claim_id} requires Evidence and a not-established boundary`,
+        path: `/claims/${claim.claim_id}`
+      });
+    }
+    if (
+      isClaimStatus(claim.claim_status) &&
+      !claimLanguageMatchesBoundary(claim.claim_status, claim.statement)
+    ) {
+      findings.push({
+        code: 'CLAIM_STATUS_LANGUAGE_MISMATCH', severity: 'error',
+        message: `${claim.claim_status} claim ${claim.claim_id} uses shipped-capability language`,
+        path: `/claims/${claim.claim_id}/statement`
+      });
+    }
+  }
+  return result('claim_boundary', findings);
 }
 
 const SENSITIVE_PATTERNS: ReadonlyArray<{

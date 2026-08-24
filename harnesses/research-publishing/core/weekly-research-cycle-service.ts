@@ -39,6 +39,11 @@ import type { WorkspaceStore } from './workspace-store.js';
 
 const ROADMAP_REF_PATTERN = /^program\/roadmaps\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
 const TOPIC_REF_PATTERN = /^program\/backlog\/topics\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
+const PHASE_ORDER: Readonly<Record<WeeklyCycleStatusV1['phase'], number>> = {
+  opened: 0, blocked: 0, candidates_submitted: 1, topic_selected: 2,
+  package_compiled: 3, package_frozen: 4, article_finalized: 5,
+  publication_planned: 6, published: 7, cancelled: 8
+};
 
 function fail(
   code: 'CONTRACT_INVALID' | 'STATE_TRANSITION_INVALID' | 'RESEARCH_GATE_BLOCKED' | 'APPROVAL_STALE',
@@ -236,7 +241,7 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
 
     if (await this.store.exists(`${root}/status.json`)) {
       const existing = await this.readStatus(cycleId);
-      if (existing.phase === phase) return existing;
+      if (PHASE_ORDER[existing.phase] >= PHASE_ORDER[phase]) return existing;
     }
     return this.projectStatus(
       cycle, phase, new Date().toISOString(), null, candidateSet, selection, cancellation

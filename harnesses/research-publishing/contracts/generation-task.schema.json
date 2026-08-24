@@ -27,7 +27,7 @@
         "properties": {
           "claim_id": { "type": "string", "minLength": 1 },
           "statement": { "type": "string", "minLength": 1 },
-          "claim_status": { "enum": ["verified", "observed", "inferred", "hypothesis", "planned"] }
+          "claim_status": { "enum": ["verified", "shipped", "validated", "observed", "inferred", "exploring", "hypothesis", "planned"] }
         }
       }
     },

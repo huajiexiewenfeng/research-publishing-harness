@@ -12,7 +12,7 @@
     "gates": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["research", "evidence", "privacy", "editorial", "publish"] }
+      "items": { "enum": ["research", "research_lineage", "evidence", "claim_boundary", "privacy", "editorial", "publish"] }
     },
     "findings": {
       "type": "array",

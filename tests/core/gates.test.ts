@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   runEvidenceGate,
+  runClaimBoundaryGate,
   runPrivacyGate,
   runPublishGate,
-  runResearchGate
+  runResearchGate,
+  runResearchLineageGate
 } from '../../harnesses/research-publishing/core/gates.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
@@ -103,6 +105,49 @@ describe('evidence gate', () => {
         expect.objectContaining({ code: 'INTERNAL_ONLY_CLAIM' })
       ])
     );
+  });
+});
+
+describe('V1.2 lineage and claim boundary gates', () => {
+  const packageV1_2 = (claim_status: 'shipped' | 'validated' | 'observed' | 'exploring' | 'planned' | 'hypothesis', statement = 'A bounded claim.', evidenceTypes: readonly string[] = ['test']) => ({
+    ...researchPackage,
+    schema_version: '1.2' as const,
+    thesis: { ...researchPackage.thesis, claim_status },
+    claims: [{
+      ...researchPackage.claims[0], claim_status, statement,
+      evidence_refs: evidenceTypes.map((_, index) => `evidence_${index}`)
+    }],
+    evidence: evidenceTypes.map((evidence_type, index) => ({
+      ...researchPackage.evidence[0], evidence_id: `evidence_${index}`, evidence_type,
+      supports: [researchPackage.claims[0].claim_id]
+    })),
+    research_program_binding: {
+      roadmap_ref: { path: 'program/roadmaps/runtime/revisions/1.json', digest: `sha256:${'1'.repeat(64)}` },
+      topic_ref: { path: 'program/backlog/topics/runtime/revisions/1.json', digest: `sha256:${'2'.repeat(64)}` },
+      candidate_set_ref: { path: 'program/weeks/week_01/candidates.json', digest: `sha256:${'3'.repeat(64)}` },
+      selection_ref: { path: 'program/weeks/week_01/selection.json', digest: `sha256:${'4'.repeat(64)}` }
+    }
+  });
+
+  it.each(['exploring', 'planned', 'hypothesis'] as const)(
+    'blocks shipped language for %s claims',
+    (status) => {
+      expect(runClaimBoundaryGate(packageV1_2(status, 'This capability is production-ready.')))
+        .toEqual(expect.objectContaining({
+          passed: false,
+          findings: expect.arrayContaining([expect.objectContaining({ code: 'CLAIM_STATUS_LANGUAGE_MISMATCH' })])
+        }));
+    }
+  );
+
+  it('requires implementation evidence for shipped and validation evidence for validated', () => {
+    expect(runClaimBoundaryGate(packageV1_2('shipped', 'Implemented.', [])).passed).toBe(false);
+    expect(runClaimBoundaryGate(packageV1_2('validated', 'Validated.', ['design_decision'])).passed).toBe(false);
+  });
+
+  it('requires explicit research lineage for V1.2', () => {
+    expect(runResearchLineageGate({ ...packageV1_2('observed'), research_lineage: [] }).passed)
+      .toBe(false);
   });
 });
 
