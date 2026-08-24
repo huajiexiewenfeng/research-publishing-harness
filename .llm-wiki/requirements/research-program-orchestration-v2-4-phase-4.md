@@ -144,6 +144,8 @@ Phase 2 Package V1.2 carries Program refs but no Research Increment identity, wh
 
 `WeeklyResearchIncrementBindingV1` binds the exact Outcome, generated Increment revision, Claim Projection and binding policy. The default policy is `one-outcome-one-increment/v1`. The stable Increment id is derived deterministically from the Outcome identity with a bounded digest suffix.
 
+The Increment `track_id` is derived from the exact contained Roadmap revision's `primary_track_id`; callers cannot supply or replace it. Research Stream coverage is copied as lineage metadata and does not create a second Track identity. Supporting additional project or research Tracks later requires an explicit Roadmap revision or a versioned binding policy, not heuristic project-name matching.
+
 Research continuity is expressed with reviewed Evolution Edges such as `refines`, `informed_by`, `contradicts` or `validates`; it is not forced into one lifelong Topic-bound Increment. A later policy version may support explicit continuation of an existing Increment without changing historical bindings.
 
 ## Claim Projection
@@ -360,7 +362,7 @@ No additional confirmation is required for:
 Explicit Human action remains required for:
 
 - selecting the next weekly research direction;
-- revising Topic or Roadmap truth;
+- revising Topic or Roadmap semantic truth, except for the deterministic Outcome-bound release from `reserved` to `available`;
 - completing or retiring a Topic;
 - accepting/rejecting AI Insight as a formal Claim, Decision or Evolution Edge;
 - reviewing a Semantic Delta;
@@ -379,24 +381,25 @@ The Phase 3 publication confirmation does not authorize semantic acceptance or R
 6. Publication never automatically revises Roadmap, Topic thesis or Claim state.
 7. Monthly cadence counts contained Outcome refs; engagement cannot satisfy research progress.
 8. Each Outcome binds exactly one default new Increment under `one-outcome-one-increment/v1`.
-9. Claim Projection preserves source status and applies the locked conservative mapping without hidden strengthening.
-10. Article and Single create separate Expressions bound to exact child evidence.
-11. A bridge failure cannot erase or downgrade a truthful Outcome.
-12. Terminal Evidence captures exact Expression and Receipt lineage.
-13. Synthesis Input Snapshot is bounded, privacy-filtered and digest-bound.
-14. Synthesis supports material insight, conflict, no material change and insufficient evidence.
-15. Insight refs must resolve inside the Snapshot and carry epistemic status, uncertainty and falsification information.
-16. AI generation cannot directly mutate Program truth, accepted semantic records or Runtime storage.
-17. Continuation Proposal is optional, independent and non-authoritative.
-18. Runtime-unavailable Synthesis succeeds only with an explicit historical-context limitation.
-19. Substantive external feedback remains an unverified candidate until review or reproduction.
-20. Human confirmation remains mandatory for Topic/Roadmap decisions and Memory Promotion.
-21. Program Closure, bridge and synthesis resume without duplicate revisions or overwritten evidence.
-22. Existing Phase 1–3 and V2.3 direct publication/memory flows remain backward compatible.
-23. Tests and acceptance perform no real Browser, X, GitHub, Runtime write or user Wiki write.
-24. No metric or schema requires a weekly novel conclusion or fixed number of continuation candidates.
-25. A recorded Synthesis with zero Insight items is valid when its disposition and limitations are consistent with the bounded Snapshot.
-26. Rephrasing an existing conclusion cannot be labeled `material_update` without a source-backed evidence delta, contradiction or new connection.
+9. Increment `track_id` is derived from the contained Roadmap revision and cannot be caller-supplied or inferred from a project name.
+10. Claim Projection preserves source status and applies the locked conservative mapping without hidden strengthening.
+11. Article and Single create separate Expressions bound to exact child evidence.
+12. A bridge failure cannot erase or downgrade a truthful Outcome.
+13. Terminal Evidence captures exact Expression and Receipt lineage.
+14. Synthesis Input Snapshot is bounded, privacy-filtered and digest-bound.
+15. Synthesis supports material insight, conflict, no material change and insufficient evidence.
+16. Insight refs must resolve inside the Snapshot and carry epistemic status, uncertainty and falsification information.
+17. AI generation cannot directly mutate Program truth, accepted semantic records or Runtime storage.
+18. Continuation Proposal is optional, independent and non-authoritative.
+19. Runtime-unavailable Synthesis succeeds only with an explicit historical-context limitation.
+20. Substantive external feedback remains an unverified candidate until review or reproduction.
+21. Human confirmation remains mandatory for semantic Topic/Roadmap decisions and Memory Promotion; deterministic Outcome-bound Topic release is the only Phase 4 lifecycle projection exception.
+22. Program Closure, bridge and synthesis resume without duplicate revisions or overwritten evidence.
+23. Existing Phase 1–3 and V2.3 direct publication/memory flows remain backward compatible.
+24. Tests and acceptance perform no real Browser, X, GitHub, Runtime write or user Wiki write.
+25. No metric or schema requires a weekly novel conclusion or fixed number of continuation candidates.
+26. A recorded Synthesis with zero Insight items is valid when its disposition and limitations are consistent with the bounded Snapshot.
+27. Rephrasing an existing conclusion cannot be labeled `material_update` without a source-backed evidence delta, contradiction or new connection.
 
 ## Verification Plan
 
