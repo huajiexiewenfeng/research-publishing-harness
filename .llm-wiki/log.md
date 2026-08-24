@@ -80,3 +80,11 @@
 - 用户精确确认 Windows-safe Plan 后，Promotion 完整执行：6 个既有语义记录按 `already_exists` 幂等协调，3 个 Index Shard 写入成功，Catalog-last 提交成功；Receipt `promotion_receipt_a3dcd1257f774f62b696a6e15fded5ca_1` 为 `complete`。
 - 独立 exact lookup 只找到一个 Catalog，内容 checksum `sha256:dc761be59746d413cb26d84f3f1db37b5e2207501b019ad29017adfefed9518f`。
 - 真实 progressive mainline Query `query_first_runtime_boundary_acceptance_20260823` 返回 `loaded`，读取 `increment_skill_runtime_boundary@1`，Runtime `0.2.0`，无风险标记；Index Doctor 返回 `healthy`，校验 3 个 shard 与 6 个语义记录。
+
+## 2026-08-24
+
+- 完成 Research Program Orchestration V2.4 Phase 2：Weekly Cycle、2–3 Candidate Briefs、一次 Human explicit Selection/cancellation、Package V1.2、六状态 Claim Boundary、Selected-Brief Compiler、四个本地内容 Gate、结构化 Article Package、6 条 Weekly CLI 与 Article Skill 路由。
+- V1.0/V1.1 Package 与旧 Research Memory/Import 状态保持兼容；`shipped` 不被解释为 `validated`，Publication Expression 使用偏序而非数字等级。
+- Skill reference 经先 RED 后 GREEN 的边界测试和 `quick_validate.py` 校验；端到端验收停在本地 `article finalize`，`x/` 与 `receipts/` 均无写入。
+- fresh 验证：Phase 2 focused gate 27 个测试文件 / 206 项测试通过；最终 `pnpm test` 121 个测试文件通过、1 个跳过，545 项测试通过、1 项跳过；lint/typecheck 通过。信任级别 `passed-agent-local`。
+- Phase 2 handoff 已归档；未调用 Browser、未执行外部发布、未修改 `llm-wiki-runtime`、未 push/PR。下一步须先审阅并显式授权 Phase 3 Publication Bundle 计划。

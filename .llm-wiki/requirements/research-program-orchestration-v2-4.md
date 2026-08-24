@@ -5,7 +5,7 @@
 - title: Build the deterministic six-month research program control plane
 - status: executing
 - phase_1_status: implemented and passed-agent-local
-- phase_2_status: executing
+- phase_2_status: implemented and passed-agent-local
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -33,7 +33,7 @@ The external planning documents were reviewed as temporary local sources and are
 
 - active: `harnesses/research-publishing/core/`, Research Program schemas, `harnesses/research-publishing/cli/index.ts`, focused contract/program/security/integration tests, and this flow's Wiki records.
 - reference-only: existing V1–V2.3 contracts and services; `llm-wiki-runtime` 0.2.0 through `edge-001`.
-- excluded: Phase 2–4 Weekly Cycle and publication orchestration, Article/X/Browser behavior, Runtime source changes, real X/GitHub/Wiki writes, and pre-writing the twenty-four articles.
+- excluded: Phase 3–4 Publication Bundle/Outcome/bootstrap, Browser execution, Runtime source changes, real X/GitHub/Wiki writes, and pre-writing the twenty-four articles.
 
 ## Acceptance
 
@@ -87,13 +87,13 @@ The external planning documents were reviewed as temporary local sources and are
 | source | done | approved design `0a6ed18` and current V2.3 source/tests | 2026-08-23 |
 | design | done | approved six-month roadmap design | 2026-08-23 |
 | plan | done | confirmed plan-suite commit `38a3efb`; Phase 1 selected | 2026-08-23 |
-| development | active | Phase 1 commits `923d914`, `1b75f75`, `0c58ee6`, `39b8269`; Phase 2–4 remain | 2026-08-23 |
-| testing | active | Phase 1 passed-agent-local: focused 101/101; repository 500 passed, 1 skipped | 2026-08-23 |
-| archive | active | Phase 1 handoff and verification archived; full V2.4 closure remains pending | 2026-08-23 |
+| development | active | Phase 1 plus Phase 2 commits through `511ece8`; Phase 3–4 remain | 2026-08-24 |
+| testing | active | Phase 2 passed-agent-local: focused 206/206; repository 545 passed, 1 skipped | 2026-08-24 |
+| archive | active | Phase 1 and Phase 2 handoffs archived; full V2.4 closure remains pending | 2026-08-24 |
 
 ## Open Questions
 
-- None blocking Phase 1. Any need to modify Article/X/Browser, Runtime, or Phase 2 contracts is a scope escalation.
+- None blocking Phase 2. Phase 3 requires explicit continuation authorization and owns Publication Bundle approval/execution; Runtime or Browser boundary changes remain scope escalations.
 
 ## Notes
 
@@ -102,3 +102,4 @@ The external planning documents were reviewed as temporary local sources and are
 - Phase 1 is complete within its locked scope. Monthly Review verifies contained opaque Outcome bytes in this phase; Phase 4 owns Outcome schema and Roadmap/month/cycle binding.
 - Phase 2 is authorized from the confirmed plan-suite commit `38a3efb`. It owns Weekly Cycle, 2–3 Candidate Briefs, explicit Human Selection, Research Content Package V1.2, four pre-publication content gates, local Article finalization, weekly CLI and the Article Skill route.
 - Phase 2 does not own Publication Bundle approval/execution, Browser writes, Weekly Outcome, Memory Promotion, public bootstrap content, or Runtime source changes.
+- Phase 2 is complete within that boundary. It delivered Weekly Cycle, explicit Human Selection/cancellation, Package V1.2, selected-Brief compilation, four local content Gates, structured Article finalization, CLI and Skill orchestration.

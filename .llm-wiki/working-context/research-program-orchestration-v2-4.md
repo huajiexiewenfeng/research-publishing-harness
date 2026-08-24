@@ -3,9 +3,9 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: executing
-- active_phase: `phase-2-weekly-cycle`
-- active_task: `phase-2-task-1-weekly-contracts`
+- status: awaiting-next-phase
+- active_phase: `phase-2-weekly-cycle-complete`
+- active_task: `none`
 - active_plan: external plan-suite commit `38a3efb`, Phase 2 Weekly Article Cycle
 
 ## Context Handoff
@@ -49,7 +49,10 @@
 - Phase 1 commits: lifecycle `30d801b`; contracts `923d914`; Roadmap `1b75f75`; Backlog `0c58ee6`; Review/Status/CLI `39b8269`
 - Verification: focused Phase 1 gate 101/101; final repository test 500 passed, 1 skipped; lint and typecheck exit 0
 - Phase 2 entry baseline: `94f3c9e`; worktree clean on `main`; plan reviewed with no blocking concern
-- Next action: Task 1 RED for weekly contracts and exact Context binding
+- Phase 2 commits: lifecycle `cfc8e9a`; contracts `d5ee69c`; Weekly Cycle Service `bd87bd6`; Package V1.2 `2825454`; Compiler/Gates `753fff6`; CLI/Skill/integration `511ece8`
+- Phase 2 verification: focused GREEN 27 files / 206 tests; repository 121 passed + 1 skipped files, 545 passed + 1 skipped tests; lint/typecheck/Skill validator passed
+- Phase 2 external effects: none; integration stopped at a finalized local Article Package with empty `x/` and `receipts/`
+- Next action: review and explicitly authorize the confirmed Phase 3 Publication Bundle plan before implementation
 
 ## Verification Plan
 
@@ -74,3 +77,11 @@
 - Ten JSON-only `program` operations are routed without changing existing V1–V2.3 routes.
 - Detailed evidence: `.llm-wiki/verification/research-program-orchestration-v2-4-phase-1.md`.
 - Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-1.md`.
+
+## Phase 2 Result
+
+- Runtime-reviewed Context binds 2–3 immutable Candidate Briefs; only an explicit Human selection can reserve a Topic.
+- Package V1.2 adds the six-status Claim Boundary and exact Roadmap/Topic/Candidate Set/Selection lineage without widening V1.0/V1.1.
+- Selected-Brief compilation and four pre-publication content Gates end in a structured local Canonical Article Package.
+- Six JSON-only Weekly CLI operations and the Article Skill route the same lifecycle; Article finalization is not publication authorization.
+- Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-2.md`.
