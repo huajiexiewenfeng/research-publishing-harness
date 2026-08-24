@@ -9,6 +9,7 @@ import type {
   CreateResearchProgramStatusInput,
   CreateResearchRoadmapInput,
   CreateWeeklyCycleStatusInput,
+  CreateWeeklyPublicationBundleBindingInput,
   CancelWeeklyCycleInput,
   MonthlyEditorialReviewV1,
   ResearchArtifactRefV1,
@@ -23,6 +24,7 @@ import type {
   WeeklyCycleCancellationV1,
   WeeklyCycleStatusV1,
   WeeklyContextBindingV1,
+  WeeklyPublicationBundleBindingV1,
   WeeklyResearchCycleV1,
   WeeklyTopicSelectionV1
 } from './research-program-types.js';
@@ -540,4 +542,41 @@ export function createWeeklyCycleStatus(
     ...body,
     projection_digest: sha256(body)
   });
+}
+
+export function createWeeklyPublicationBundleBinding(
+  input: CreateWeeklyPublicationBundleBindingInput
+): WeeklyPublicationBundleBindingV1 {
+  const match = /^program\/weeks\/([a-z0-9][a-z0-9_-]*)\/cycle\.json$/.exec(input.cycle_ref.path);
+  if (match === null) fail('Weekly Publication Bundle Binding requires a canonical Cycle ref');
+  const cycleId = match[1]!;
+  if (
+    input.selection_ref.path !== `program/weeks/${cycleId}/selection.json` ||
+    input.research_content_package_ref.path !== `program/weeks/${cycleId}/package.json` ||
+    !/^runs\/[a-z0-9][a-z0-9_-]*\/publication-bundle\/plan\.json$/.test(input.bundle_plan_ref.path)
+  ) {
+    fail('Weekly Publication Bundle Binding refs do not match the exact Cycle and Bundle layout');
+  }
+  for (const ref of [
+    input.cycle_ref,
+    input.selection_ref,
+    input.research_content_package_ref,
+    input.article_package_ref,
+    input.bundle_plan_ref
+  ]) {
+    if (
+      ref.path.includes('\\') || ref.path.startsWith('/') || /^[A-Za-z]:/.test(ref.path) ||
+      ref.path.split('/').includes('..')
+    ) {
+      fail('Weekly Publication Bundle Binding refs must be safe workspace-relative paths');
+    }
+  }
+  const body = {
+    schema_version: 'weekly-publication-bundle-binding/v1' as const,
+    ...input
+  };
+  return validateContract<WeeklyPublicationBundleBindingV1>(
+    'weekly-publication-bundle-binding',
+    { ...body, binding_digest: sha256(body) }
+  );
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-publication-bundle-binding/1.0",
+  "title": "Weekly Publication Bundle Binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cycle_ref", "selection_ref", "research_content_package_ref", "article_package_ref", "bundle_plan_ref", "bound_at", "binding_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-publication-bundle-binding/v1" },
+    "cycle_ref": { "$ref": "#/$defs/artifactRef" },
+    "selection_ref": { "$ref": "#/$defs/artifactRef" },
+    "research_content_package_ref": { "$ref": "#/$defs/artifactRef" },
+    "article_package_ref": { "$ref": "#/$defs/artifactRef" },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "bound_at": { "type": "string", "format": "date-time" },
+    "binding_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

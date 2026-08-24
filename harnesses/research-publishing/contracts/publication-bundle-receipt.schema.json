@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-receipt/1.0",
+  "title": "Publication Bundle Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "status", "cycle_ref", "bundle_plan_ref", "bundle_approval_ref", "article", "single", "public_urls", "limitations", "issued_at", "receipt_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-receipt/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "status": { "const": "completed" },
+    "cycle_ref": { "$ref": "#/$defs/artifactRef" },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "bundle_approval_ref": { "$ref": "#/$defs/artifactRef" },
+    "article": { "$ref": "#/$defs/child" },
+    "single": { "$ref": "#/$defs/child" },
+    "public_urls": { "type": "array", "prefixItems": [{ "type": "string", "format": "uri" }, { "type": "string", "format": "uri" }], "items": false, "minItems": 2, "maxItems": 2 },
+    "limitations": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "receipt_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } },
+    "child": {
+      "type": "object", "additionalProperties": false,
+      "required": ["plan_ref", "plan_digest", "receipt_ref", "receipt_digest", "status", "public_url"],
+      "properties": {
+        "plan_ref": { "$ref": "#/$defs/artifactRef" },
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "receipt_ref": { "$ref": "#/$defs/artifactRef" },
+        "receipt_digest": { "$ref": "#/$defs/digest" },
+        "status": { "enum": ["published", "published_media_unverified", "verification_conflict", "finalized", "outcome_unknown", "partial", "failed_after_submit"] },
+        "public_url": { "type": "string", "format": "uri" }
+      }
+    }
+  }
+}

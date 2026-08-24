@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/materialized-single-publication/1.0",
+  "title": "Materialized Single Publication v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "bundle_plan_ref", "article_receipt_binding_ref", "canonical_article_url", "final_text", "child_plan", "materialized_at", "materialization_digest"],
+  "properties": {
+    "schema_version": { "const": "materialized-single-publication/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "article_receipt_binding_ref": { "$ref": "#/$defs/artifactRef" },
+    "canonical_article_url": { "type": "string", "format": "uri" },
+    "final_text": { "type": "string", "minLength": 1 },
+    "child_plan": { "type": "object" },
+    "materialized_at": { "type": "string", "format": "date-time" },
+    "materialization_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

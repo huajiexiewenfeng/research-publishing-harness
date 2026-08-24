@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-execution-binding/1.0",
+  "title": "Publication Bundle Execution Binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "child_kind", "bundle_plan_ref", "bundle_approval_ref", "child_authorization_ref", "execution_id", "run_id", "plan_id", "plan_digest", "installed_plan_ref", "installed_approval_ref", "bound_at", "binding_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-execution-binding/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "child_kind": { "enum": ["x_article", "x_single"] },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "bundle_approval_ref": { "$ref": "#/$defs/artifactRef" },
+    "child_authorization_ref": { "$ref": "#/$defs/artifactRef" },
+    "execution_id": { "$ref": "#/$defs/stableId" },
+    "run_id": { "$ref": "#/$defs/stableId" },
+    "plan_id": { "$ref": "#/$defs/stableId" },
+    "plan_digest": { "$ref": "#/$defs/digest" },
+    "installed_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "installed_approval_ref": { "$ref": "#/$defs/artifactRef" },
+    "bound_at": { "type": "string", "format": "date-time" },
+    "binding_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

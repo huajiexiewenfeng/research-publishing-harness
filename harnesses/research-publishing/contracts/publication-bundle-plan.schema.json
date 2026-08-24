@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-plan/1.0",
+  "title": "Publication Bundle Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "cycle_id", "cycle_ref", "selection_ref", "research_content_package_ref", "canonical_article_package", "article_plan", "single_intent", "substitution", "execution_order", "authorization_ttl_ms", "action", "policy_version", "planned_at", "bundle_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-plan/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "cycle_id": { "$ref": "#/$defs/stableId" },
+    "cycle_ref": { "$ref": "#/$defs/artifactRef" },
+    "selection_ref": { "$ref": "#/$defs/artifactRef" },
+    "research_content_package_ref": { "$ref": "#/$defs/artifactRef" },
+    "canonical_article_package": {
+      "type": "object", "additionalProperties": false,
+      "required": ["root", "package_digest", "package_ref"],
+      "properties": {
+        "root": { "$ref": "#/$defs/nonEmpty" },
+        "package_digest": { "$ref": "#/$defs/digest" },
+        "package_ref": { "$ref": "#/$defs/artifactRef" }
+      }
+    },
+    "article_plan": { "type": "object" },
+    "single_intent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "target_account", "language", "content_type", "text_template", "claim_refs", "visual_asset", "article_package"],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/stableId" },
+        "target_account": { "$ref": "#/$defs/account" },
+        "language": { "const": "en" },
+        "content_type": { "const": "anchor" },
+        "text_template": { "type": "string", "minLength": 1 },
+        "claim_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "visual_asset": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/visualAsset" }] },
+        "article_package": {
+          "type": "object", "additionalProperties": false,
+          "required": ["root", "digest"],
+          "properties": { "root": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+        }
+      }
+    },
+    "substitution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["token", "rule"],
+      "properties": { "token": { "const": "{{X_ARTICLE_URL}}" }, "rule": { "const": "verified-x-article-canonical-url/v1" } }
+    },
+    "execution_order": {
+      "type": "array", "prefixItems": [{ "const": "x_article" }, { "const": "x_single" }], "items": false, "minItems": 2, "maxItems": 2
+    },
+    "authorization_ttl_ms": { "type": "integer", "minimum": 600000, "maximum": 86400000 },
+    "action": { "const": "publish_bundle_once" },
+    "policy_version": { "const": "research-program-policy/v1" },
+    "planned_at": { "type": "string", "format": "date-time" },
+    "bundle_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "visualAsset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_id", "relative_path", "digest", "mime_type", "alt_text", "claim_refs"],
+      "properties": {
+        "asset_id": { "$ref": "#/$defs/nonEmpty" },
+        "relative_path": { "$ref": "#/$defs/nonEmpty" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "mime_type": { "enum": ["image/png", "image/jpeg", "image/webp"] },
+        "alt_text": { "$ref": "#/$defs/nonEmpty" },
+        "claim_refs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    }
+  }
+}

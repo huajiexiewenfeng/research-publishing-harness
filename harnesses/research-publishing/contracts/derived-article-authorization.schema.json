@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/derived-article-authorization/1.0",
+  "title": "Derived Article Authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "bundle_plan_ref", "bundle_approval_ref", "child_plan_digest", "child_approval", "issued_at", "authorization_digest"],
+  "properties": {
+    "schema_version": { "const": "derived-article-authorization/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "bundle_approval_ref": { "$ref": "#/$defs/artifactRef" },
+    "child_plan_digest": { "$ref": "#/$defs/digest" },
+    "child_approval": { "type": "object" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "authorization_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

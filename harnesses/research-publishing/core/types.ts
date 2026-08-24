@@ -1,5 +1,23 @@
 import type { MemoryContextV1, MemoryContextV2 } from './memory-types.js';
 import type {
+  ApprovePublicationBundleInput,
+  ArticleExecutionBindingV1,
+  AttachArticleReceiptInput,
+  AttachSingleReceiptInput,
+  BindArticleExecutionInput,
+  BindSingleExecutionInput,
+  DerivedArticleAuthorizationV1,
+  DerivedSingleAuthorizationV1,
+  MaterializedSinglePublicationV1,
+  PlanPublicationBundleInput,
+  PublicationBundleApprovalV1,
+  PublicationBundleAuditV1,
+  PublicationBundlePlanV1,
+  PublicationBundleReceiptV1,
+  PublicationBundleStatusV1,
+  SingleExecutionBindingV1
+} from './publication-bundle-types.js';
+import type {
   ClaimBoundaryStatus as ProgramClaimBoundaryStatus,
   ResearchArtifactRefV1
 } from './research-program-types.js';
@@ -74,7 +92,17 @@ export const CONTRACT_NAMES = [
   'weekly-candidate-set',
   'weekly-topic-selection',
   'weekly-cycle-cancellation',
-  'weekly-cycle-status'
+  'weekly-cycle-status',
+  'publication-bundle-plan',
+  'publication-bundle-approval',
+  'publication-bundle-status',
+  'publication-bundle-execution-binding',
+  'publication-bundle-receipt-binding',
+  'weekly-publication-bundle-binding',
+  'materialized-single-publication',
+  'derived-article-authorization',
+  'derived-single-authorization',
+  'publication-bundle-receipt'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];
@@ -314,4 +342,20 @@ export interface VisualReviewReport {
   readonly reviewed_at: string;
   readonly passed: boolean;
   readonly findings: readonly Finding[];
+}
+
+export interface PublicationBundlePort {
+  plan(input: PlanPublicationBundleInput): Promise<PublicationBundlePlanV1>;
+  audit(bundleId: string): Promise<PublicationBundleAuditV1>;
+  approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApprovalV1>;
+  articleAuthorization(bundleId: string): Promise<DerivedArticleAuthorizationV1>;
+  bindArticleExecution(input: BindArticleExecutionInput): Promise<ArticleExecutionBindingV1>;
+  attachArticleReceipt(input: AttachArticleReceiptInput): Promise<PublicationBundleStatusV1>;
+  materializeSingle(bundleId: string): Promise<MaterializedSinglePublicationV1>;
+  singleAuthorization(bundleId: string): Promise<DerivedSingleAuthorizationV1>;
+  bindSingleExecution(input: BindSingleExecutionInput): Promise<SingleExecutionBindingV1>;
+  attachSingleReceipt(
+    input: AttachSingleReceiptInput
+  ): Promise<PublicationBundleReceiptV1 | PublicationBundleStatusV1>;
+  status(bundleId: string): Promise<PublicationBundleStatusV1>;
 }

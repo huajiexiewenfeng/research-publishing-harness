@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-receipt-binding/1.0",
+  "title": "Publication Bundle Receipt Binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "child_kind", "execution_binding_ref", "child_plan_ref", "child_plan_digest", "child_receipt_ref", "child_receipt_digest", "parsed_status", "canonical_public_url", "limitations", "bound_at", "binding_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-receipt-binding/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "child_kind": { "enum": ["x_article", "x_single"] },
+    "execution_binding_ref": { "$ref": "#/$defs/artifactRef" },
+    "child_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "child_plan_digest": { "$ref": "#/$defs/digest" },
+    "child_receipt_ref": { "$ref": "#/$defs/artifactRef" },
+    "child_receipt_digest": { "$ref": "#/$defs/digest" },
+    "parsed_status": { "enum": ["published", "published_media_unverified", "verification_conflict", "finalized", "outcome_unknown", "partial", "failed_after_submit"] },
+    "canonical_public_url": { "anyOf": [{ "type": "string", "format": "uri" }, { "type": "null" }] },
+    "limitations": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "bound_at": { "type": "string", "format": "date-time" },
+    "binding_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

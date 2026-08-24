@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-status/1.0",
+  "title": "Publication Bundle Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "cycle_id", "bundle_plan_ref", "phase", "article_execution_binding_ref", "article_receipt_binding_ref", "single_execution_binding_ref", "single_receipt_binding_ref", "joint_receipt_ref", "limitations", "updated_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-status/v1" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "cycle_id": { "$ref": "#/$defs/stableId" },
+    "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
+    "phase": { "enum": ["planned", "approved", "article_authorized", "article_in_progress", "article_outcome_unknown", "article_verification_conflict", "article_terminal_failure", "article_verified", "single_materialized", "single_authorized", "single_in_progress", "single_outcome_unknown", "single_verification_conflict", "single_terminal_failure", "approval_expired", "completed"] },
+    "article_execution_binding_ref": { "$ref": "#/$defs/nullableRef" },
+    "article_receipt_binding_ref": { "$ref": "#/$defs/nullableRef" },
+    "single_execution_binding_ref": { "$ref": "#/$defs/nullableRef" },
+    "single_receipt_binding_ref": { "$ref": "#/$defs/nullableRef" },
+    "joint_receipt_ref": { "$ref": "#/$defs/nullableRef" },
+    "limitations": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+  }
+}

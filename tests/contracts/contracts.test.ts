@@ -61,7 +61,17 @@ const names = [
   'weekly-candidate-set',
   'weekly-topic-selection',
   'weekly-cycle-cancellation',
-  'weekly-cycle-status'
+  'weekly-cycle-status',
+  'publication-bundle-plan',
+  'publication-bundle-approval',
+  'publication-bundle-status',
+  'publication-bundle-execution-binding',
+  'publication-bundle-receipt-binding',
+  'weekly-publication-bundle-binding',
+  'materialized-single-publication',
+  'derived-article-authorization',
+  'derived-single-authorization',
+  'publication-bundle-receipt'
 ] as const;
 
 const v1Names = new Set([
@@ -103,7 +113,17 @@ const v1Names = new Set([
   'weekly-candidate-set',
   'weekly-topic-selection',
   'weekly-cycle-cancellation',
-  'weekly-cycle-status'
+  'weekly-cycle-status',
+  'publication-bundle-plan',
+  'publication-bundle-approval',
+  'publication-bundle-status',
+  'publication-bundle-execution-binding',
+  'publication-bundle-receipt-binding',
+  'weekly-publication-bundle-binding',
+  'materialized-single-publication',
+  'derived-article-authorization',
+  'derived-single-authorization',
+  'publication-bundle-receipt'
 ]);
 
 describe('public contracts', () => {

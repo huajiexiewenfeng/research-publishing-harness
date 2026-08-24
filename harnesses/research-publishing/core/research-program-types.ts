@@ -327,6 +327,17 @@ export interface WeeklyCycleCancellationV1 {
   readonly cancellation_digest: `sha256:${string}`;
 }
 
+export interface WeeklyPublicationBundleBindingV1 {
+  readonly schema_version: 'weekly-publication-bundle-binding/v1';
+  readonly cycle_ref: ResearchArtifactRefV1;
+  readonly selection_ref: ResearchArtifactRefV1;
+  readonly research_content_package_ref: ResearchArtifactRefV1;
+  readonly article_package_ref: ResearchArtifactRefV1;
+  readonly bundle_plan_ref: ResearchArtifactRefV1;
+  readonly bound_at: string;
+  readonly binding_digest: `sha256:${string}`;
+}
+
 export type CreateResearchRoadmapInput = Omit<
   ResearchRoadmapV1,
   'schema_version' | 'roadmap_digest'
@@ -413,6 +424,11 @@ export interface CancelWeeklyCycleInput {
 export type CreateWeeklyCycleStatusInput = Omit<
   WeeklyCycleStatusV1,
   'schema_version' | 'projection_digest'
+>;
+
+export type CreateWeeklyPublicationBundleBindingInput = Omit<
+  WeeklyPublicationBundleBindingV1,
+  'schema_version' | 'binding_digest'
 >;
 
 export interface ResearchRoadmapPort {
