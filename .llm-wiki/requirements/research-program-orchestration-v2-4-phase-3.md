@@ -4,11 +4,11 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-3`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `implementation-in-progress`
+- status: `implemented-and-passed-agent-local`
 - design_status: `confirmed`
 - implementation_authorized: true
-- source_head: `5c07034`
-- trust: source-verified design; no implementation or external execution claimed
+- source_head: `a321c34`
+- trust: passed-agent-local; no real Browser, X, GitHub, Runtime or Wiki execution claimed
 
 ## Why
 
@@ -120,7 +120,7 @@ Binding happens immediately after Browser `start` and before `next`, `claim` or 
 
 ### Receipt Bindings and Joint Receipt
 
-Receipt Bindings are create-only and contain the file-byte digest plus parsed identity evidence. They never trust a caller-provided status.
+Receipt Bindings are create-only and contain the file-byte digest plus parsed identity evidence. They never trust a caller-provided status. Article has one terminal binding path; Single uses one binding per Receipt id so an `outcome_unknown` Receipt and its protocol-valid superseding final Receipt remain separately auditable.
 
 `PublicationBundleReceiptV1` includes the previously omitted field `status: 'completed'`, the exact Cycle ref, both child Plan refs, both child Receipt refs, ordered public URLs, honest child statuses, issue time and self-excluding Receipt digest. Phase 4 consumes the child Plan/Receipt pairs separately; it never treats the Bundle Receipt as merged publication content.
 
@@ -139,7 +139,8 @@ runs/<bundle_id>/publication-bundle/
   materialized-single.json
   single-authorization.json
   single-execution-binding.json
-  single-receipt-binding.json
+  single-receipt-bindings/
+    <receipt_id>.json
   receipt.json
 
 program/weeks/<cycle_id>/
@@ -331,9 +332,18 @@ The Skill checks Bundle status before every child `start`. It never keeps the on
 - Existing X Article, X V2/V2.1, Weekly Cycle, Package V1.2 and Claim Boundary regressions.
 - Final `pnpm lint`, `pnpm typecheck`, `pnpm test` and `git diff --check`.
 
+## Implementation Result
+
+- Implemented in commits `e81d604`, `4c8c2ed`, `506e0eb`, `43b7e28` and `b4b3562`; lifecycle start is `f664c02`.
+- Added ten closed Bundle schemas, locked Plan TTL, deterministic Audit and Publish Gate, create-only Weekly/Execution/Receipt bindings, strict X URL materialization, V2/V2.1 Single derivation, joint Receipt, rebuildable status and all eleven JSON-only CLI routes.
+- Added the one-confirmation X Publishing Skill branch. It requires Article-first execution, binding before each child `next`, read-only `resume-verification` after unknown outcome, and a separate confirmation for Memory Promotion.
+- Fake-Host acceptance observes `publish_article_once` followed by `submit_once`, one Bundle Approval, a completed joint Receipt with two ordered URLs, no Memory Promotion artifacts and `network: unused`.
+- Focused Phase 3 gate: 21 test files / 59 tests passed. Final repository gate: 141 test files / 611 tests passed, 1 file / 1 test explicitly skipped. ESLint, typecheck, production build, Skill validation and `git diff --check` passed.
+- No real Browser, X, GitHub, Runtime or Wiki action occurred. Weekly Cycle remains `publication_planned`; Phase 4 still owns Outcome, Topic completion, publication expression, Memory Promotion and bootstrap.
+
 ## Implementation Shape
 
-After explicit implementation authorization, execute five TDD increments:
+After explicit implementation authorization, Phase 3 executed five TDD increments:
 
 1. Bundle contracts, locked TTL, state machine and schemas.
 2. Plan, Audit, Publish Gate, Approval and Article authorization.
@@ -341,7 +351,7 @@ After explicit implementation authorization, execute five TDD increments:
 4. Single Execution Binding, joint Receipt, status rebuild and Weekly Cycle projection.
 5. CLI, X Publishing Skill branch, Fake-Host acceptance and Phase 3 handoff.
 
-This is decomposition only, not implementation authorization. A source-calibrated execution plan must be written after the user approves this specification.
+This decomposition was the design-stage implementation shape. The user later authorized it with `开始 Phase 3 inline 实现`, and the five increments are now complete.
 
 ## Flow Record
 
@@ -350,10 +360,10 @@ This is decomposition only, not implementation authorization. A source-calibrate
 | source | done | Phase 2 handoff and current child publication source at `5c07034` | 2026-08-24 |
 | design | done | user confirmed `确认 Phase 3 设计规格`; child brief corrects Receipt-only recovery and unlocked TTL | 2026-08-24 |
 | plan | done | `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md` | 2026-08-24 |
-| development | in_progress | user confirmed `开始 Phase 3 inline 实现`; Task 1 TDD checkpoint active | 2026-08-24 |
-| testing | pending | acceptance criteria defined above | 2026-08-24 |
-| archive | pending | Phase 3 handoff after verified implementation | 2026-08-24 |
+| development | done | commits `e81d604` through `b4b3562`; five inline TDD increments complete | 2026-08-24 |
+| testing | passed-agent-local | focused 21/59; repository 141 files / 611 tests passed, 1/1 skipped; lint, typecheck, build and Skill validation passed | 2026-08-24 |
+| archive | done | `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md` | 2026-08-24 |
 
 ## Open Questions
 
-- None. The next gate is explicit Phase 3 implementation authorization for the source-calibrated plan.
+- None blocking Phase 3 closure. The next gate is Phase 4 design/implementation authorization; no Phase 4 work is implied by this handoff.

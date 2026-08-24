@@ -3,39 +3,38 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: implementation-in-progress
-- active_phase: `phase-3-publication-bundle-implementation`
-- active_task: `task-1-contracts-and-state`
-- active_plan: external plan-suite commit `38a3efb`, calibrated by the Phase 3 child Change Brief
+- status: phase-3-complete-awaiting-phase-4
+- active_phase: `phase-4-not-started`
+- active_task: `none`
+- active_plan: none; Phase 4 requires a separately confirmed plan
 
 ## Context Handoff
 
-- user_intent: convert the confirmed Phase 3 design into a source-calibrated implementation plan
-- active_sources: confirmed Phase 3 child Change Brief, Phase 2 handoff, current Bundle-adjacent source/tests at `5c07034`
-- active_scope: Phase 3 implementation plan and lifecycle linkage only
-- read_only_scope: all production source, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 behavior, V2.3 Query artifacts and `llm-wiki-runtime` 0.2.0
+- user_intent: complete Phase 3 inline and preserve an exact continuation boundary for Phase 4
+- active_sources: Phase 3 implementation through `a321c34`, child Change Brief, implementation plan and handoff
+- active_scope: Phase 3 closure and Phase 4 handoff only
+- read_only_scope: all Phase 1–3 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
 - candidate_scope: none
-- excluded_scope: Phase 3 implementation, Phase 4 Outcome/bootstrap, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: Task 1 TDD Gate
-- requested_stage_or_bridge: executing-plans with test-driven-development
+- excluded_scope: Phase 4 implementation, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
+- current_gate: await explicit Phase 4 design/implementation authorization
+- requested_stage_or_bridge: none
 - constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
 
 ## Scope Lock
 
-- locked_active_scope: Phase 3 child Change Brief, source-calibrated implementation plan and parent lifecycle linkage
-- locked_read_only_scope: all production source and tests, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 contracts, V2.3 Query artifacts and Runtime `edge-001`
+- locked_active_scope: completed Phase 3 Publication Bundle and lifecycle evidence
+- locked_read_only_scope: all Phase 1–3 truth/projections, existing X Article and X V2/V2.1 contracts, V2.3 Query artifacts and Runtime `edge-001`
 - locked_candidate_scope: none
-- locked_excluded_scope: Phase 3 implementation, Phase 4 and all external side effects
+- locked_excluded_scope: Phase 4 implementation and all external side effects
 - accepted_assumptions: design source HEAD `5c07034`; confirmed design commit `f44c672`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb`; current child Browser protocols remain unchanged
 - escalation_rule: obtain explicit design approval before writing an execution plan, and explicit implementation authorization before modifying production source or tests
 
 ## Implementation Rules
 
-- Keep this stage planning-only; do not modify production source, tests, Skills or external systems.
-- Treat the current source as authority when it conflicts with examples in the external Phase 3 plan.
-- Preserve existing Browser page contracts, Submit barriers, public verification and direct publication compatibility.
-- Require create-only execution bindings, a Plan-locked authorization TTL and a rebuildable week-to-Bundle link before Phase 3 can enter implementation planning.
-- Execute the source-calibrated plan only after explicit implementation authorization.
+- Preserve the implemented Bundle contracts, create-only bindings, Submit barriers and direct publication compatibility.
+- Do not infer Phase 4 authorization from Phase 3 completion.
+- Treat the joint Receipt as publication evidence, not as permission for Outcome creation or Memory Promotion.
+- Keep real Browser, X, GitHub, Runtime and Wiki actions behind their own explicit approvals.
 
 ## Current Checkpoint
 
@@ -54,21 +53,25 @@
 - Phase 3 child specification: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`.
 - Phase 3 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md`.
 - Implementation authorization: user confirmed `开始 Phase 3 inline 实现` on 2026-08-24.
-- Next action: execute Task 1 contract and state-machine RED → GREEN → REFACTOR checkpoint.
+- Phase 3 commits: lifecycle `f664c02`; contracts `e81d604`; Plan/Gate/Approval `4c8c2ed`; Article binding/materialization `506e0eb`; Single binding/joint Receipt/CLI `43b7e28`; Skill/Fake Host `b4b3562`; test stability `a321c34`.
+- Phase 3 verification: focused 21 files / 59 tests; repository 141 files / 611 tests passed, 1 file / 1 test skipped; lint, typecheck, build, Skill validator and diff checks passed.
+- Phase 3 external effects: none. Fake Hosts only; no real Browser, X, GitHub, Runtime or Wiki action.
+- Phase 3 handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
+- Next action: review and explicitly authorize Phase 4; do not create Outcome or promote Memory before that gate.
 
 ## Verification Plan
 
-- Verify every design claim against current Phase 2, X Article and X V2/V2.1 source/tests.
-- Scan the child specification for placeholders, ambiguous ranges, contradictory state transitions and scope leakage.
-- Verify the child Flow Record, parent link, implementation authorization flag and next Gate agree.
-- Run `git diff --check`; no code tests are claimed for this design-only stage.
+- Preserve the fresh Phase 3 evidence: focused 21/59, repository 141 files / 611 tests passed with 1/1 skipped, plus lint/typecheck/build/Skill validation.
+- Verify the child Flow Record, parent link, handoff and next Phase 4 Gate agree.
+- Treat any future live X smoke or Memory Promotion as a separately authorized action, not as Phase 3 verification already completed.
 
 ## Escalation Log
 
 - 2026-08-23: No scope escalation. External V2.4 plan documents remain temporary local sources; compact lifecycle links are stored here instead of duplicating the full plan suite.
 - 2026-08-23: Phase 1 stayed within scope. No Article/X/Browser or Runtime source was modified; no real external write occurred.
 - 2026-08-24: User requested continuation. Phase 2 scope activated inline on current `main`; the two overview-defined ports omitted from the task type snippet will be included, with no scope expansion.
-- 2026-08-24: Phase 3 design review found that Article `outcome_unknown` has no Receipt and that the external plan did not bind its displayed TTL. The child specification adds create-only child Execution Bindings, a Plan-locked TTL and a week-to-Bundle binding; production implementation remains unauthorized.
+- 2026-08-24: Phase 3 design review found that Article `outcome_unknown` has no Receipt and that the external plan did not bind its displayed TTL. The child specification added create-only child Execution Bindings, a Plan-locked TTL and a week-to-Bundle binding; implementation was still unauthorized at that checkpoint.
+- 2026-08-24: User authorized inline Phase 3 implementation. Five TDD increments completed with Fake Hosts only; Phase 4 and all real external actions remained excluded.
 
 ## Phase 1 Result
 
@@ -86,3 +89,11 @@
 - Selected-Brief compilation and four pre-publication content Gates end in a structured local Canonical Article Package.
 - Six JSON-only Weekly CLI operations and the Article Skill route the same lifecycle; Article finalization is not publication authorization.
 - Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-2.md`.
+
+## Phase 3 Result
+
+- One exact Bundle confirmation binds the finalized Article Plan/Package, English Single template, account, optional Visual, Article-first order and locked TTL.
+- Derived child authorizations and create-only execution bindings prevent a second approval prompt and reject execution replacement/replay.
+- Only a verified canonical `https://x.com/<approved-account>/(article|status)/<digits>` URL can materialize the Single.
+- The joint Receipt preserves exact child Plan/Receipt refs, ordered URLs and media limitations; Weekly Cycle stops at `publication_planned`.
+- Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.

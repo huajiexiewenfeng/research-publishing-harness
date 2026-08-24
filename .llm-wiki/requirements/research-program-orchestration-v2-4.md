@@ -6,7 +6,8 @@
 - status: executing
 - phase_1_status: implemented and passed-agent-local
 - phase_2_status: implemented and passed-agent-local
-- phase_3_status: implementation-in-progress
+- phase_3_status: implemented and passed-agent-local
+- phase_4_status: not started
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -34,7 +35,7 @@ The external planning documents were reviewed as temporary local sources and are
 
 - active: `harnesses/research-publishing/core/`, Research Program schemas, `harnesses/research-publishing/cli/index.ts`, focused contract/program/security/integration tests, and this flow's Wiki records.
 - reference-only: existing V1–V2.3 contracts and services; `llm-wiki-runtime` 0.2.0 through `edge-001`.
-- excluded: Phase 3–4 Publication Bundle/Outcome/bootstrap, Browser execution, Runtime source changes, real X/GitHub/Wiki writes, and pre-writing the twenty-four articles.
+- excluded: Phase 4 Outcome/bootstrap, real Browser execution, Runtime source changes, real X/GitHub/Wiki writes, and pre-writing the twenty-four articles.
 
 ## Acceptance
 
@@ -88,13 +89,13 @@ The external planning documents were reviewed as temporary local sources and are
 | source | done | approved design `0a6ed18` and current V2.3 source/tests | 2026-08-23 |
 | design | done | approved six-month roadmap design | 2026-08-23 |
 | plan | done | confirmed plan-suite commit `38a3efb`; Phase 1 selected | 2026-08-23 |
-| development | active | Phase 1 plus Phase 2 commits through `511ece8`; Phase 3–4 remain | 2026-08-24 |
-| testing | active | Phase 2 passed-agent-local: focused 206/206; repository 545 passed, 1 skipped | 2026-08-24 |
-| archive | active | Phase 1 and Phase 2 handoffs archived; full V2.4 closure remains pending | 2026-08-24 |
+| development | active | Phases 1–3 implemented; Phase 3 commits `e81d604` through `b4b3562`; Phase 4 remains | 2026-08-24 |
+| testing | active | Phase 3 passed-agent-local: focused 21 files / 59 tests; repository 141 files / 611 tests passed, 1/1 skipped | 2026-08-24 |
+| archive | active | Phase 1–3 handoffs archived; full V2.4 closure remains pending on Phase 4 | 2026-08-24 |
 
 ## Open Questions
 
-- None blocking Phase 2. Phase 3 requires explicit continuation authorization and owns Publication Bundle approval/execution; Runtime or Browser boundary changes remain scope escalations.
+- None blocking Phase 3 closure. Phase 4 requires its own authorization and owns Weekly Outcome, Topic completion, Publication Expression, Memory Promotion and public bootstrap; real Browser/Runtime changes remain scope escalations.
 
 ## Notes
 
@@ -105,3 +106,5 @@ The external planning documents were reviewed as temporary local sources and are
 - Phase 2 does not own Publication Bundle approval/execution, Browser writes, Weekly Outcome, Memory Promotion, public bootstrap content, or Runtime source changes.
 - Phase 2 is complete within that boundary. It delivered Weekly Cycle, explicit Human Selection/cancellation, Package V1.2, selected-Brief compilation, four local content Gates, structured Article finalization, CLI and Skill orchestration.
 - Phase 3 source-calibrated child specification is confirmed: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`. The user authorized inline implementation on 2026-08-24.
+- Phase 3 is complete within its local deterministic boundary: one exact Bundle confirmation derives Article-first child approvals, binds both executions before continuation, materializes only a publicly verified X Article URL, and ends in a joint Receipt while Weekly status remains `publication_planned`.
+- Phase 3 continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.

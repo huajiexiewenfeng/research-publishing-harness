@@ -88,3 +88,8 @@
 - Skill reference 经先 RED 后 GREEN 的边界测试和 `quick_validate.py` 校验；端到端验收停在本地 `article finalize`，`x/` 与 `receipts/` 均无写入。
 - fresh 验证：Phase 2 focused gate 27 个测试文件 / 206 项测试通过；最终 `pnpm test` 121 个测试文件通过、1 个跳过，545 项测试通过、1 项跳过；lint/typecheck 通过。信任级别 `passed-agent-local`。
 - Phase 2 handoff 已归档；未调用 Browser、未执行外部发布、未修改 `llm-wiki-runtime`、未 push/PR。下一步须先审阅并显式授权 Phase 3 Publication Bundle 计划。
+- 完成 Research Program Orchestration V2.4 Phase 3：一个精确 Bundle 确认锁定 Article-first 发布意图与 TTL，派生两个 child authorization，并以 create-only Execution Binding 强制 `start` 后、`next` 前绑定。
+- 新增 10 个 Bundle Schema、确定性 Audit/Publish Gate、Article Receipt 校验、严格 X Article URL 材料化、V2/V2.1 Single、逐 Receipt 绑定、joint Receipt、状态恢复、Weekly `publication_planned` 投影和 11 条 JSON-only CLI。
+- X Publishing Skill 固化一次确认、bind-before-next、unknown 只读恢复、禁止重放 Submit、Memory Promotion 另行确认；Fake Host 观察到 `publish_article_once` → `submit_once` 且 `network: unused`。
+- fresh 验证：Phase 3 聚焦 21 个测试文件 / 59 项测试通过；最终 141 个测试文件 / 611 项测试通过，1 个文件 / 1 项测试显式跳过；ESLint、typecheck、build、Skill validator 与 diff check 通过。
+- Phase 3 handoff 已归档；未执行真实 Browser/X/GitHub/Runtime/Wiki 操作，Weekly Cycle 未越过 `publication_planned`。Phase 4 尚未开始，仍需独立确认。
