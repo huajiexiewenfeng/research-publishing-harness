@@ -1,6 +1,6 @@
 ---
 name: x-publishing-copilot
-description: Use when preparing or publishing an evidence-backed X single post, thread, reply, or long-form X Article through the Research Publishing Harness.
+description: Use when preparing or publishing an evidence-backed X single post, thread, reply, long-form X Article, or Article-first Publication Bundle through the Research Publishing Harness.
 ---
 
 # X Publishing Copilot
@@ -12,6 +12,8 @@ For research context and Human-selected discussion feedback, follow [the governe
 For V2.3, use Catalog-first Query, route terminal Plan/Receipt/feedback Evidence through `memory terminal-hook status|resume`, and keep every resulting Delta unapproved until one exact Promotion confirmation. Never write `.llm-wiki`, strengthen a Claim from engagement, or perform automatic semantic promotion.
 
 Choose the branch from the requested artifact. A Single, Thread, or Reply uses `x ...`. A finalized long-form Article Package uses `x-article ...` and [the X Article Browser flow](references/x-article-browser-flow.md), including `x-article browser next` → `x-article browser claim` → one Chrome action → `x-article browser report`. Never convert an X Article to a Thread.
+
+When one Human-confirmed weekly publication must publish the X Article first and then materialize its verified URL into one English Single, read [the Publication Bundle flow](references/publication-bundle-flow.md). The Bundle is the approval and evidence boundary; the two existing Browser Adapters remain the only page-action owners.
 
 ## Browser Adapter required flow
 

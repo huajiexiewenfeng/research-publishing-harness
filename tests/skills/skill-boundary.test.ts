@@ -101,4 +101,21 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/action-time approval/i);
     expect(reference).toMatch(/never.*publish.*twice/i);
   });
+
+  it('routes one-confirmation Publication Bundles through bind-before-next boundaries', async () => {
+    const content = await skill('x-publishing-copilot');
+    expect(content).toContain('references/publication-bundle-flow.md');
+    const reference = await readFile(
+      resolve('skills/x-publishing-copilot/references/publication-bundle-flow.md'),
+      'utf8'
+    );
+    expect(reference).toContain('one exact Bundle confirmation');
+    expect(reference).toContain('bind-article-execution');
+    expect(reference).toContain('before `x-article browser next`');
+    expect(reference).toContain('bind-single-execution');
+    expect(reference).toContain('before `x browser next`');
+    expect(reference).toContain('resume-verification');
+    expect(reference).toContain('Never replay Submit');
+    expect(reference).toContain('Memory Promotion requires a separate confirmation');
+  });
 });
