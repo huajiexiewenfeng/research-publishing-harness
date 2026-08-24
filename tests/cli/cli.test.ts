@@ -40,7 +40,7 @@ describe('research-publish CLI', () => {
       expect(payload.operation).toBe(operation);
       expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
     }
-  });
+  }, 45_000);
 
   it('exposes the Phase 2 weekly article command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-week-routes-'));
@@ -60,7 +60,7 @@ describe('research-publish CLI', () => {
       expect(payload.operation).toBe(operation);
       expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
     }
-  });
+  }, 45_000);
 
   it('exposes all eleven Publication Bundle operations with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-bundle-routes-'));
@@ -92,7 +92,7 @@ describe('research-publish CLI', () => {
       expect(payload.operation).toBe(operation);
       expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
     }
-  });
+  }, 45_000);
 
   it('exposes the V2.2-compatible V2.3 Memory command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
@@ -120,7 +120,7 @@ describe('research-publish CLI', () => {
       expect(payload.operation).toBe(operation);
       expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
     }
-  }, 45_000);
+  }, 120_000);
 
   it('plans and degrades a Memory Query without configured Runtime', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-query-'));

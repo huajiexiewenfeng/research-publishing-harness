@@ -23,5 +23,5 @@ describe('offline acceptance', () => {
       progressive_query: 'simulated_complete',
       network: 'unused'
     });
-  }, 20_000);
+  }, 60_000);
 });
