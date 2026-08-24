@@ -31,6 +31,16 @@ describe('article-publishing-copilot boundary', () => {
     expect(memory).toMatch(/terminal.*Evidence Capture/is);
     expect(memory).toMatch(/one.*Promotion confirmation/is);
     expect(memory).toMatch(/never.*automatic semantic promotion/is);
+    const weekly = await readFile(
+      resolve('skills/article-publishing-copilot/references/weekly-research-cycle.md'), 'utf8'
+    );
+    expect(weekly).toMatch(/memory query plan.*execute.*review/is);
+    expect(weekly).toMatch(/exactly 2.?3|2.?3.*Brief/is);
+    expect(weekly).toMatch(/stop.*Human selection/is);
+    expect(weekly).toMatch(/never.*auto-select/is);
+    expect(weekly).toMatch(/compile.*only.*selected Brief/is);
+    expect(weekly).toMatch(/Evidence Gate fails.*cancel.*release.*Topic/is);
+    expect(weekly).toMatch(/finalization.*not.*publication authorization/is);
   });
 });
 

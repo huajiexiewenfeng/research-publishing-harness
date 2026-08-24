@@ -42,6 +42,26 @@ describe('research-publish CLI', () => {
     }
   });
 
+  it('exposes the Phase 2 weekly article command surface with JSON-only routing', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-week-routes-'));
+    const workspace = join(parent, 'workspace');
+    const input = join(parent, 'input.json');
+    await writeFile(input, '{}', 'utf8');
+    const operations = [
+      'program week open', 'program week submit-candidates', 'program week select',
+      'program week cancel', 'program week compile-package', 'program week status'
+    ];
+    for (const operation of operations) {
+      const result = run([
+        ...operation.split(' '), '--workspace', workspace,
+        '--input', input, '--output', 'json'
+      ]);
+      const payload = JSON.parse(result.stdout) as { operation: string; error?: { message: string } };
+      expect(payload.operation).toBe(operation);
+      expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
+    }
+  });
+
   it('exposes the V2.2-compatible V2.3 Memory command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
     const workspace = join(parent, 'workspace');

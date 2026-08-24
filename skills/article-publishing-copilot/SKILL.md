@@ -9,6 +9,8 @@ Use the repository Harness as the deterministic boundary. The agent may help sha
 
 For durable research context and post-publication learning, follow [the governed Memory loop](references/memory-loop.md). Memory Query is optional and degradable; Memory Ingest is approval-gated and fail-closed.
 
+For the V2.4 research-plan-driven weekly flow, follow [the Weekly Research Cycle](references/weekly-research-cycle.md). It requires a reviewed Runtime Query, exactly one Human Topic Selection, and compilation from only that selected Brief.
+
 For V2.3, use Catalog-first Query, route terminal Evidence Capture and recovery through `memory terminal-hook status|resume`, and route semantic changes through `memory delta ...` and `memory promotion ...`. Ask for one exact Promotion confirmation. Never write `.llm-wiki` or perform automatic semantic promotion.
 
 ## Required flow
@@ -21,7 +23,7 @@ For V2.3, use Catalog-first Query, route terminal Evidence Capture and recovery 
 6. Run `article visual review` only after Human selection and checks for Claim alignment, Boundary alignment, mobile legibility, single-message focus, and privacy. Required unresolved Slots block Finalize; optional unresolved Slots are warnings.
 7. Run `article finalize` and return the self-contained Canonical Article Package paths, Visual Manifest digest, and Package digest.
 
-The Harness owns the Publish Gate. Article finalization does not authorize external publication.
+The Harness owns the Publish Gate. Article finalization does not authorize external publication. Stop after `article finalize` unless the user separately requests a publication flow.
 
 ## X boundary
 

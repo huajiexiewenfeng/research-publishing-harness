@@ -43,12 +43,18 @@ import { ResearchIndexMaintenanceService } from '../core/research-index-maintena
 import { ResearchProgramStatusService } from '../core/research-program-status-service.js';
 import type {
   AddResearchTopicInput,
+  CancelWeeklyCycleInput,
   CreateMonthlyEditorialReviewInput,
   CreateResearchRoadmapInput,
+  OpenWeeklyCycleInput,
   ReviseResearchRoadmapInput,
-  ReviseResearchTopicInput
+  ReviseResearchTopicInput,
+  SelectWeeklyTopicInput,
+  SubmitWeeklyCandidatesInput
 } from '../core/research-program-types.js';
 import { ResearchRoadmapService } from '../core/research-roadmap-service.js';
+import { WeeklyResearchCycleService } from '../core/weekly-research-cycle-service.js';
+import { WeeklyPackageCompiler } from '../core/weekly-package-compiler.js';
 import { ResearchTerminalHooks } from '../core/research-terminal-hooks.js';
 import {
   ResearchImportService,
@@ -75,7 +81,11 @@ import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
 import type { PublicationPlanV2_1 } from '../core/publication-plan-v2-1.js';
 import type { AttachVisualInput } from '../core/visual-assets.js';
 import { assertContractsAvailable } from '../core/schema-validator.js';
-import type { Candidate, ResearchContentPackage } from '../core/types.js';
+import type {
+  Candidate,
+  CompileWeeklyPackageInput,
+  ResearchContentPackage
+} from '../core/types.js';
 import { WorkspaceStore } from '../core/workspace-store.js';
 
 interface CliOptions {
@@ -351,6 +361,8 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const backlog = new ResearchBacklogService(store, roadmaps);
     const reviews = new MonthlyEditorialReviewService(store);
     const programStatus = new ResearchProgramStatusService(store, roadmaps, backlog, reviews);
+    const weeks = new WeeklyResearchCycleService(store, roadmaps, backlog);
+    const compiler = new WeeklyPackageCompiler(store);
 
     if (operation === 'program roadmap create') {
       const artifact = await roadmaps.create(await readInput<CreateResearchRoadmapInput>(options));
@@ -398,6 +410,33 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const input = await readInput<{ roadmap_id: string }>(options);
       const artifact = await programStatus.status(input.roadmap_id);
       return { ok: true, operation, artifact, state: artifact.next_action };
+    }
+    if (operation === 'program week open') {
+      const artifact = await weeks.open(await readInput<OpenWeeklyCycleInput>(options));
+      return { ok: true, operation, artifact, state: 'opened' };
+    }
+    if (operation === 'program week submit-candidates') {
+      const artifact = await weeks.submitCandidates(
+        await readInput<SubmitWeeklyCandidatesInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'candidates_submitted' };
+    }
+    if (operation === 'program week select') {
+      const artifact = await weeks.select(await readInput<SelectWeeklyTopicInput>(options));
+      return { ok: true, operation, artifact, state: 'topic_selected' };
+    }
+    if (operation === 'program week cancel') {
+      const artifact = await weeks.cancel(await readInput<CancelWeeklyCycleInput>(options));
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'program week compile-package') {
+      const artifact = await compiler.compile(await readInput<CompileWeeklyPackageInput>(options));
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
+    if (operation === 'program week status') {
+      const input = await readInput<{ cycle_id: string }>(options);
+      const artifact = await weeks.status(input.cycle_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
     }
     throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
   }
