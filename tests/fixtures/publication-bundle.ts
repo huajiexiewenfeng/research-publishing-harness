@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { XArticleService } from '../../harnesses/research-publishing/branches/x-article-harness/x-article-service.js';
-import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import { createXArticleReceipt } from '../../harnesses/research-publishing/adapters/x/article-browser/article-receipt.js';
+import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
+import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
+import { PublicationBundleService } from '../../harnesses/research-publishing/core/publication-bundle-service.js';
 import {
   createWeeklyCandidateSet,
   createWeeklyCycleStatus,
@@ -16,7 +20,10 @@ import type {
   ResearchRoadmapPort
 } from '../../harnesses/research-publishing/core/research-program-types.js';
 import { WeeklyResearchCycleService } from '../../harnesses/research-publishing/core/weekly-research-cycle-service.js';
-import type { ResearchContentPackageV1_2 } from '../../harnesses/research-publishing/core/types.js';
+import type {
+  ResearchContentPackageV1_2,
+  VisualAssetRef
+} from '../../harnesses/research-publishing/core/types.js';
 import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { researchPackage } from './research-package.js';
@@ -28,7 +35,30 @@ export interface PublicationBundleFixture {
   readonly planInput: PlanPublicationBundleInput;
 }
 
-export async function createPublicationBundleFixture(): Promise<PublicationBundleFixture> {
+export interface ApprovedPublicationBundleFixture extends PublicationBundleFixture {
+  readonly service: PublicationBundleService;
+  readonly plan: Awaited<ReturnType<PublicationBundleService['plan']>>;
+  readonly authorization: Awaited<ReturnType<PublicationBundleService['articleAuthorization']>>;
+}
+
+export const publicationBundleNow = new Date('2026-08-24T12:00:00.000Z');
+
+export const articleBrowserCapabilities = {
+  executor: 'codex-chrome',
+  executor_version: '26.818.31338',
+  browser_family: 'chrome',
+  capabilities: [
+    'observe_article_page', 'create_article_draft', 'set_article_title',
+    'upload_article_cover', 'insert_article_block', 'insert_article_image',
+    'set_article_image_alt', 'open_article_preview', 'open_publish_review',
+    'publish_article_once'
+  ],
+  observed_at: publicationBundleNow.toISOString()
+} as const;
+
+export async function createPublicationBundleFixture(
+  options: { readonly withVisual?: boolean } = {}
+): Promise<PublicationBundleFixture> {
   const store = await WorkspaceStore.open(
     await mkdtemp(join(tmpdir(), 'rph-publication-bundle-'))
   );
@@ -87,13 +117,42 @@ export async function createPublicationBundleFixture(): Promise<PublicationBundl
   await store.writeNew(`${root}/package.json`, packageValue);
 
   const articleRoot = 'articles/runtime-boundary/article_bundle_1';
+  const visualBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const visualAsset: VisualAssetRef | null = options.withVisual === true
+    ? {
+        asset_id: 'asset_bundle_cover',
+        relative_path: 'assets/asset_bundle_cover.png',
+        digest: sha256Bytes(visualBytes),
+        mime_type: 'image/png',
+        alt_text: 'A boundary separating Skill semantics from Runtime knowledge access.',
+        claim_refs: ['claim_verified']
+      }
+    : null;
   const manifestBase = {
     schema_version: '1.0' as const,
     article_run_id: 'article_bundle_1',
-    bindings: []
+    bindings: visualAsset === null ? [] : [{
+      slot_id: 'slot_bundle_cover',
+      asset: visualAsset,
+      placement_ordinal: 1,
+      width: 1200,
+      height: 675,
+      byte_size: visualBytes.byteLength,
+      normalization_version: 'fixture/v1',
+      provenance: {
+        method: 'deterministic' as const,
+        tool: 'vitest',
+        source_digest: sha256('fixture-cover')
+      },
+      editable_source: null
+    }]
   };
-  const articleFiles = {
-    'article.md': '# Runtime boundary\n\nSkills own semantics. Runtime owns deterministic access.\n',
+  const articleMarkdown = visualAsset === null
+    ? '# Runtime boundary\n\nSkills own semantics. Runtime owns deterministic access.\n'
+    : `# Runtime boundary\n\n![${visualAsset.alt_text}](${visualAsset.relative_path})\n\n` +
+      'Skills own semantics. Runtime owns deterministic access.\n';
+  const articleFiles: Record<string, string | object | Uint8Array> = {
+    'article.md': articleMarkdown,
     'visual-manifest.json': {
       ...manifestBase,
       manifest_digest: sha256(manifestBase)
@@ -111,12 +170,23 @@ export async function createPublicationBundleFixture(): Promise<PublicationBundl
         claim_refs: ['claim_verified'],
         source_refs: ['source_test']
       }],
-      visual_slots: [],
+      visual_slots: visualAsset === null ? [] : [{
+        slot_id: 'slot_bundle_cover',
+        placement: { kind: 'cover' },
+        purpose: 'cover',
+        required: true,
+        brief: 'Show the Skill and Runtime boundary.',
+        claim_refs: ['claim_verified']
+      }],
       open_questions: []
     }
   };
+  if (visualAsset !== null) articleFiles[visualAsset.relative_path] = visualBytes;
   const articleDigest = sha256(Object.entries(articleFiles)
-    .map(([path, value]) => ({ path, digest: sha256(value) }))
+    .map(([path, value]) => ({
+      path,
+      digest: value instanceof Uint8Array ? sha256Bytes(value) : sha256(value)
+    }))
     .sort((left, right) => left.path.localeCompare(right.path)));
   const packageRef = {
     root: articleRoot,
@@ -176,10 +246,103 @@ export async function createPublicationBundleFixture(): Promise<PublicationBundl
         content_type: 'anchor',
         text_template: 'Read the complete argument: {{X_ARTICLE_URL}}',
         claim_refs: ['claim_verified'],
-        visual_asset: null,
+        visual_asset: visualAsset,
         article_package: { root: packageRef.root, digest: packageRef.digest }
       },
       planned_at: '2026-08-24T11:10:00.000Z'
     }
   };
+}
+
+export async function createApprovedPublicationBundleFixture(
+  options: { readonly withVisual?: boolean } = {}
+): Promise<ApprovedPublicationBundleFixture> {
+  const fixture = await createPublicationBundleFixture(options);
+  const service = new PublicationBundleService(fixture.store, fixture.weeks, {
+    now: () => publicationBundleNow,
+    approvalId: () => 'bundle_approval_fixture_1'
+  });
+  const plan = await service.plan(fixture.planInput);
+  await service.approve({
+    bundle_id: plan.bundle_id,
+    confirmed_bundle_digest: plan.bundle_digest,
+    approved_by: 'human:Glen56121'
+  });
+  const authorization = await service.articleAuthorization(plan.bundle_id);
+  return { ...fixture, service, plan, authorization };
+}
+
+export async function startBundleArticleExecution(
+  fixture: ApprovedPublicationBundleFixture,
+  executionId = 'article_execution_bundle_1'
+) {
+  const adapter = new XArticleBrowserAdapter(
+    fixture.store,
+    new XArticleWeb2026_08Contract(),
+    {
+      executionId: () => executionId,
+      now: () => new Date('2026-08-24T12:01:00.000Z')
+    }
+  );
+  const snapshot = await adapter.start(
+    fixture.plan.article_plan,
+    fixture.authorization.child_approval,
+    articleBrowserCapabilities
+  );
+  return { adapter, snapshot };
+}
+
+export async function installArticleReceipt(
+  fixture: ApprovedPublicationBundleFixture,
+  executionId: string,
+  input: {
+    readonly status?: 'published' | 'published_media_unverified' | 'verification_conflict';
+    readonly canonicalUrl?: string;
+  } = {}
+) {
+  const status = input.status ?? 'published';
+  const kind = status === 'published'
+    ? 'full_match'
+    : status === 'published_media_unverified'
+      ? 'media_unverified'
+      : 'conflict';
+  const canonicalUrl = input.canonicalUrl ??
+    'https://x.com/Glen56121/article/2091000000000000000';
+  const receipt = createXArticleReceipt({
+    receiptId: `receipt_${executionId}`,
+    executionId,
+    plan: fixture.plan.article_plan,
+    status,
+    draftId: '2090731994279755776',
+    editorRevision: `sha256:${'b'.repeat(64)}`,
+    previewRevision: `sha256:${'c'.repeat(64)}`,
+    publicVerification: {
+      kind,
+      article_id: '2091000000000000000',
+      canonical_url: canonicalUrl,
+      author_match: status !== 'verification_conflict',
+      content_match: status !== 'verification_conflict',
+      links_match: true,
+      media_match: status === 'published_media_unverified' ? null : status === 'published',
+      verified_at: '2026-08-24T12:02:00.000Z'
+    },
+    issuedAt: '2026-08-24T12:02:01.000Z',
+    supersedesReceiptId: null
+  });
+  const path = `receipts/${receipt.receipt_id}.json`;
+  await fixture.store.writeNew(path, receipt);
+  const contextPath = `runs/${executionId}/x-article/browser/adapter-context.json`;
+  const context = await fixture.store.readJson<Record<string, unknown>>(contextPath);
+  await fixture.store.replaceAtomic(contextPath, {
+    ...context,
+    snapshot: {
+      ...(context.snapshot as Record<string, unknown>),
+      state: status === 'verification_conflict' ? 'verification_conflict' : 'finalized',
+      publish_command_count: 1,
+      latest_receipt_path: path,
+      updated_at: '2026-08-24T12:02:01.000Z'
+    }
+  });
+  const artifact = await fixture.store.readContainedArtifact(path);
+  return { receipt, path, digest: artifact.digest };
 }
