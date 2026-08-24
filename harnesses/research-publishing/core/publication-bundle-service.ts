@@ -3,8 +3,22 @@ import { randomUUID } from 'node:crypto';
 import { verifyFinalizedArticlePackage } from '../branches/article-harness/article-package-verifier.js';
 import type { ArticlePackageRef } from '../branches/article-harness/article-service.js';
 import type { XArticlePublishReceiptV1 } from '../adapters/x/article-browser/article-receipt.js';
-import { approvePublicationV2, verifyApprovalV2 } from './approval-v2.js';
-import { approvePublicationV2_1, verifyApprovalV2_1 } from './approval-v2-1.js';
+import {
+  assertFinalReceiptV2,
+  type PublicationReceiptV2
+} from '../adapters/x/browser/receipt-v2.js';
+import type { PublicationReceiptV2_1 } from '../adapters/x/browser/receipt-v2-1.js';
+import {
+  approvePublicationV2,
+  verifyApprovalV2,
+  type ApprovalV2
+} from './approval-v2.js';
+import {
+  approvePublicationV2_1,
+  verifyApprovalV2_1,
+  type ApprovalV2_1
+} from './approval-v2-1.js';
+import type { BrowserExecutionState } from './browser-execution.js';
 import { sha256, sha256Bytes } from './digest.js';
 import { HarnessError } from './errors.js';
 import {
@@ -20,7 +34,8 @@ import {
   assertPublicationBundleApproval,
   assertPublicationBundlePlan,
   createPublicationBundleApproval,
-  createPublicationBundlePlan
+  createPublicationBundlePlan,
+  createPublicationBundleReceipt
 } from './publication-bundle-contracts.js';
 import { runPublicationBundlePublishGate } from './publication-bundle-publish-gate.js';
 import {
@@ -32,7 +47,9 @@ import type {
   ArticleExecutionBindingV1,
   ArticleReceiptBindingV1,
   AttachArticleReceiptInput,
+  AttachSingleReceiptInput,
   BindArticleExecutionInput,
+  BindSingleExecutionInput,
   DerivedArticleAuthorizationV1,
   DerivedSingleAuthorizationV1,
   MaterializedSinglePublicationV1,
@@ -41,10 +58,21 @@ import type {
   PublicationBundleAuditV1,
   PublicationBundlePhase,
   PublicationBundlePlanV1,
-  PublicationBundleStatusV1
+  PublicationBundleReceiptV1,
+  PublicationBundleStatusV1,
+  SingleExecutionBindingV1,
+  SingleReceiptBindingV1
 } from './publication-bundle-types.js';
-import { assertPublicationPlanV2, createPublicationPlanV2 } from './publication-plan-v2.js';
-import { assertPublicationPlanV2_1, createPublicationPlanV2_1 } from './publication-plan-v2-1.js';
+import {
+  assertPublicationPlanV2,
+  createPublicationPlanV2,
+  type PublicationPlanV2
+} from './publication-plan-v2.js';
+import {
+  assertPublicationPlanV2_1,
+  createPublicationPlanV2_1,
+  type PublicationPlanV2_1
+} from './publication-plan-v2-1.js';
 import {
   createWeeklyPublicationBundleBinding,
   createWeeklyResearchCycle,
@@ -525,6 +553,12 @@ export class PublicationBundleService {
   }
 
   async singleAuthorization(bundleId: string): Promise<DerivedSingleAuthorizationV1> {
+    if (await this.store.exists(this.singleExecutionBindingPath(bundleId))) {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        'Single execution is already bound; authorization cannot be replayed'
+      );
+    }
     const plan = await this.readPlan(bundleId);
     const approval = await this.readApproval(plan);
     const now = this.now();
@@ -580,6 +614,132 @@ export class PublicationBundleService {
     return this.readSingleAuthorization(plan, approval, materialized, true);
   }
 
+  async bindSingleExecution(
+    input: BindSingleExecutionInput
+  ): Promise<SingleExecutionBindingV1> {
+    const plan = await this.readPlan(input.bundle_id);
+    const approval = await this.readApproval(plan);
+    assertPublicationBundleApproval(plan, approval, this.now());
+    const materialized = await this.readMaterializedSingle(
+      plan,
+      await this.readArticleReceiptBinding(input.bundle_id)
+    );
+    const authorization = await this.readSingleAuthorization(
+      plan,
+      approval,
+      materialized,
+      true
+    );
+    const inspected = await this.inspector.inspectSingle(
+      materialized.child_plan.run_id,
+      input.execution_id
+    );
+    if (
+      inspected.snapshot.submit_command_count !== 0 ||
+      !exact(inspected.plan, materialized.child_plan) ||
+      !exact(inspected.approval, authorization.child_approval) ||
+      inspected.snapshot.plan_id !== materialized.child_plan.plan_id
+    ) {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        'Single execution must match the derived Authorization before any Submit command'
+      );
+    }
+    const path = this.singleExecutionBindingPath(input.bundle_id);
+    if (await this.store.exists(path)) {
+      const existing = await this.readSingleExecutionBinding(input.bundle_id);
+      if (existing.execution_id !== input.execution_id) {
+        throw new HarnessError(
+          'STATE_TRANSITION_INVALID',
+          'Publication Bundle already binds a different Single execution'
+        );
+      }
+      return existing;
+    }
+    const [bundlePlanRef, bundleApprovalRef, authorizationRef] = await Promise.all([
+      this.fileRef(this.planPath(input.bundle_id)),
+      this.fileRef(this.approvalPath(input.bundle_id)),
+      this.fileRef(this.singleAuthorizationPath(input.bundle_id))
+    ]);
+    const body = {
+      schema_version: 'publication-bundle-execution-binding/v1' as const,
+      bundle_id: input.bundle_id,
+      child_kind: 'x_single' as const,
+      bundle_plan_ref: bundlePlanRef,
+      bundle_approval_ref: bundleApprovalRef,
+      child_authorization_ref: authorizationRef,
+      execution_id: input.execution_id,
+      run_id: inspected.snapshot.run_id,
+      plan_id: inspected.snapshot.plan_id,
+      plan_digest: materialized.child_plan.plan_digest as `sha256:${string}`,
+      installed_plan_ref: inspected.installed_plan_ref,
+      installed_approval_ref: inspected.installed_approval_ref,
+      bound_at: input.bound_at
+    };
+    await this.store.writeNew(path, validateContract<SingleExecutionBindingV1>(
+      'publication-bundle-execution-binding',
+      { ...body, binding_digest: sha256(body) }
+    ));
+    await this.status(input.bundle_id);
+    return this.readSingleExecutionBinding(input.bundle_id);
+  }
+
+  async attachSingleReceipt(
+    input: AttachSingleReceiptInput
+  ): Promise<PublicationBundleReceiptV1 | PublicationBundleStatusV1> {
+    const executionBinding = await this.readSingleExecutionBinding(input.bundle_id);
+    const inspected = await this.inspector.inspectSingle(
+      executionBinding.run_id,
+      executionBinding.execution_id
+    );
+    const artifact = await this.store.readContainedArtifact(input.receipt_path);
+    if (
+      artifact.digest !== input.receipt_digest ||
+      inspected.latest_receipt_path !== artifact.relative_path
+    ) {
+      throw new HarnessError('APPROVAL_STALE', 'Single Receipt file binding is stale');
+    }
+    const receipt = this.parseJson<PublicationReceiptV2 | PublicationReceiptV2_1>(
+      artifact.content,
+      input.receipt_path
+    );
+    const verified = this.verifySingleReceipt(
+      inspected.plan,
+      inspected.approval,
+      inspected.snapshot.state,
+      executionBinding,
+      receipt
+    );
+    const path = this.singleReceiptBindingPath(input.bundle_id, receipt.receipt_id);
+    if (!(await this.store.exists(path))) {
+      const executionBindingRef = await this.fileRef(
+        this.singleExecutionBindingPath(input.bundle_id)
+      );
+      const body = {
+        schema_version: 'publication-bundle-receipt-binding/v1' as const,
+        bundle_id: input.bundle_id,
+        child_kind: 'x_single' as const,
+        execution_binding_ref: executionBindingRef,
+        child_plan_ref: executionBinding.installed_plan_ref,
+        child_plan_digest: executionBinding.plan_digest,
+        child_receipt_ref: { path: artifact.relative_path, digest: artifact.digest },
+        child_receipt_digest: sha256(receipt),
+        parsed_status: verified.parsedStatus,
+        canonical_public_url: verified.canonicalUrl,
+        limitations: verified.limitations,
+        bound_at: receipt.created_at
+      };
+      await this.store.writeNew(path, validateContract<SingleReceiptBindingV1>(
+        'publication-bundle-receipt-binding',
+        { ...body, binding_digest: sha256(body) }
+      ));
+    } else {
+      await this.readSingleReceiptBinding(input.bundle_id, receipt.receipt_id);
+    }
+    if (!verified.success) return this.status(input.bundle_id);
+    return this.issueJointReceipt(input.bundle_id, receipt.receipt_id);
+  }
+
   async status(bundleId: string): Promise<PublicationBundleStatusV1> {
     const plan = await this.readPlan(bundleId);
     let phase: PublicationBundlePhase = 'planned';
@@ -587,6 +747,9 @@ export class PublicationBundleService {
     let limitations: readonly string[] = [];
     let articleExecutionBindingRef: ResearchArtifactRefV1 | null = null;
     let articleReceiptBindingRef: ResearchArtifactRefV1 | null = null;
+    let singleExecutionBindingRef: ResearchArtifactRefV1 | null = null;
+    let singleReceiptBindingRef: ResearchArtifactRefV1 | null = null;
+    let jointReceiptRef: ResearchArtifactRefV1 | null = null;
     const approval = await this.store.exists(this.approvalPath(bundleId))
       ? await this.readApproval(plan)
       : null;
@@ -633,9 +796,40 @@ export class PublicationBundleService {
       await this.readSingleAuthorization(plan, approval, materialized, false);
       phase = 'single_authorized';
     }
+    if (await this.store.exists(this.singleExecutionBindingPath(bundleId))) {
+      const binding = await this.readSingleExecutionBinding(bundleId);
+      singleExecutionBindingRef = await this.fileRef(this.singleExecutionBindingPath(bundleId));
+      const inspected = await this.inspector.inspectSingle(binding.run_id, binding.execution_id);
+      phase = this.singleSnapshotPhase(inspected.snapshot.state);
+      updatedAt = inspected.snapshot.updated_at;
+      if (inspected.latest_receipt_path !== null) {
+        const latestReceipt = await this.readJson<{ readonly receipt_id: string }>(
+          inspected.latest_receipt_path
+        );
+        const receiptBindingPath = this.singleReceiptBindingPath(bundleId, latestReceipt.receipt_id);
+        if (await this.store.exists(receiptBindingPath)) {
+          const receiptBinding = await this.readSingleReceiptBinding(
+            bundleId,
+            latestReceipt.receipt_id
+          );
+          singleReceiptBindingRef = await this.fileRef(receiptBindingPath);
+          limitations = [...new Set([...limitations, ...receiptBinding.limitations])];
+          updatedAt = receiptBinding.bound_at;
+          phase = this.singleReceiptPhase(receiptBinding.parsed_status);
+        }
+      }
+    }
+    if (await this.store.exists(this.jointReceiptPath(bundleId))) {
+      await this.readJointReceipt(bundleId);
+      jointReceiptRef = await this.fileRef(this.jointReceiptPath(bundleId));
+      phase = 'completed';
+    }
     if (
       approval !== null && Date.parse(approval.expires_at) <= this.now().getTime() &&
-      !['article_verification_conflict', 'article_terminal_failure'].includes(phase)
+      ![
+        'article_verification_conflict', 'article_terminal_failure',
+        'single_verification_conflict', 'single_terminal_failure', 'completed'
+      ].includes(phase)
     ) {
       phase = 'approval_expired';
       updatedAt = approval.expires_at;
@@ -648,9 +842,9 @@ export class PublicationBundleService {
       phase,
       article_execution_binding_ref: articleExecutionBindingRef,
       article_receipt_binding_ref: articleReceiptBindingRef,
-      single_execution_binding_ref: null,
-      single_receipt_binding_ref: null,
-      joint_receipt_ref: null,
+      single_execution_binding_ref: singleExecutionBindingRef,
+      single_receipt_binding_ref: singleReceiptBindingRef,
+      joint_receipt_ref: jointReceiptRef,
       limitations,
       updated_at: updatedAt
     };
@@ -1051,6 +1245,304 @@ export class PublicationBundleService {
     return value;
   }
 
+  private async readSingleExecutionBinding(bundleId: string): Promise<SingleExecutionBindingV1> {
+    const value = await this.readContract<SingleExecutionBindingV1>(
+      this.singleExecutionBindingPath(bundleId),
+      'publication-bundle-execution-binding'
+    );
+    const { binding_digest: digest, ...body } = value;
+    const [planRef, approvalRef, authorizationRef] = await Promise.all([
+      this.fileRef(this.planPath(bundleId)),
+      this.fileRef(this.approvalPath(bundleId)),
+      this.fileRef(this.singleAuthorizationPath(bundleId))
+    ]);
+    if (
+      digest !== sha256(body) || value.bundle_id !== bundleId ||
+      value.child_kind !== 'x_single' ||
+      !exact(value.bundle_plan_ref, planRef) ||
+      !exact(value.bundle_approval_ref, approvalRef) ||
+      !exact(value.child_authorization_ref, authorizationRef)
+    ) {
+      throw new HarnessError('APPROVAL_STALE', 'Single Execution Binding is stale');
+    }
+    return value;
+  }
+
+  private verifySingleReceipt(
+    childPlan: PublicationPlanV2 | PublicationPlanV2_1,
+    childApproval: ApprovalV2 | ApprovalV2_1,
+    snapshotState: BrowserExecutionState,
+    binding: SingleExecutionBindingV1,
+    receipt: PublicationReceiptV2 | PublicationReceiptV2_1
+  ): {
+    readonly parsedStatus: SingleReceiptBindingV1['parsed_status'];
+    readonly canonicalUrl: string | null;
+    readonly limitations: readonly string[];
+    readonly success: boolean;
+  } {
+    if (receipt.schema_version === '2.0') {
+      validateContract<PublicationReceiptV2>('publish-receipt-v2', receipt);
+    } else {
+      validateContract<PublicationReceiptV2_1>('publish-receipt-v2-1', receipt);
+    }
+    if (
+      receipt.schema_version !== childPlan.schema_version ||
+      receipt.execution_id !== binding.execution_id ||
+      receipt.run_id !== binding.run_id ||
+      receipt.target_account.toLowerCase() !== childPlan.intent.target_account.toLowerCase() ||
+      receipt.approval.plan_digest !== childPlan.plan_digest ||
+      receipt.approval.approval_digest !== childApproval.approval_digest ||
+      receipt.submission.submit_command_count !== 1
+    ) {
+      throw new HarnessError(
+        'PUBLIC_VERIFICATION_CONFLICT',
+        'Single Receipt identity differs from its bound Plan and Approval'
+      );
+    }
+    if (receipt.status === 'finalized') {
+      if (snapshotState !== 'finalized') {
+        throw new HarnessError('PUBLIC_VERIFICATION_CONFLICT', 'Final Single Receipt snapshot is stale');
+      }
+      if (receipt.schema_version === '2.0' && childPlan.schema_version === '2.0') {
+        assertFinalReceiptV2(receipt, childPlan);
+      } else if (receipt.schema_version === '2.1' && childPlan.schema_version === '2.1') {
+        this.assertVerifiedV2_1Receipt(receipt, childPlan, true);
+      } else {
+        throw new HarnessError('PUBLIC_VERIFICATION_CONFLICT', 'Single Receipt version is stale');
+      }
+      return {
+        parsedStatus: 'finalized',
+        canonicalUrl: receipt.public_result!.root_url,
+        limitations: receipt.schema_version === '2.1'
+          ? receipt.media_evidence?.limitations ?? []
+          : [],
+        success: true
+      };
+    }
+    if (receipt.schema_version === '2.1' && receipt.status === 'published_media_unverified') {
+      if (childPlan.schema_version !== '2.1' || snapshotState !== 'published_unverified') {
+        throw new HarnessError('PUBLIC_VERIFICATION_CONFLICT', 'Media-unverified Single state is stale');
+      }
+      this.assertVerifiedV2_1Receipt(receipt, childPlan, false);
+      return {
+        parsedStatus: 'published_media_unverified',
+        canonicalUrl: receipt.public_result!.root_url,
+        limitations: receipt.media_evidence?.limitations.length
+          ? receipt.media_evidence.limitations
+          : ['published_media_unverified'],
+        success: true
+      };
+    }
+    const terminal = {
+      outcome_unknown: 'single_outcome_unknown',
+      verification_conflict: 'single_verification_conflict',
+      partial: 'single_terminal_failure',
+      failed_after_submit: 'single_terminal_failure'
+    } as const;
+    if (!(receipt.status in terminal) || snapshotState !== receipt.status) {
+      throw new HarnessError(
+        'PUBLIC_VERIFICATION_CONFLICT',
+        'Single terminal Receipt differs from the bound execution snapshot'
+      );
+    }
+    return {
+      parsedStatus: receipt.status as keyof typeof terminal,
+      canonicalUrl: null,
+      limitations: [receipt.status],
+      success: false
+    };
+  }
+
+  private assertVerifiedV2_1Receipt(
+    receipt: PublicationReceiptV2_1,
+    plan: PublicationPlanV2_1,
+    requireMedia: boolean
+  ): void {
+    const result = receipt.public_result;
+    const verification = receipt.verification;
+    const item = plan.items[0];
+    const post = result?.posts[0];
+    const media = receipt.media_evidence;
+    if (
+      receipt.plan_digest !== plan.plan_digest || result === null || item === undefined ||
+      result.root_url !== post?.canonical_url || result.posts.length !== 1 ||
+      result.ordered_post_ids.length !== 1 || result.ordered_post_ids[0] !== post.post_id ||
+      post.ordinal !== 1 || post.observed_digest !== item.digest || post.reply_to_id !== null ||
+      result.matched_ordinals.join(',') !== '1' || result.missing_ordinals.length !== 0 ||
+      result.unexpected_post_ids.length !== 0 ||
+      receipt.observed_account?.toLowerCase() !== plan.intent.target_account.toLowerCase() ||
+      verification.source !== 'browser_public_page' || !verification.account_match ||
+      !verification.count_match || !verification.content_match || !verification.order_match ||
+      !verification.reply_chain_match || !verification.links_match ||
+      !verification.unique_post_ids || media === null ||
+      media.asset_id !== item.attachments[0]?.asset_id ||
+      media.source_digest !== item.attachments[0]?.digest ||
+      media.target_ordinal !== 1 || !media.source_asset_verified ||
+      !media.composer_attachment_verified ||
+      (requireMedia && (
+        verification.strength !== 'public_browser_verified' ||
+        !media.public_media_verified || media.alt_text_verified !== true
+      ))
+    ) {
+      throw new HarnessError(
+        'PUBLIC_VERIFICATION_CONFLICT',
+        'V2.1 Single Receipt public or media evidence is incomplete'
+      );
+    }
+    assertApprovedXArticleUrl(result.root_url, plan.intent.target_account);
+  }
+
+  private async readSingleReceiptBinding(
+    bundleId: string,
+    receiptId: string
+  ): Promise<SingleReceiptBindingV1> {
+    const path = this.singleReceiptBindingPath(bundleId, receiptId);
+    const value = await this.readContract<SingleReceiptBindingV1>(
+      path,
+      'publication-bundle-receipt-binding'
+    );
+    const { binding_digest: digest, ...body } = value;
+    const executionBinding = await this.readSingleExecutionBinding(bundleId);
+    const [executionBindingRef, receiptRef] = await Promise.all([
+      this.fileRef(this.singleExecutionBindingPath(bundleId)),
+      this.fileRef(value.child_receipt_ref.path)
+    ]);
+    const receipt = await this.readJson<PublicationReceiptV2 | PublicationReceiptV2_1>(
+      value.child_receipt_ref.path
+    );
+    const inspected = await this.inspector.inspectSingle(
+      executionBinding.run_id,
+      executionBinding.execution_id
+    );
+    const verified = this.verifySingleReceipt(
+      inspected.plan,
+      inspected.approval,
+      inspected.snapshot.state,
+      executionBinding,
+      receipt
+    );
+    if (
+      digest !== sha256(body) || value.bundle_id !== bundleId ||
+      value.child_kind !== 'x_single' ||
+      !exact(value.execution_binding_ref, executionBindingRef) ||
+      !exact(value.child_plan_ref, executionBinding.installed_plan_ref) ||
+      value.child_plan_digest !== executionBinding.plan_digest ||
+      !exact(value.child_receipt_ref, receiptRef) ||
+      value.child_receipt_digest !== sha256(receipt) ||
+      receipt.receipt_id !== receiptId ||
+      value.parsed_status !== verified.parsedStatus ||
+      value.canonical_public_url !== verified.canonicalUrl ||
+      !exact(value.limitations, verified.limitations)
+    ) {
+      throw new HarnessError('APPROVAL_STALE', 'Single Receipt Binding is stale');
+    }
+    return value;
+  }
+
+  private async issueJointReceipt(
+    bundleId: string,
+    singleReceiptId: string
+  ): Promise<PublicationBundleReceiptV1> {
+    if (await this.store.exists(this.jointReceiptPath(bundleId))) {
+      return this.readJointReceipt(bundleId);
+    }
+    const plan = await this.readPlan(bundleId);
+    const article = await this.readArticleReceiptBinding(bundleId);
+    const single = await this.readSingleReceiptBinding(bundleId, singleReceiptId);
+    if (
+      article.canonical_public_url === null || single.canonical_public_url === null ||
+      !['published', 'published_media_unverified'].includes(article.parsed_status) ||
+      !['finalized', 'published_media_unverified'].includes(single.parsed_status)
+    ) {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        'Joint Receipt requires two verified child publications'
+      );
+    }
+    const [bundlePlanRef, bundleApprovalRef] = await Promise.all([
+      this.fileRef(this.planPath(bundleId)),
+      this.fileRef(this.approvalPath(bundleId))
+    ]);
+    const receipt = createPublicationBundleReceipt({
+      bundle_id: bundleId,
+      cycle_ref: plan.cycle_ref,
+      bundle_plan_ref: bundlePlanRef,
+      bundle_approval_ref: bundleApprovalRef,
+      article: {
+        plan_ref: article.child_plan_ref,
+        plan_digest: article.child_plan_digest,
+        receipt_ref: article.child_receipt_ref,
+        receipt_digest: article.child_receipt_digest,
+        status: article.parsed_status,
+        public_url: article.canonical_public_url
+      },
+      single: {
+        plan_ref: single.child_plan_ref,
+        plan_digest: single.child_plan_digest,
+        receipt_ref: single.child_receipt_ref,
+        receipt_digest: single.child_receipt_digest,
+        status: single.parsed_status,
+        public_url: single.canonical_public_url
+      },
+      issued_at: this.now().toISOString()
+    });
+    await this.store.writeNew(this.jointReceiptPath(bundleId), receipt);
+    await this.status(bundleId);
+    return this.readJointReceipt(bundleId);
+  }
+
+  private async readJointReceipt(bundleId: string): Promise<PublicationBundleReceiptV1> {
+    const value = await this.readContract<PublicationBundleReceiptV1>(
+      this.jointReceiptPath(bundleId),
+      'publication-bundle-receipt'
+    );
+    const recreated = createPublicationBundleReceipt({
+      bundle_id: value.bundle_id,
+      cycle_ref: value.cycle_ref,
+      bundle_plan_ref: value.bundle_plan_ref,
+      bundle_approval_ref: value.bundle_approval_ref,
+      article: value.article,
+      single: value.single,
+      issued_at: value.issued_at
+    });
+    const [planRef, approvalRef] = await Promise.all([
+      this.fileRef(this.planPath(bundleId)),
+      this.fileRef(this.approvalPath(bundleId))
+    ]);
+    const articleBinding = await this.readArticleReceiptBinding(bundleId);
+    const singleReceipt = await this.readJson<{ readonly receipt_id: string }>(
+      value.single.receipt_ref.path
+    );
+    const singleBinding = await this.readSingleReceiptBinding(
+      bundleId,
+      singleReceipt.receipt_id
+    );
+    if (
+      !exact(value, recreated) || value.bundle_id !== bundleId ||
+      !exact(value.bundle_plan_ref, planRef) ||
+      !exact(value.bundle_approval_ref, approvalRef) ||
+      !exact(value.article, {
+        plan_ref: articleBinding.child_plan_ref,
+        plan_digest: articleBinding.child_plan_digest,
+        receipt_ref: articleBinding.child_receipt_ref,
+        receipt_digest: articleBinding.child_receipt_digest,
+        status: articleBinding.parsed_status,
+        public_url: articleBinding.canonical_public_url
+      }) ||
+      !exact(value.single, {
+        plan_ref: singleBinding.child_plan_ref,
+        plan_digest: singleBinding.child_plan_digest,
+        receipt_ref: singleBinding.child_receipt_ref,
+        receipt_digest: singleBinding.child_receipt_digest,
+        status: singleBinding.parsed_status,
+        public_url: singleBinding.canonical_public_url
+      })
+    ) {
+      throw new HarnessError('APPROVAL_STALE', 'Publication Bundle joint Receipt is stale');
+    }
+    return value;
+  }
+
   private articleSnapshotPhase(state: XArticleExecutionState): PublicationBundlePhase {
     if (state === 'outcome_unknown' || state === 'published_unverified') {
       return 'article_outcome_unknown';
@@ -1060,6 +1552,28 @@ export class PublicationBundleService {
       return 'article_terminal_failure';
     }
     return 'article_in_progress';
+  }
+
+  private singleSnapshotPhase(state: BrowserExecutionState): PublicationBundlePhase {
+    if (state === 'outcome_unknown' || state === 'published_unverified') {
+      return 'single_outcome_unknown';
+    }
+    if (state === 'verification_conflict') return 'single_verification_conflict';
+    if (state === 'partial' || state === 'failed_after_submit' || state === 'cancelled_before_submit') {
+      return 'single_terminal_failure';
+    }
+    return 'single_in_progress';
+  }
+
+  private singleReceiptPhase(
+    status: SingleReceiptBindingV1['parsed_status']
+  ): PublicationBundlePhase {
+    if (status === 'outcome_unknown') return 'single_outcome_unknown';
+    if (status === 'verification_conflict') return 'single_verification_conflict';
+    if (status === 'partial' || status === 'failed_after_submit') {
+      return 'single_terminal_failure';
+    }
+    return 'single_in_progress';
   }
 
   private async readBundleStatus(bundleId: string): Promise<PublicationBundleStatusV1> {
@@ -1137,6 +1651,18 @@ export class PublicationBundleService {
 
   private singleAuthorizationPath(bundleId: string): string {
     return `runs/${bundleId}/publication-bundle/single-authorization.json`;
+  }
+
+  private singleExecutionBindingPath(bundleId: string): string {
+    return `runs/${bundleId}/publication-bundle/single-execution-binding.json`;
+  }
+
+  private singleReceiptBindingPath(bundleId: string, receiptId: string): string {
+    return `runs/${bundleId}/publication-bundle/single-receipt-bindings/${receiptId}.json`;
+  }
+
+  private jointReceiptPath(bundleId: string): string {
+    return `runs/${bundleId}/publication-bundle/receipt.json`;
   }
 
   private statusPath(bundleId: string): string {

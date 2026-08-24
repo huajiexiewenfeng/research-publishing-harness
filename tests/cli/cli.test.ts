@@ -62,6 +62,38 @@ describe('research-publish CLI', () => {
     }
   });
 
+  it('exposes all eleven Publication Bundle operations with JSON-only routing', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-bundle-routes-'));
+    const workspace = join(parent, 'workspace');
+    const input = join(parent, 'input.json');
+    await writeFile(input, '{}', 'utf8');
+    const operations = [
+      'publication bundle plan',
+      'publication bundle audit',
+      'publication bundle approve',
+      'publication bundle article-authorization',
+      'publication bundle bind-article-execution',
+      'publication bundle attach-article-receipt',
+      'publication bundle materialize-single',
+      'publication bundle single-authorization',
+      'publication bundle bind-single-execution',
+      'publication bundle attach-single-receipt',
+      'publication bundle status'
+    ];
+    for (const operation of operations) {
+      const result = run([
+        ...operation.split(' '), '--workspace', workspace,
+        '--input', input, '--output', 'json'
+      ]);
+      const payload = JSON.parse(result.stdout) as {
+        operation: string;
+        error?: { message: string };
+      };
+      expect(payload.operation).toBe(operation);
+      expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
+    }
+  });
+
   it('exposes the V2.2-compatible V2.3 Memory command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-routes-'));
     const workspace = join(parent, 'workspace');

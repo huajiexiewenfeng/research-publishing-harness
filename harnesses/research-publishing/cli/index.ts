@@ -76,6 +76,15 @@ import {
   type AssembleResearchIncrementInput
 } from '../core/research-increment-service.js';
 import { PackageService } from '../core/package-service.js';
+import { PublicationBundleService } from '../core/publication-bundle-service.js';
+import type {
+  ApprovePublicationBundleInput,
+  AttachArticleReceiptInput,
+  AttachSingleReceiptInput,
+  BindArticleExecutionInput,
+  BindSingleExecutionInput,
+  PlanPublicationBundleInput
+} from '../core/publication-bundle-types.js';
 import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
 import type { PublicationPlanV2_1 } from '../core/publication-plan-v2-1.js';
@@ -354,6 +363,75 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const input = await readInput<{ package: ResearchContentPackage }>(options);
     const artifact = await packages.freezePackage(input.package);
     return { ok: true, operation, artifact, state: artifact.package.status };
+  }
+
+  if (operation.startsWith('publication bundle ')) {
+    const roadmaps = new ResearchRoadmapService(store);
+    const backlog = new ResearchBacklogService(store, roadmaps);
+    const weeks = new WeeklyResearchCycleService(store, roadmaps, backlog);
+    const bundles = new PublicationBundleService(store, weeks);
+    if (operation === 'publication bundle plan') {
+      const artifact = await bundles.plan(await readInput<PlanPublicationBundleInput>(options));
+      return { ok: true, operation, artifact, state: 'planned' };
+    }
+    if (operation === 'publication bundle audit') {
+      const { bundle_id } = await readInput<{ bundle_id: string }>(options);
+      return { ok: true, operation, artifact: await bundles.audit(bundle_id), state: 'planned' };
+    }
+    if (operation === 'publication bundle approve') {
+      const artifact = await bundles.approve(await readInput<ApprovePublicationBundleInput>(options));
+      return { ok: true, operation, artifact, state: 'approved' };
+    }
+    if (operation === 'publication bundle article-authorization') {
+      const { bundle_id } = await readInput<{ bundle_id: string }>(options);
+      const artifact = await bundles.articleAuthorization(bundle_id);
+      return { ok: true, operation, artifact, state: 'article_authorized' };
+    }
+    if (operation === 'publication bundle bind-article-execution') {
+      const artifact = await bundles.bindArticleExecution(
+        await readInput<BindArticleExecutionInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'article_in_progress' };
+    }
+    if (operation === 'publication bundle attach-article-receipt') {
+      const artifact = await bundles.attachArticleReceipt(
+        await readInput<AttachArticleReceiptInput>(options)
+      );
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'publication bundle materialize-single') {
+      const { bundle_id } = await readInput<{ bundle_id: string }>(options);
+      const artifact = await bundles.materializeSingle(bundle_id);
+      return { ok: true, operation, artifact, state: 'single_materialized' };
+    }
+    if (operation === 'publication bundle single-authorization') {
+      const { bundle_id } = await readInput<{ bundle_id: string }>(options);
+      const artifact = await bundles.singleAuthorization(bundle_id);
+      return { ok: true, operation, artifact, state: 'single_authorized' };
+    }
+    if (operation === 'publication bundle bind-single-execution') {
+      const artifact = await bundles.bindSingleExecution(
+        await readInput<BindSingleExecutionInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'single_in_progress' };
+    }
+    if (operation === 'publication bundle attach-single-receipt') {
+      const artifact = await bundles.attachSingleReceipt(
+        await readInput<AttachSingleReceiptInput>(options)
+      );
+      return {
+        ok: true,
+        operation,
+        artifact,
+        state: 'phase' in artifact ? artifact.phase : artifact.status
+      };
+    }
+    if (operation === 'publication bundle status') {
+      const { bundle_id } = await readInput<{ bundle_id: string }>(options);
+      const artifact = await bundles.status(bundle_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
   }
 
   if (operation.startsWith('program ')) {

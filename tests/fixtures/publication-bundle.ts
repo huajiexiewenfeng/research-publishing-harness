@@ -6,7 +6,14 @@ import { XArticleService } from '../../harnesses/research-publishing/branches/x-
 import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
 import { createXArticleReceipt } from '../../harnesses/research-publishing/adapters/x/article-browser/article-receipt.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
+import { BrowserAdapter } from '../../harnesses/research-publishing/adapters/x/browser/browser-adapter.js';
+import type { BrowserCapabilityManifest } from '../../harnesses/research-publishing/adapters/x/browser/browser-protocol.js';
+import { CommandBroker } from '../../harnesses/research-publishing/adapters/x/browser/command-broker.js';
+import { XWeb202608Contract } from '../../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
+import { createPublicationReceiptV2 } from '../../harnesses/research-publishing/adapters/x/browser/receipt-v2.js';
+import { createPublicationReceiptV2_1 } from '../../harnesses/research-publishing/adapters/x/browser/receipt-v2-1.js';
 import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
+import { ExecutionStore } from '../../harnesses/research-publishing/core/execution-store.js';
 import { PublicationBundleService } from '../../harnesses/research-publishing/core/publication-bundle-service.js';
 import {
   createWeeklyCandidateSet,
@@ -39,6 +46,12 @@ export interface ApprovedPublicationBundleFixture extends PublicationBundleFixtu
   readonly service: PublicationBundleService;
   readonly plan: Awaited<ReturnType<PublicationBundleService['plan']>>;
   readonly authorization: Awaited<ReturnType<PublicationBundleService['articleAuthorization']>>;
+}
+
+export interface SingleAuthorizedPublicationBundleFixture
+extends ApprovedPublicationBundleFixture {
+  readonly materialized: Awaited<ReturnType<PublicationBundleService['materializeSingle']>>;
+  readonly singleAuthorization: Awaited<ReturnType<PublicationBundleService['singleAuthorization']>>;
 }
 
 export const publicationBundleNow = new Date('2026-08-24T12:00:00.000Z');
@@ -345,4 +358,186 @@ export async function installArticleReceipt(
   });
   const artifact = await fixture.store.readContainedArtifact(path);
   return { receipt, path, digest: artifact.digest };
+}
+
+export async function prepareBundleThroughSingleAuthorization(
+  options: { readonly withVisual?: boolean } = {}
+): Promise<
+SingleAuthorizedPublicationBundleFixture
+> {
+  const fixture = await createApprovedPublicationBundleFixture(options);
+  const { snapshot } = await startBundleArticleExecution(fixture);
+  await fixture.service.bindArticleExecution({
+    bundle_id: fixture.plan.bundle_id,
+    execution_id: snapshot.execution_id,
+    bound_at: '2026-08-24T12:01:01.000Z'
+  });
+  const receipt = await installArticleReceipt(fixture, snapshot.execution_id);
+  await fixture.service.attachArticleReceipt({
+    bundle_id: fixture.plan.bundle_id,
+    receipt_path: receipt.path,
+    receipt_digest: receipt.digest
+  });
+  const materialized = await fixture.service.materializeSingle(fixture.plan.bundle_id);
+  const singleAuthorization = await fixture.service.singleAuthorization(fixture.plan.bundle_id);
+  return { ...fixture, materialized, singleAuthorization };
+}
+
+export const singleBrowserCapabilities: BrowserCapabilityManifest = {
+  executor: 'codex-chrome',
+  executor_version: '26.814.41407',
+  browser_family: 'chrome',
+  capabilities: [
+    'observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait',
+    'file_upload', 'attachment_alt_text', 'upload_attachment', 'set_attachment_alt_text'
+  ],
+  observed_at: '2026-08-24T12:03:00.000Z'
+};
+
+export async function startBundleSingleExecution(
+  fixture: SingleAuthorizedPublicationBundleFixture,
+  executionId = 'single_execution_bundle_1'
+) {
+  let event = 0;
+  let command = 0;
+  const now = () => new Date('2026-08-24T12:03:00.000Z');
+  const executions = new ExecutionStore(fixture.store, now, () => `single_event_${++event}`);
+  const broker = new CommandBroker(
+    fixture.store,
+    executions,
+    now,
+    () => `single_command_${++command}`
+  );
+  const adapter = new BrowserAdapter(
+    fixture.store,
+    executions,
+    broker,
+    new XWeb202608Contract(),
+    now,
+    () => 'single_attempt_bundle_1'
+  );
+  const snapshot = await adapter.start({
+    execution_id: executionId,
+    plan: fixture.materialized.child_plan,
+    approval: fixture.singleAuthorization.child_approval,
+    capability_manifest: singleBrowserCapabilities
+  });
+  return { adapter, snapshot };
+}
+
+export async function installSingleReceipt(
+  fixture: SingleAuthorizedPublicationBundleFixture,
+  executionId: string,
+  status: 'finalized' | 'outcome_unknown' | 'verification_conflict' |
+    'partial' | 'failed_after_submit' | 'published_media_unverified' = 'finalized'
+) {
+  const plan = fixture.materialized.child_plan;
+  const approval = fixture.singleAuthorization.child_approval;
+  const postId = '2092000000000000000';
+  const publicUrl = `https://x.com/Glen56121/status/${postId}`;
+  const successful = status === 'finalized' || status === 'published_media_unverified';
+  const common = {
+    supersedes_receipt_id: null,
+    execution_id: executionId,
+    attempt_id: 'single_attempt_bundle_1',
+    run_id: plan.run_id,
+    platform: 'x',
+    adapter: 'browser',
+    status,
+    target_account: plan.intent.target_account,
+    observed_account: successful ? plan.intent.target_account : null,
+    approval: {
+      plan_digest: plan.plan_digest,
+      approval_digest: approval.approval_digest,
+      approved_at: approval.approved_at,
+      expires_at: approval.expires_at
+    },
+    submission: {
+      armed_at: '2026-08-24T12:03:01.000Z',
+      attempted_at: '2026-08-24T12:03:02.000Z',
+      submit_command_count: 1,
+      page_contract_version: '2026-08',
+      executor_version: '26.814.41407'
+    },
+    public_result: successful ? {
+      root_url: publicUrl,
+      published_at: '2026-08-24T12:03:03.000Z',
+      ordered_post_ids: [postId],
+      posts: [{
+        ordinal: 1,
+        post_id: postId,
+        canonical_url: publicUrl,
+        observed_digest: plan.items[0]!.digest,
+        reply_to_id: null
+      }],
+      matched_ordinals: [1],
+      missing_ordinals: [],
+      unexpected_post_ids: []
+    } : null,
+    verification: {
+      source: 'browser_public_page',
+      strength: status === 'finalized' ? 'public_browser_verified' as const : 'unverified' as const,
+      verified_at: successful ? '2026-08-24T12:03:04.000Z' : null,
+      account_match: successful,
+      count_match: successful,
+      content_match: successful,
+      order_match: successful,
+      reply_chain_match: successful,
+      links_match: successful,
+      unique_post_ids: successful,
+      evidence_digest: sha256({ status, executionId })
+    }
+  } as const;
+  const receipt = plan.schema_version === '2.0' && approval.schema_version === '2.0'
+    ? createPublicationReceiptV2(
+        { ...common, plan, status: status === 'published_media_unverified' ? 'published_unverified' : status },
+        () => `single_receipt_${status}`,
+        () => new Date('2026-08-24T12:03:05.000Z')
+      )
+    : plan.schema_version === '2.1' && approval.schema_version === '2.1'
+      ? createPublicationReceiptV2_1({
+          ...common,
+          plan,
+          status,
+          plan_digest: plan.plan_digest,
+          media_evidence: {
+            asset_id: plan.items[0]!.attachments[0]!.asset_id,
+            source_digest: plan.items[0]!.attachments[0]!.digest,
+            source_asset_verified: true,
+            composer_attachment_verified: true,
+            public_media_verified: status === 'finalized',
+            target_ordinal: 1,
+            alt_text_verified: status === 'finalized' ? true : null,
+            public_media_url: status === 'finalized'
+              ? 'https://pbs.twimg.com/media/bundle'
+              : null,
+            limitations: status === 'published_media_unverified'
+              ? ['public media was not verified']
+              : []
+          }
+        }, () => `single_receipt_${status}`, () => new Date('2026-08-24T12:03:05.000Z'))
+      : (() => { throw new Error('Single Plan and Approval versions differ'); })();
+  const path = `receipts/${receipt.receipt_id}.json`;
+  await fixture.store.writeNew(path, receipt);
+  const prefix = `runs/${plan.run_id}/x/browser/${executionId}`;
+  const contextPath = `${prefix}/execution-context.json`;
+  const context = await fixture.store.readJson<Record<string, unknown>>(contextPath);
+  await fixture.store.replaceAtomic(contextPath, {
+    ...context,
+    submit_command_count: 1,
+    attempt_id: 'single_attempt_bundle_1',
+    latest_receipt_id: receipt.receipt_id,
+    latest_receipt_path: path
+  });
+  const statePath = `${prefix}/state.json`;
+  const snapshot = await fixture.store.readJson<Record<string, unknown>>(statePath);
+  await fixture.store.replaceAtomic(statePath, {
+    ...snapshot,
+    state: status === 'published_media_unverified' ? 'published_unverified' : status,
+    attempt_id: 'single_attempt_bundle_1',
+    submit_command_count: 1,
+    updated_at: receipt.created_at
+  });
+  const artifact = await fixture.store.readContainedArtifact(path);
+  return { receipt, path, digest: artifact.digest, publicUrl };
 }
