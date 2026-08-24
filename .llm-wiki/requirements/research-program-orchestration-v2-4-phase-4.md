@@ -4,10 +4,13 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-4`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `design-review-pending`
-- design_status: `proposed-for-review`
+- status: `design-confirmed`
+- design_status: `confirmed`
 - implementation_authorized: false
 - source_head: `1eab543`
+- confirmed_source_digest: `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`
+- confirmed_by: `human`
+- confirmed_at: `2026-08-24`
 - trust: source-calibrated design; no implementation or external execution claimed
 
 ## Why
@@ -452,12 +455,12 @@ This strengthens continuity but makes reframe/split/merge semantics overly rigid
 | Step | Status | Evidence | Updated |
 |---|---|---|---|
 | source | done | Phase 1–3 handoffs and current V2.3 Memory/Program source at `1eab543` | 2026-08-24 |
-| design | review_pending | conversational decisions plus this source-calibrated child Change Brief | 2026-08-24 |
-| plan | pending | requires explicit written-spec approval before `writing-plans` | 2026-08-24 |
+| design | done | Human confirmed the reviewed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5` | 2026-08-24 |
+| plan | pending | design approval does not authorize an implementation plan | 2026-08-24 |
 | development | pending | implementation is not authorized | 2026-08-24 |
 | testing | pending | acceptance criteria and verification plan defined above | 2026-08-24 |
 | archive | pending | Phase 4 handoff after verified implementation | 2026-08-24 |
 
-## Review Gate
+## Next Gate
 
-The user must review and explicitly confirm this written design before any implementation plan is created. Design confirmation does not authorize implementation.
+The written design was explicitly confirmed by the user after the fixed digest was presented. A separate explicit request is still required before creating an implementation plan, and a further implementation authorization is required before production source or tests change.

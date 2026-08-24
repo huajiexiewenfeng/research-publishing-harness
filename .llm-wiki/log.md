@@ -95,3 +95,4 @@
 - Phase 3 handoff 已归档；未执行真实 Browser/X/GitHub/Runtime/Wiki 操作，Weekly Cycle 未越过 `publication_planned`。Phase 4 尚未开始，仍需独立确认。
 - Phase 4 进入设计审阅：提出事实型 Weekly Outcome、默认一 Outcome 一 Increment、保守 Claim Projection、Article/Single 双 Publication Expression、Evidence、可产生新知识但不强制创新的 AI Research Synthesis，以及独立可忽略的 Continuation Proposal。
 - 设计明确“固化已发生事实、保持未来研究方向可调整”：发布后 Topic 返回 `available` 而非自动 `completed`；Roadmap、下一篇文章、Claim 与 Memory Promotion 均不自动变更。规格尚待用户书面确认，未创建实施计划或修改生产代码。
+- 用户确认 Phase 4 设计源摘要 `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`。设计 Flow 已完成；实施计划、生产代码、测试及所有外部操作仍需后续独立授权。

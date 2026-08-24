@@ -3,21 +3,21 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: phase-4-design-review-pending
+- status: phase-4-design-confirmed-awaiting-plan-authorization
 - active_phase: `phase-4-adaptive-research-closure-design`
-- active_task: `written-spec-review`
-- active_plan: none; implementation planning requires written-spec approval
+- active_task: `none`
+- active_plan: none; implementation planning requires a separate explicit request
 
 ## Context Handoff
 
 - user_intent: complete a flexible Phase 4 design in which AI acts as a research partner without freezing the article sequence or research mainline
 - active_sources: Phase 1–3 handoffs, current Program/Memory source at `1eab543`, and Phase 4 child Change Brief
-- active_scope: Phase 4 requirements and written design review only
+- active_scope: confirmed Phase 4 requirements and design lifecycle records only
 - read_only_scope: all Phase 1–3 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
 - candidate_scope: future Trace/Eval trigger policy and public bootstrap, both excluded from V1
 - excluded_scope: Phase 4 implementation, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: explicit written-spec review
-- requested_stage_or_bridge: brainstorming/project-develop design review
+- current_gate: explicit implementation-plan authorization
+- requested_stage_or_bridge: none
 - constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
 
 ## Scope Lock
@@ -57,8 +57,8 @@
 - Phase 3 verification: focused 21 files / 59 tests; repository 141 files / 611 tests passed, 1 file / 1 test skipped; lint, typecheck, build, Skill validator and diff checks passed.
 - Phase 3 external effects: none. Fake Hosts only; no real Browser, X, GitHub, Runtime or Wiki action.
 - Phase 3 handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
-- Phase 4 design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`; proposed and awaiting explicit written-spec review.
-- Next action: review the Phase 4 written design. Do not write an implementation plan, create Outcome artifacts or promote Memory before that gate.
+- Phase 4 design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`; Human-confirmed against source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`.
+- Next action: wait for an explicit request to create the Phase 4 implementation plan. Do not create Outcome artifacts, modify production source/tests or promote Memory before their later gates.
 
 ## Verification Plan
 
@@ -74,6 +74,7 @@
 - 2026-08-24: Phase 3 design review found that Article `outcome_unknown` has no Receipt and that the external plan did not bind its displayed TTL. The child specification added create-only child Execution Bindings, a Plan-locked TTL and a week-to-Bundle binding; implementation was still unauthorized at that checkpoint.
 - 2026-08-24: User authorized inline Phase 3 implementation. Five TDD increments completed with Fake Hosts only; Phase 4 and all real external actions remained excluded.
 - 2026-08-24: Phase 4 requirements discussion selected a layered research-partner model: immutable Outcome facts, separate AI Synthesis and optional Continuation Proposal, flexible Topic/Roadmap revisions, checkpoint-driven generation and unchanged Human Promotion gates. Written design remains review-pending.
+- 2026-08-24: User confirmed the Phase 4 written design after reviewing fixed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`. Design is complete; implementation planning and development remain separately unauthorized.
 
 ## Phase 1 Result
 
