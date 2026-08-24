@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-candidate-set/1.0",
+  "title": "Weekly Candidate Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_set_id", "cycle_id", "roadmap_ref", "context_binding", "candidates", "generated_by_skill", "created_at", "candidate_set_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-candidate-set/v1" },
+    "candidate_set_id": { "$ref": "#/$defs/stableId" },
+    "cycle_id": { "$ref": "#/$defs/stableId" },
+    "roadmap_ref": { "$ref": "#/$defs/artifactRef" },
+    "context_binding": { "$ref": "#/$defs/contextBinding" },
+    "candidates": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "$ref": "#/$defs/candidate" } },
+    "generated_by_skill": { "const": "article-publishing-copilot" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "candidate_set_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "stringSet": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "contextBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["query_id", "plan_digest", "snapshot_digest", "review_digest", "selected_context_refs", "query_status", "application_status", "runtime_version"],
+      "properties": {
+        "query_id": { "$ref": "#/$defs/stableId" },
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "snapshot_digest": { "$ref": "#/$defs/digest" },
+        "review_digest": { "$ref": "#/$defs/digest" },
+        "selected_context_refs": { "$ref": "#/$defs/stringSet" },
+        "query_status": { "enum": ["loaded", "empty", "runtime_unavailable", "index_unavailable", "index_rebuild_required", "context_budget_exceeded", "failed"] },
+        "application_status": { "enum": ["applied", "reviewed_not_applied"] },
+        "runtime_version": { "anyOf": [{ "const": "0.2.0" }, { "type": "null" }] }
+      }
+    },
+    "boundaries": {
+      "type": "object", "additionalProperties": false,
+      "required": ["established", "not_established", "explicitly_not_claimed", "planned_work"],
+      "properties": {
+        "established": { "$ref": "#/$defs/stringSet" },
+        "not_established": { "$ref": "#/$defs/stringSet" },
+        "explicitly_not_claimed": { "$ref": "#/$defs/stringSet" },
+        "planned_work": { "$ref": "#/$defs/stringSet" }
+      }
+    },
+    "visual": {
+      "type": "object", "additionalProperties": false,
+      "required": ["purpose", "required", "brief"],
+      "properties": {
+        "purpose": { "enum": ["cover", "explanation", "architecture", "evidence"] },
+        "required": { "type": "boolean" },
+        "brief": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["brief_id", "topic_ref", "stream_ids", "working_title", "thesis", "claim_status", "implementation_status", "evidence_refs", "lineage_refs", "prior_publication_refs", "incremental_value", "boundaries", "recommended_form", "visual_plan", "source_refs", "privacy"],
+      "properties": {
+        "brief_id": { "$ref": "#/$defs/stableId" },
+        "topic_ref": { "$ref": "#/$defs/artifactRef" },
+        "stream_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["knowledge_runtime_governance", "project_harness_lifecycle", "skill_cognitive_runtime", "runtime_evolution", "enterprise_validation"] } },
+        "working_title": { "$ref": "#/$defs/nonEmpty" },
+        "thesis": { "$ref": "#/$defs/nonEmpty" },
+        "claim_status": { "enum": ["shipped", "validated", "observed", "exploring", "planned", "hypothesis"] },
+        "implementation_status": { "$ref": "#/$defs/nonEmpty" },
+        "evidence_refs": { "$ref": "#/$defs/stringSet" },
+        "lineage_refs": { "$ref": "#/$defs/stringSet" },
+        "prior_publication_refs": { "$ref": "#/$defs/stringSet" },
+        "incremental_value": { "$ref": "#/$defs/nonEmpty" },
+        "boundaries": { "$ref": "#/$defs/boundaries" },
+        "recommended_form": { "const": "x_article" },
+        "visual_plan": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/visual" } },
+        "source_refs": { "$ref": "#/$defs/stringSet" },
+        "privacy": { "enum": ["public", "needs_review"] }
+      }
+    }
+  }
+}

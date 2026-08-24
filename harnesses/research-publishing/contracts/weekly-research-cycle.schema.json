@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-research-cycle/1.0",
+  "title": "Weekly Research Cycle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cycle_id", "roadmap_ref", "week_number", "month_id", "context_binding", "opened_by", "opened_at", "cycle_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-research-cycle/v1" },
+    "cycle_id": { "$ref": "#/$defs/stableId" },
+    "roadmap_ref": { "$ref": "#/$defs/artifactRef" },
+    "week_number": { "type": "integer", "minimum": 1, "maximum": 24 },
+    "month_id": { "type": "string", "pattern": "^month_0[1-6]$" },
+    "context_binding": { "$ref": "#/$defs/contextBinding" },
+    "opened_by": { "$ref": "#/$defs/nonEmpty" },
+    "opened_at": { "type": "string", "format": "date-time" },
+    "cycle_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "contextBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["query_id", "plan_digest", "snapshot_digest", "review_digest", "selected_context_refs", "query_status", "application_status", "runtime_version"],
+      "properties": {
+        "query_id": { "$ref": "#/$defs/stableId" },
+        "plan_digest": { "$ref": "#/$defs/digest" },
+        "snapshot_digest": { "$ref": "#/$defs/digest" },
+        "review_digest": { "$ref": "#/$defs/digest" },
+        "selected_context_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "query_status": { "enum": ["loaded", "empty", "runtime_unavailable", "index_unavailable", "index_rebuild_required", "context_budget_exceeded", "failed"] },
+        "application_status": { "enum": ["applied", "reviewed_not_applied"] },
+        "runtime_version": { "anyOf": [{ "const": "0.2.0" }, { "type": "null" }] }
+      }
+    }
+  }
+}

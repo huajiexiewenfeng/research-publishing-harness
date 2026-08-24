@@ -8,12 +8,23 @@ import type {
   CreateResearchBacklogCatalogInput,
   CreateResearchProgramStatusInput,
   CreateResearchRoadmapInput,
+  CreateWeeklyCycleStatusInput,
+  CancelWeeklyCycleInput,
   MonthlyEditorialReviewV1,
   ResearchArtifactRefV1,
   ResearchBacklogCatalogV1,
   ResearchProgramStatusV1,
   ResearchRoadmapV1,
-  ResearchTopicRevisionV1
+  ResearchTopicRevisionV1,
+  OpenWeeklyCycleInput,
+  SelectWeeklyTopicInput,
+  SubmitWeeklyCandidatesInput,
+  WeeklyCandidateSetV1,
+  WeeklyCycleCancellationV1,
+  WeeklyCycleStatusV1,
+  WeeklyContextBindingV1,
+  WeeklyResearchCycleV1,
+  WeeklyTopicSelectionV1
 } from './research-program-types.js';
 import { STABLE_ID_PATTERN } from './research-memory-contracts.js';
 import { validateContract } from './schema-validator.js';
@@ -315,6 +326,217 @@ export function createResearchProgramStatus(
   assertUnique(input.warnings, 'Program warnings');
   const body = { schema_version: 'research-program-status/v1' as const, ...input };
   return validateContract<ResearchProgramStatusV1>('research-program-status', {
+    ...body,
+    projection_digest: sha256(body)
+  });
+}
+
+function assertWeeklyContextBinding(binding: WeeklyContextBindingV1): void {
+  assertStableId(binding.query_id, 'Weekly Context query id');
+  if (typeof binding.review_digest !== 'string' || !binding.review_digest.startsWith('sha256:')) {
+    fail('Weekly Context review digest is required');
+  }
+  assertUnique(binding.selected_context_refs, 'Weekly selected Context refs');
+  if (
+    binding.application_status === 'applied' &&
+    (binding.query_status !== 'loaded' || binding.selected_context_refs.length === 0)
+  ) {
+    fail(`${binding.query_status} Context cannot be applied`);
+  }
+  if (
+    binding.application_status === 'reviewed_not_applied' &&
+    binding.selected_context_refs.length > 0
+  ) {
+    fail('reviewed_not_applied Context cannot contain selected Context refs');
+  }
+  if (binding.query_status !== 'loaded' && binding.selected_context_refs.length > 0) {
+    fail(`${binding.query_status} Context cannot select Context refs`);
+  }
+}
+
+function cycleRef(cycle: WeeklyResearchCycleV1): ResearchArtifactRefV1 {
+  return {
+    path: `program/weeks/${cycle.cycle_id}/cycle.json`,
+    digest: cycle.cycle_digest
+  };
+}
+
+function selectionRef(selection: WeeklyTopicSelectionV1): ResearchArtifactRefV1 {
+  return {
+    path: `program/weeks/${selection.cycle_id}/selection.json`,
+    digest: selection.selection_digest
+  };
+}
+
+export function createWeeklyResearchCycle(
+  input: OpenWeeklyCycleInput
+): WeeklyResearchCycleV1 {
+  assertStableId(input.cycle_id, 'Weekly Cycle id');
+  assertWeeklyContextBinding(input.context_binding);
+  const expectedMonth = `month_${String(Math.floor((input.week_number - 1) / 4) + 1).padStart(2, '0')}`;
+  if (input.week_number < 1 || input.week_number > 24 || input.month_id !== expectedMonth) {
+    fail('Weekly Cycle week and month must map to the six-month Roadmap');
+  }
+  if (input.opened_by.trim().length === 0) fail('Weekly Cycle opener is required');
+  const body = { schema_version: 'weekly-research-cycle/v1' as const, ...input };
+  return validateContract<WeeklyResearchCycleV1>('weekly-research-cycle', {
+    ...body,
+    cycle_digest: sha256(body)
+  });
+}
+
+export function createWeeklyCandidateSet(
+  input: SubmitWeeklyCandidatesInput
+): WeeklyCandidateSetV1 {
+  assertStableId(input.candidate_set_id, 'Candidate Set id');
+  assertStableId(input.cycle_id, 'Weekly Cycle id');
+  assertWeeklyContextBinding(input.context_binding);
+  if (input.candidates.length < 2 || input.candidates.length > 3) {
+    fail('Weekly Candidate Set requires two or three Candidate Briefs');
+  }
+  assertUnique(input.candidates.map((candidate) => candidate.brief_id), 'Candidate Brief ids');
+  assertUniqueRefs(input.candidates.map((candidate) => candidate.topic_ref), 'Candidate Topic refs');
+  for (const candidate of input.candidates) {
+    assertStableId(candidate.brief_id, 'Candidate Brief id');
+    assertUnique(candidate.stream_ids, `${candidate.brief_id} Stream ids`);
+    if (
+      candidate.stream_ids.length === 0 ||
+      candidate.stream_ids.some((streamId) => !LOCKED_STREAM_IDS.has(streamId))
+    ) {
+      fail('Candidate Brief Stream ids must use locked Research Streams');
+    }
+    for (const [label, values] of [
+      ['Evidence refs', candidate.evidence_refs],
+      ['Lineage refs', candidate.lineage_refs],
+      ['prior Publication refs', candidate.prior_publication_refs],
+      ['Source refs', candidate.source_refs],
+      ['established boundaries', candidate.boundaries.established],
+      ['not-established boundaries', candidate.boundaries.not_established],
+      ['explicit non-claims', candidate.boundaries.explicitly_not_claimed],
+      ['planned work', candidate.boundaries.planned_work]
+    ] as const) {
+      assertUnique(values, `${candidate.brief_id} ${label}`);
+    }
+    assertUnique(candidate.visual_plan.map((visual) => visual.purpose), `${candidate.brief_id} Visual purposes`);
+    if (requiresEvidence(candidate.claim_status) && candidate.evidence_refs.length === 0) {
+      fail('shipped or validated Candidate Briefs require evidence');
+    }
+  }
+  const body = { schema_version: 'weekly-candidate-set/v1' as const, ...input };
+  return validateContract<WeeklyCandidateSetV1>('weekly-candidate-set', {
+    ...body,
+    candidate_set_digest: sha256(body)
+  });
+}
+
+export function createWeeklyTopicSelection(
+  candidateSet: WeeklyCandidateSetV1,
+  input: SelectWeeklyTopicInput
+): WeeklyTopicSelectionV1 {
+  if (input.selection_source !== 'human_explicit') {
+    fail('Weekly Topic selection_source must be human_explicit');
+  }
+  if (input.selected_by.trim().length === 0) fail('Weekly Topic selected_by is required');
+  if (
+    input.cycle_id !== candidateSet.cycle_id ||
+    input.candidate_set_digest !== candidateSet.candidate_set_digest
+  ) {
+    fail('Weekly Topic Selection must bind the exact Candidate Set digest');
+  }
+  if (!candidateSet.candidates.some((candidate) => candidate.brief_id === input.selected_brief_id)) {
+    fail('Weekly Topic Selection names an unknown Candidate Brief');
+  }
+  const body = {
+    schema_version: 'weekly-topic-selection/v1' as const,
+    selection_id: `${input.cycle_id}_selection`,
+    ...input
+  };
+  return validateContract<WeeklyTopicSelectionV1>('weekly-topic-selection', {
+    ...body,
+    selection_digest: sha256(body)
+  });
+}
+
+export function createWeeklyCycleCancellation(
+  cycle: WeeklyResearchCycleV1,
+  selection: WeeklyTopicSelectionV1,
+  input: CancelWeeklyCycleInput
+): WeeklyCycleCancellationV1 {
+  if (
+    input.cycle_id !== cycle.cycle_id ||
+    selection.cycle_id !== cycle.cycle_id ||
+    input.confirmed_selection_digest !== selection.selection_digest
+  ) {
+    fail('Weekly Cycle Cancellation must bind the exact Cycle and Selection');
+  }
+  if (input.reason.trim().length === 0 || input.cancelled_by.trim().length === 0) {
+    fail('Weekly Cycle Cancellation requires a Human reason and actor');
+  }
+  const body = {
+    schema_version: 'weekly-cycle-cancellation/v1' as const,
+    cancellation_id: `${cycle.cycle_id}_cancellation`,
+    cycle_ref: cycleRef(cycle),
+    selection_ref: selectionRef(selection),
+    reason: input.reason,
+    cancelled_by: input.cancelled_by,
+    cancelled_at: input.cancelled_at
+  };
+  return validateContract<WeeklyCycleCancellationV1>('weekly-cycle-cancellation', {
+    ...body,
+    cancellation_digest: sha256(body)
+  });
+}
+
+export function createWeeklyCycleStatus(
+  input: CreateWeeklyCycleStatusInput
+): WeeklyCycleStatusV1 {
+  const match = /^program\/weeks\/([a-z0-9][a-z0-9_-]*)\/cycle\.json$/.exec(input.cycle_ref.path);
+  if (match === null) fail('Weekly Cycle Status requires a canonical Cycle ref');
+  const cycleId = match[1]!;
+  for (const ref of [
+    input.candidate_set_ref,
+    input.selection_ref,
+    input.cancellation_ref,
+    input.package_ref,
+    input.article_ref,
+    input.bundle_ref,
+    input.outcome_ref
+  ]) {
+    if (ref !== null && !ref.path.startsWith(`program/weeks/${cycleId}/`)) {
+      fail('Weekly Cycle Status refs must remain inside the same Cycle directory');
+    }
+  }
+  const requiresCandidate = !['opened', 'blocked'].includes(input.phase);
+  const requiresSelection = [
+    'topic_selected', 'package_compiled', 'package_frozen', 'article_finalized',
+    'publication_planned', 'published', 'cancelled'
+  ].includes(input.phase);
+  if (requiresCandidate && input.candidate_set_ref === null) {
+    fail(`${input.phase} status requires a Candidate Set ref`);
+  }
+  if (requiresSelection && input.selection_ref === null) {
+    fail(`${input.phase} status requires a Topic Selection ref`);
+  }
+  if (input.phase === 'cancelled' && input.cancellation_ref === null) {
+    fail('cancelled status requires a Cancellation ref');
+  }
+  if (['package_compiled', 'package_frozen', 'article_finalized', 'publication_planned', 'published'].includes(input.phase) && input.package_ref === null) {
+    fail(`${input.phase} status requires a Package ref`);
+  }
+  if (['article_finalized', 'publication_planned', 'published'].includes(input.phase) && input.article_ref === null) {
+    fail(`${input.phase} status requires an Article ref`);
+  }
+  if (['publication_planned', 'published'].includes(input.phase) && input.bundle_ref === null) {
+    fail(`${input.phase} status requires a Publication Bundle ref`);
+  }
+  if (input.phase === 'published' && input.outcome_ref === null) {
+    fail('published status requires a Weekly Outcome ref');
+  }
+  if ((input.phase === 'blocked') !== (input.blocked_reason !== null)) {
+    fail('blocked status requires exactly one blocked reason');
+  }
+  const body = { schema_version: 'weekly-cycle-status/v1' as const, ...input };
+  return validateContract<WeeklyCycleStatusV1>('weekly-cycle-status', {
     ...body,
     projection_digest: sha256(body)
   });

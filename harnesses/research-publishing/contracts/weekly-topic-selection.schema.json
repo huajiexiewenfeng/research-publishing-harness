@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-topic-selection/1.0",
+  "title": "Weekly Topic Selection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "selection_id", "cycle_id", "candidate_set_digest", "selected_brief_id", "selection_source", "selected_by", "selected_at", "selection_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-topic-selection/v1" },
+    "selection_id": { "$ref": "#/$defs/stableId" },
+    "cycle_id": { "$ref": "#/$defs/stableId" },
+    "candidate_set_digest": { "$ref": "#/$defs/digest" },
+    "selected_brief_id": { "$ref": "#/$defs/stableId" },
+    "selection_source": { "const": "human_explicit" },
+    "selected_by": { "$ref": "#/$defs/nonEmpty" },
+    "selected_at": { "type": "string", "format": "date-time" },
+    "selection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

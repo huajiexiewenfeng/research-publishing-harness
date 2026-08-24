@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-cycle-status/1.0",
+  "title": "Weekly Cycle Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cycle_ref", "phase", "candidate_set_ref", "selection_ref", "cancellation_ref", "package_ref", "article_ref", "bundle_ref", "outcome_ref", "blocked_reason", "updated_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-cycle-status/v1" },
+    "cycle_ref": { "$ref": "#/$defs/artifactRef" },
+    "phase": { "enum": ["opened", "candidates_submitted", "topic_selected", "package_compiled", "package_frozen", "article_finalized", "publication_planned", "published", "blocked", "cancelled"] },
+    "candidate_set_ref": { "$ref": "#/$defs/nullableRef" },
+    "selection_ref": { "$ref": "#/$defs/nullableRef" },
+    "cancellation_ref": { "$ref": "#/$defs/nullableRef" },
+    "package_ref": { "$ref": "#/$defs/nullableRef" },
+    "article_ref": { "$ref": "#/$defs/nullableRef" },
+    "bundle_ref": { "$ref": "#/$defs/nullableRef" },
+    "outcome_ref": { "$ref": "#/$defs/nullableRef" },
+    "blocked_reason": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+  }
+}

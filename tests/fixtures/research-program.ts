@@ -6,7 +6,10 @@ import type {
   CreateResearchRoadmapInput,
   MonthlyArticleLayer,
   ResearchStageV1,
-  ResearchStreamV1
+  ResearchStreamV1,
+  SubmitWeeklyCandidatesInput,
+  WeeklyCandidateBriefV1,
+  OpenWeeklyCycleInput
 } from '../../harnesses/research-publishing/core/research-program-types.js';
 
 const layers: readonly MonthlyArticleLayer[] = [
@@ -191,4 +194,68 @@ export const programStatusInput: CreateResearchProgramStatusInput = {
   warnings: [],
   next_action: 'open_next_weekly_cycle',
   projected_at: '2026-08-23T00:00:00.000Z'
+};
+
+export const weeklyContextBinding = {
+  query_id: 'query_week_01',
+  plan_digest: `sha256:${'1'.repeat(64)}` as const,
+  snapshot_digest: `sha256:${'2'.repeat(64)}` as const,
+  review_digest: `sha256:${'3'.repeat(64)}` as const,
+  selected_context_refs: ['context:runtime-boundary'],
+  query_status: 'loaded' as const,
+  application_status: 'applied' as const,
+  runtime_version: '0.2.0' as const
+};
+
+export const weeklyCycleInput: OpenWeeklyCycleInput = {
+  cycle_id: 'week_01_2026',
+  roadmap_ref: backlogCatalogInput.roadmap_ref,
+  week_number: 1,
+  month_id: 'month_01',
+  context_binding: weeklyContextBinding,
+  opened_by: 'human',
+  opened_at: '2026-08-24T08:00:00.000Z'
+};
+
+export function weeklyCandidateBrief(id: string): WeeklyCandidateBriefV1 {
+  return {
+    brief_id: `brief_${id}`,
+    topic_ref: {
+      path: `program/backlog/topics/topic_${id}/revisions/1.json`,
+      digest: `sha256:${id.repeat(64).slice(0, 64)}` as `sha256:${string}`
+    },
+    stream_ids: ['knowledge_runtime_governance'],
+    working_title: `Weekly Candidate ${id.toUpperCase()}`,
+    thesis: 'The knowledge boundary should remain deterministic and evidence-backed.',
+    claim_status: 'observed',
+    implementation_status: 'implemented in a synthetic fixture',
+    evidence_refs: [`evidence:${id}`],
+    lineage_refs: [`lineage:${id}`],
+    prior_publication_refs: [],
+    incremental_value: `Adds bounded weekly evidence for candidate ${id}.`,
+    boundaries: {
+      established: ['The fixture contract is implemented.'],
+      not_established: ['Production impact is not established.'],
+      explicitly_not_claimed: ['No benchmark improvement is claimed.'],
+      planned_work: ['Run a real-workflow validation later.']
+    },
+    recommended_form: 'x_article',
+    visual_plan: [{
+      purpose: 'architecture',
+      required: false,
+      brief: 'Show the Skill and Runtime boundary only when it materially improves clarity.'
+    }],
+    source_refs: [`source:${id}`],
+    privacy: 'public'
+  };
+}
+
+export const weeklyCandidateSetInput: SubmitWeeklyCandidatesInput = {
+  candidate_set_id: 'candidate_set_week_01_2026',
+  cycle_id: weeklyCycleInput.cycle_id,
+  roadmap_ref: weeklyCycleInput.roadmap_ref,
+  context_binding: weeklyContextBinding,
+  candidates: [weeklyCandidateBrief('a'), weeklyCandidateBrief('b')],
+  generated_by_skill: 'article-publishing-copilot',
+  created_at: '2026-08-24T09:00:00.000Z'
 };

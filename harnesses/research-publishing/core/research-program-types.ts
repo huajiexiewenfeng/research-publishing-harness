@@ -1,3 +1,5 @@
+import type { ResearchQueryStatusV2 } from './research-query-types.js';
+
 export type ResearchStreamId =
   | 'knowledge_runtime_governance'
   | 'project_harness_lifecycle'
@@ -211,6 +213,120 @@ export interface ResearchProgramStatusV1 {
   readonly projection_digest: `sha256:${string}`;
 }
 
+export interface WeeklyContextBindingV1 {
+  readonly query_id: string;
+  readonly plan_digest: `sha256:${string}`;
+  readonly snapshot_digest: `sha256:${string}`;
+  readonly review_digest: `sha256:${string}`;
+  readonly selected_context_refs: readonly string[];
+  readonly query_status: ResearchQueryStatusV2;
+  readonly application_status: 'applied' | 'reviewed_not_applied';
+  readonly runtime_version: '0.2.0' | null;
+}
+
+export interface WeeklyCandidateBriefV1 {
+  readonly brief_id: string;
+  readonly topic_ref: ResearchArtifactRefV1;
+  readonly stream_ids: readonly ResearchStreamId[];
+  readonly working_title: string;
+  readonly thesis: string;
+  readonly claim_status: ClaimBoundaryStatus;
+  readonly implementation_status: string;
+  readonly evidence_refs: readonly string[];
+  readonly lineage_refs: readonly string[];
+  readonly prior_publication_refs: readonly string[];
+  readonly incremental_value: string;
+  readonly boundaries: {
+    readonly established: readonly string[];
+    readonly not_established: readonly string[];
+    readonly explicitly_not_claimed: readonly string[];
+    readonly planned_work: readonly string[];
+  };
+  readonly recommended_form: 'x_article';
+  readonly visual_plan: readonly {
+    readonly purpose: 'cover' | 'explanation' | 'architecture' | 'evidence';
+    readonly required: boolean;
+    readonly brief: string;
+  }[];
+  readonly source_refs: readonly string[];
+  readonly privacy: 'public' | 'needs_review';
+}
+
+export interface WeeklyCandidateSetV1 {
+  readonly schema_version: 'weekly-candidate-set/v1';
+  readonly candidate_set_id: string;
+  readonly cycle_id: string;
+  readonly roadmap_ref: ResearchArtifactRefV1;
+  readonly context_binding: WeeklyContextBindingV1;
+  readonly candidates: readonly WeeklyCandidateBriefV1[];
+  readonly generated_by_skill: 'article-publishing-copilot';
+  readonly created_at: string;
+  readonly candidate_set_digest: `sha256:${string}`;
+}
+
+export interface WeeklyTopicSelectionV1 {
+  readonly schema_version: 'weekly-topic-selection/v1';
+  readonly selection_id: string;
+  readonly cycle_id: string;
+  readonly candidate_set_digest: `sha256:${string}`;
+  readonly selected_brief_id: string;
+  readonly selection_source: 'human_explicit';
+  readonly selected_by: string;
+  readonly selected_at: string;
+  readonly selection_digest: `sha256:${string}`;
+}
+
+export interface WeeklyResearchCycleV1 {
+  readonly schema_version: 'weekly-research-cycle/v1';
+  readonly cycle_id: string;
+  readonly roadmap_ref: ResearchArtifactRefV1;
+  readonly week_number: number;
+  readonly month_id: string;
+  readonly context_binding: WeeklyContextBindingV1;
+  readonly opened_by: string;
+  readonly opened_at: string;
+  readonly cycle_digest: `sha256:${string}`;
+}
+
+export type WeeklyCyclePhase =
+  | 'opened'
+  | 'candidates_submitted'
+  | 'topic_selected'
+  | 'package_compiled'
+  | 'package_frozen'
+  | 'article_finalized'
+  | 'publication_planned'
+  | 'published'
+  | 'blocked'
+  | 'cancelled';
+
+export interface WeeklyCycleStatusV1 {
+  readonly schema_version: 'weekly-cycle-status/v1';
+  readonly cycle_ref: ResearchArtifactRefV1;
+  readonly phase: WeeklyCyclePhase;
+  readonly candidate_set_ref: ResearchArtifactRefV1 | null;
+  readonly selection_ref: ResearchArtifactRefV1 | null;
+  readonly cancellation_ref: ResearchArtifactRefV1 | null;
+  readonly package_ref: ResearchArtifactRefV1 | null;
+  readonly article_ref: ResearchArtifactRefV1 | null;
+  readonly bundle_ref: ResearchArtifactRefV1 | null;
+  readonly outcome_ref: ResearchArtifactRefV1 | null;
+  readonly blocked_reason: string | null;
+  readonly updated_at: string;
+  readonly projection_digest: `sha256:${string}`;
+}
+
+export interface WeeklyCycleCancellationV1 {
+  readonly schema_version: 'weekly-cycle-cancellation/v1';
+  readonly cancellation_id: string;
+  readonly cycle_ref: ResearchArtifactRefV1;
+  readonly selection_ref: ResearchArtifactRefV1;
+  readonly reason: string;
+  readonly cancelled_by: string;
+  readonly cancelled_at: string;
+  readonly cancellation_digest: `sha256:${string}`;
+}
+
 export type CreateResearchRoadmapInput = Omit<
   ResearchRoadmapV1,
   'schema_version' | 'roadmap_digest'
@@ -271,6 +387,34 @@ export type CreateResearchProgramStatusInput = Omit<
   'schema_version' | 'projection_digest'
 >;
 
+export type OpenWeeklyCycleInput = Omit<
+  WeeklyResearchCycleV1,
+  'schema_version' | 'cycle_digest'
+>;
+
+export type SubmitWeeklyCandidatesInput = Omit<
+  WeeklyCandidateSetV1,
+  'schema_version' | 'candidate_set_digest'
+>;
+
+export type SelectWeeklyTopicInput = Omit<
+  WeeklyTopicSelectionV1,
+  'schema_version' | 'selection_id' | 'selection_digest'
+>;
+
+export interface CancelWeeklyCycleInput {
+  readonly cycle_id: string;
+  readonly confirmed_selection_digest: `sha256:${string}`;
+  readonly reason: string;
+  readonly cancelled_by: string;
+  readonly cancelled_at: string;
+}
+
+export type CreateWeeklyCycleStatusInput = Omit<
+  WeeklyCycleStatusV1,
+  'schema_version' | 'projection_digest'
+>;
+
 export interface ResearchRoadmapPort {
   create(input: CreateResearchRoadmapInput): Promise<ResearchRoadmapV1>;
   revise(input: ReviseResearchRoadmapInput): Promise<ResearchRoadmapV1>;
@@ -286,4 +430,12 @@ export interface ResearchBacklogPort {
   catalog(roadmapId: string): Promise<ResearchBacklogCatalogV1>;
   rebuildCatalog(roadmapId: string): Promise<ResearchBacklogCatalogV1>;
   assertCadenceReady(roadmapId: string): Promise<void>;
+}
+
+export interface WeeklyResearchCyclePort {
+  open(input: OpenWeeklyCycleInput): Promise<WeeklyResearchCycleV1>;
+  submitCandidates(input: SubmitWeeklyCandidatesInput): Promise<WeeklyCandidateSetV1>;
+  select(input: SelectWeeklyTopicInput): Promise<WeeklyTopicSelectionV1>;
+  cancel(input: CancelWeeklyCycleInput): Promise<WeeklyCycleStatusV1>;
+  status(cycleId: string): Promise<WeeklyCycleStatusV1>;
 }

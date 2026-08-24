@@ -56,7 +56,12 @@ const names = [
   'research-topic-revision',
   'research-backlog-catalog',
   'monthly-editorial-review',
-  'research-program-status'
+  'research-program-status',
+  'weekly-research-cycle',
+  'weekly-candidate-set',
+  'weekly-topic-selection',
+  'weekly-cycle-cancellation',
+  'weekly-cycle-status'
 ] as const;
 
 const v1Names = new Set([
@@ -93,7 +98,12 @@ const v1Names = new Set([
   'research-topic-revision',
   'research-backlog-catalog',
   'monthly-editorial-review',
-  'research-program-status'
+  'research-program-status',
+  'weekly-research-cycle',
+  'weekly-candidate-set',
+  'weekly-topic-selection',
+  'weekly-cycle-cancellation',
+  'weekly-cycle-status'
 ]);
 
 describe('public contracts', () => {
