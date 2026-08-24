@@ -4,9 +4,9 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-3`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `plan-awaiting-execution-authorization`
+- status: `implementation-in-progress`
 - design_status: `confirmed`
-- implementation_authorized: false
+- implementation_authorized: true
 - source_head: `5c07034`
 - trust: source-verified design; no implementation or external execution claimed
 
@@ -350,7 +350,7 @@ This is decomposition only, not implementation authorization. A source-calibrate
 | source | done | Phase 2 handoff and current child publication source at `5c07034` | 2026-08-24 |
 | design | done | user confirmed `确认 Phase 3 设计规格`; child brief corrects Receipt-only recovery and unlocked TTL | 2026-08-24 |
 | plan | done | `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md` | 2026-08-24 |
-| development | pending | not authorized | 2026-08-24 |
+| development | in_progress | user confirmed `开始 Phase 3 inline 实现`; Task 1 TDD checkpoint active | 2026-08-24 |
 | testing | pending | acceptance criteria defined above | 2026-08-24 |
 | archive | pending | Phase 3 handoff after verified implementation | 2026-08-24 |
 

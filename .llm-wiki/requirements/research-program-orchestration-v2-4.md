@@ -6,7 +6,7 @@
 - status: executing
 - phase_1_status: implemented and passed-agent-local
 - phase_2_status: implemented and passed-agent-local
-- phase_3_status: plan-awaiting-execution-authorization
+- phase_3_status: implementation-in-progress
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -104,4 +104,4 @@ The external planning documents were reviewed as temporary local sources and are
 - Phase 2 is authorized from the confirmed plan-suite commit `38a3efb`. It owns Weekly Cycle, 2–3 Candidate Briefs, explicit Human Selection, Research Content Package V1.2, four pre-publication content gates, local Article finalization, weekly CLI and the Article Skill route.
 - Phase 2 does not own Publication Bundle approval/execution, Browser writes, Weekly Outcome, Memory Promotion, public bootstrap content, or Runtime source changes.
 - Phase 2 is complete within that boundary. It delivered Weekly Cycle, explicit Human Selection/cancellation, Package V1.2, selected-Brief compilation, four local content Gates, structured Article finalization, CLI and Skill orchestration.
-- Phase 3 source-calibrated child specification is confirmed: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`. Its execution plan is ready, but implementation remains unauthorized.
+- Phase 3 source-calibrated child specification is confirmed: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`. The user authorized inline implementation on 2026-08-24.

@@ -3,9 +3,9 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: plan-ready
-- active_phase: `phase-3-publication-bundle-plan`
-- active_task: `execution-authorization`
+- status: implementation-in-progress
+- active_phase: `phase-3-publication-bundle-implementation`
+- active_task: `task-1-contracts-and-state`
 - active_plan: external plan-suite commit `38a3efb`, calibrated by the Phase 3 child Change Brief
 
 ## Context Handoff
@@ -16,9 +16,9 @@
 - read_only_scope: all production source, Phase 1–2 truth/projections, existing X Article and X V2/V2.1 behavior, V2.3 Query artifacts and `llm-wiki-runtime` 0.2.0
 - candidate_scope: none
 - excluded_scope: Phase 3 implementation, Phase 4 Outcome/bootstrap, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: Implementation Confirmation Gate
-- requested_stage_or_bridge: executing-plans with test-driven-development after explicit authorization
-- constraints: current `main`, design-only, no subagents, no production or test edits, no external side effects
+- current_gate: Task 1 TDD Gate
+- requested_stage_or_bridge: executing-plans with test-driven-development
+- constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
 
 ## Scope Lock
 
@@ -53,7 +53,8 @@
 - Phase 3 design correction: bind Article and Single Browser executions create-only because Article `outcome_unknown` has no Receipt; lock authorization TTL inside the confirmed Bundle Plan.
 - Phase 3 child specification: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`.
 - Phase 3 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-3-implementation-plan.md`.
-- Next action: user explicitly authorizes Phase 3 implementation; then execute inline with TDD checkpoints.
+- Implementation authorization: user confirmed `开始 Phase 3 inline 实现` on 2026-08-24.
+- Next action: execute Task 1 contract and state-machine RED → GREEN → REFACTOR checkpoint.
 
 ## Verification Plan
 
