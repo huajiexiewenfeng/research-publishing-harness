@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-outcome-closure/1.0",
+  "title": "Weekly Outcome Closure v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "outcome_ref", "released_topic_ref", "status", "closed_at", "closure_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-outcome-closure/v1" },
+    "outcome_ref": { "$ref": "#/$defs/artifactRef" },
+    "released_topic_ref": { "$ref": "#/$defs/artifactRef" },
+    "status": { "const": "complete" },
+    "closed_at": { "type": "string", "format": "date-time" },
+    "closure_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "safePath": { "type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._/-]+$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/safePath" }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

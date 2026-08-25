@@ -71,7 +71,10 @@ const names = [
   'materialized-single-publication',
   'derived-article-authorization',
   'derived-single-authorization',
-  'publication-bundle-receipt'
+  'publication-bundle-receipt',
+  'weekly-publication-outcome',
+  'weekly-outcome-closure',
+  'weekly-outcome-status'
 ] as const;
 
 const v1Names = new Set([
@@ -123,7 +126,10 @@ const v1Names = new Set([
   'materialized-single-publication',
   'derived-article-authorization',
   'derived-single-authorization',
-  'publication-bundle-receipt'
+  'publication-bundle-receipt',
+  'weekly-publication-outcome',
+  'weekly-outcome-closure',
+  'weekly-outcome-status'
 ]);
 
 describe('public contracts', () => {

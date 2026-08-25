@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-outcome-status/1.0",
+  "title": "Weekly Outcome Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cycle_id", "phase", "outcome_ref", "released_topic_ref", "blocked_reason", "updated_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-outcome-status/v1" },
+    "cycle_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "phase": { "enum": ["pending", "complete", "conflict"] },
+    "outcome_ref": { "$ref": "#/$defs/nullableRef" },
+    "released_topic_ref": { "$ref": "#/$defs/nullableRef" },
+    "blocked_reason": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "safePath": { "type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._/-]+$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/safePath" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/artifactRef" }, { "type": "null" }] }
+  }
+}

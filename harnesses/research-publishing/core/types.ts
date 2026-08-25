@@ -102,7 +102,10 @@ export const CONTRACT_NAMES = [
   'materialized-single-publication',
   'derived-article-authorization',
   'derived-single-authorization',
-  'publication-bundle-receipt'
+  'publication-bundle-receipt',
+  'weekly-publication-outcome',
+  'weekly-outcome-closure',
+  'weekly-outcome-status'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

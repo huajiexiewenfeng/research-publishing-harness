@@ -15,17 +15,18 @@ import { createPublicationReceiptV2_1 } from '../../harnesses/research-publishin
 import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 import { ExecutionStore } from '../../harnesses/research-publishing/core/execution-store.js';
 import { PublicationBundleService } from '../../harnesses/research-publishing/core/publication-bundle-service.js';
+import { ResearchBacklogService } from '../../harnesses/research-publishing/core/research-backlog-service.js';
 import {
-  createWeeklyCandidateSet,
-  createWeeklyCycleStatus,
-  createWeeklyResearchCycle,
-  createWeeklyTopicSelection
+  createResearchContextReview,
+  createResearchContextSnapshot,
+  createResearchQueryPlan
+} from '../../harnesses/research-publishing/core/research-query-types.js';
+import { ResearchRoadmapService } from '../../harnesses/research-publishing/core/research-roadmap-service.js';
+import {
+  createWeeklyCycleStatus
 } from '../../harnesses/research-publishing/core/research-program-contracts.js';
+import type { ResearchTopicRevisionV1 } from '../../harnesses/research-publishing/core/research-program-types.js';
 import type { PlanPublicationBundleInput } from '../../harnesses/research-publishing/core/publication-bundle-types.js';
-import type {
-  ResearchBacklogPort,
-  ResearchRoadmapPort
-} from '../../harnesses/research-publishing/core/research-program-types.js';
 import { WeeklyResearchCycleService } from '../../harnesses/research-publishing/core/weekly-research-cycle-service.js';
 import type {
   ResearchContentPackageV1_2,
@@ -34,10 +35,16 @@ import type {
 import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { researchPackage } from './research-package.js';
-import { weeklyCandidateSetInput, weeklyCycleInput } from './research-program.js';
+import {
+  roadmapInput,
+  topicInput,
+  weeklyCandidateBrief
+} from './research-program.js';
 
 export interface PublicationBundleFixture {
   readonly store: WorkspaceStore;
+  readonly roadmaps: ResearchRoadmapService;
+  readonly backlog: ResearchBacklogService;
   readonly weeks: WeeklyResearchCycleService;
   readonly planInput: PlanPublicationBundleInput;
 }
@@ -55,6 +62,42 @@ extends ApprovedPublicationBundleFixture {
 }
 
 export const publicationBundleNow = new Date('2026-08-24T12:00:00.000Z');
+
+const fixtureDigest = (char: string) => `sha256:${char.repeat(64)}` as const;
+
+async function seedReviewedQuery(store: WorkspaceStore) {
+  const plan = createResearchQueryPlan({
+    query_id: 'query_week_01', track_id: 'enterprise-agent-runtime',
+    query_intent: 'Find evidence for the Runtime boundary.', view: 'mainline',
+    include_working: false, selection_terms: ['runtime', 'boundary'],
+    selection_rationale: 'Prefer accepted claims with canonical evidence.',
+    document_mode: 'none', catalog_ref: null, selected_shard_refs: [],
+    selected_record_refs: [], selected_manifest_refs: [], selected_chunk_refs: [],
+    created_at: '2026-08-24T07:00:00.000Z'
+  });
+  const snapshot = createResearchContextSnapshot({
+    snapshot_id: 'snapshot_week_01', query_plan_digest: plan.plan_digest,
+    query_id: plan.query_id, query_intent: plan.query_intent, track_id: plan.track_id,
+    view: plan.view, index_refs: [], selected_summary_refs: [], selected_record_refs: [],
+    selected_evidence_refs: ['evidence:runtime_boundary'], context_items: [{
+      context_ref: 'claim:runtime_boundary@1',
+      relative_path: 'domains/research-publishing/tracks/enterprise-agent-runtime/claims/runtime_boundary/versions/1.md',
+      content_digest: fixtureDigest('a'),
+      content: 'Deterministic access belongs in the Runtime.',
+      source_layer: 'semantic_record', classification: 'data_only', sanitized: true, risk_flags: []
+    }], risk_flags: [], budgets: plan.budgets, selection_rationale: plan.selection_rationale,
+    query_status: 'loaded', runtime_version: '0.2.0', created_at: '2026-08-24T07:01:00.000Z'
+  });
+  const review = createResearchContextReview(snapshot, {
+    review_id: 'review_week_01', selected_context_refs: ['claim:runtime_boundary@1'],
+    reviewer: 'human', reviewed_at: '2026-08-24T07:02:00.000Z'
+  });
+  const root = `memory/queries-v2/${plan.query_id}`;
+  await store.writeNew(`${root}/plan.json`, plan);
+  await store.writeNew(`${root}/snapshot.json`, snapshot);
+  await store.writeNew(`${root}/review.json`, review);
+  return { plan, snapshot, review };
+}
 
 export const articleBrowserCapabilities = {
   executor: 'codex-chrome',
@@ -75,9 +118,53 @@ export async function createPublicationBundleFixture(
   const store = await WorkspaceStore.open(
     await mkdtemp(join(tmpdir(), 'rph-publication-bundle-'))
   );
-  const cycle = createWeeklyResearchCycle(weeklyCycleInput);
-  const candidateSet = createWeeklyCandidateSet(weeklyCandidateSetInput);
-  const selection = createWeeklyTopicSelection(candidateSet, {
+  const roadmaps = new ResearchRoadmapService(store);
+  const roadmap = await roadmaps.create(roadmapInput);
+  const backlog = new ResearchBacklogService(store, roadmaps);
+  const topics: ResearchTopicRevisionV1[] = [];
+  for (const id of ['a', 'b', 'c']) {
+    topics.push(await backlog.add(topicInput(`topic_${id}`, 'evidence_ready')));
+  }
+  const query = await seedReviewedQuery(store);
+  const contextBinding = {
+    query_id: query.plan.query_id,
+    plan_digest: query.plan.plan_digest,
+    snapshot_digest: query.snapshot.snapshot_digest,
+    review_digest: query.review.review_digest,
+    selected_context_refs: query.review.selected_context_refs,
+    query_status: query.snapshot.query_status,
+    application_status: 'applied' as const,
+    runtime_version: query.snapshot.runtime_version
+  };
+  const weeks = new WeeklyResearchCycleService(store, roadmaps, backlog);
+  const cycle = await weeks.open({
+    cycle_id: 'week_01_2026',
+    roadmap_ref: {
+      path: `program/roadmaps/${roadmap.roadmap_id}/revisions/${roadmap.revision}.json`,
+      digest: roadmap.roadmap_digest
+    },
+    week_number: 1,
+    month_id: 'month_01',
+    context_binding: contextBinding,
+    opened_by: 'human',
+    opened_at: '2026-08-24T08:00:00.000Z'
+  });
+  const candidateSet = await weeks.submitCandidates({
+    candidate_set_id: 'candidate_set_week_01_2026',
+    cycle_id: cycle.cycle_id,
+    roadmap_ref: cycle.roadmap_ref,
+    context_binding: contextBinding,
+    candidates: ['a', 'b'].map((id, index) => ({
+      ...weeklyCandidateBrief(id),
+      topic_ref: {
+        path: `program/backlog/topics/topic_${id}/revisions/1.json`,
+        digest: topics[index]!.revision_digest
+      }
+    })),
+    generated_by_skill: 'article-publishing-copilot',
+    created_at: '2026-08-24T09:00:00.000Z'
+  });
+  const selection = await weeks.select({
     cycle_id: cycle.cycle_id,
     candidate_set_digest: candidateSet.candidate_set_digest,
     selected_brief_id: 'brief_b',
@@ -86,9 +173,6 @@ export async function createPublicationBundleFixture(
     selected_at: '2026-08-24T10:00:00.000Z'
   });
   const root = `program/weeks/${cycle.cycle_id}`;
-  await store.writeNew(`${root}/cycle.json`, cycle);
-  await store.writeNew(`${root}/candidates.json`, candidateSet);
-  await store.writeNew(`${root}/selection.json`, selection);
 
   const selected = candidateSet.candidates.find(
     (candidate) => candidate.brief_id === selection.selected_brief_id
@@ -218,7 +302,7 @@ export async function createPublicationBundleFixture(
   }).plan(packageRef, '@Glen56121');
 
   await store.writeNew(`${root}/article.json`, packageRef);
-  await store.writeNew(`${root}/status.json`, createWeeklyCycleStatus({
+  await store.replaceAtomic(`${root}/status.json`, createWeeklyCycleStatus({
     cycle_ref: { path: `${root}/cycle.json`, digest: cycle.cycle_digest },
     phase: 'article_finalized',
     candidate_set_ref: { path: `${root}/candidates.json`, digest: candidateSet.candidate_set_digest },
@@ -232,13 +316,10 @@ export async function createPublicationBundleFixture(
     updated_at: '2026-08-24T11:05:00.000Z'
   }));
 
-  const weeks = new WeeklyResearchCycleService(
-    store,
-    {} as ResearchRoadmapPort,
-    {} as ResearchBacklogPort
-  );
   return {
     store,
+    roadmaps,
+    backlog,
     weeks,
     planInput: {
       bundle_id: 'bundle_week_01_2026',
