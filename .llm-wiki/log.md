@@ -109,3 +109,4 @@
 - fresh 验证：focused gate 22 个测试文件 / 86 项测试通过；全仓 161 个文件 / 692 项测试通过，1 个文件 / 1 项真实 Runtime opt-in 测试跳过；lint、typecheck、build、Skill validator、acceptance 和 diff check 通过。
 - Manifest 含 236 个文件、3 个 Skills，Runtime 仍固定为 `0.2.0`；离线 acceptance 返回 `network: unused`。
 - Phase 4 handoff 已归档；验证级别 `passed-agent-local`，未执行真实 Browser/X/GitHub/Runtime/Wiki 写入，未创建或执行 Memory Promotion。
+- 生产实现保持当前任务 inline；`writing-skills` 的新 Skill 前向验证使用了一个只读、无副作用评估子代理，该代理未修改仓库，也不构成独立代码复核。

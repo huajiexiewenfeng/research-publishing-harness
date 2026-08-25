@@ -7,6 +7,7 @@
 - Production/acceptance head: `da6350f`
 - Confirmed plan digest: `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`
 - External effects: none; Fake AI and contained local artifacts only
+- Execution provenance: production implementation stayed inline in the current task; one read-only, no-side-effect evaluation subagent was used only for the new Skill's before/after forward test and made no repository edits.
 
 ## Delivered loop
 
@@ -98,6 +99,7 @@ completed Publication Bundle
 - Offline acceptance: passed, `network: unused`.
 - No real Browser, X, GitHub, Runtime or user Wiki action occurred. No Memory Promotion was planned, approved or executed.
 - Verification is agent-local, not CI or independent review.
+- The Skill forward test used one evaluation subagent; this is behavioral test evidence, not independent code review.
 
 ## Residual risks
 
