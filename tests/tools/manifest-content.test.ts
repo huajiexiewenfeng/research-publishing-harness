@@ -22,7 +22,10 @@ describe('canonicalManifestBytes', () => {
   it('includes the X Article production branch and Skill flow reference', async () => {
     const manifest = JSON.parse(
       await readFile(resolve('registry/manifests/research-publishing.json'), 'utf8')
-    ) as { files: Array<{ path: string }> };
+    ) as {
+      compatibility: { llm_wiki_runtime: string; skills: string[] };
+      files: Array<{ path: string }>;
+    };
     const paths = manifest.files.map((file) => file.path);
     expect(paths).toContain(
       'harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts'
@@ -40,6 +43,22 @@ describe('canonicalManifestBytes', () => {
       'skills/article-publishing-copilot/references/memory-loop.md',
       'skills/x-publishing-copilot/scp.yml',
       'skills/x-publishing-copilot/references/memory-loop.md'
+    ]));
+    expect(manifest.compatibility).toMatchObject({
+      llm_wiki_runtime: '0.2.0',
+      skills: [
+        'article-publishing-copilot',
+        'x-publishing-copilot',
+        'research-synthesis-copilot'
+      ]
+    });
+    expect(paths).toEqual(expect.arrayContaining([
+      'harnesses/research-publishing/core/research-synthesis-service.ts',
+      'harnesses/research-publishing/contracts/research-synthesis-revision.schema.json',
+      'harnesses/research-publishing/contracts/research-continuation-proposal.schema.json',
+      'skills/research-synthesis-copilot/SKILL.md',
+      'skills/research-synthesis-copilot/scp.yml',
+      'skills/research-synthesis-copilot/references/research-synthesis-flow.md'
     ]));
     expect(paths).toEqual(expect.arrayContaining([
       'harnesses/research-publishing/core/research-terminal-hooks.ts',

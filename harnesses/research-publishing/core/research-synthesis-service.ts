@@ -1,7 +1,8 @@
 import { sha256 } from './digest.js';
-import { assertArtifactAdmissible } from './artifact-admission-policy.js';
+import { assertArtifactAdmissible, privacyRank } from './artifact-admission-policy.js';
 import { HarnessError } from './errors.js';
 import { ResearchEvidenceService } from './research-evidence-service.js';
+import type { ResearchEvidenceSnapshotV1 } from './research-memory-types.js';
 import type { ResearchArtifactRefV1 } from './research-program-types.js';
 import type {
   ResearchContextReviewV2,
@@ -359,11 +360,27 @@ export class ResearchSynthesisService {
       bytes: artifact.content,
       allow_restricted: false
     });
+    let text: string;
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(artifact.content);
+      text = new TextDecoder('utf-8', { fatal: true }).decode(artifact.content);
     } catch {
       fail('CONTRACT_INVALID', 'Synthesis source is not valid UTF-8 text');
     }
+    if (source.role === 'evidence') {
+      const match = /^memory\/evidence\/snapshots\/([a-z0-9][a-z0-9_-]{0,95})\/manifest\.json$/
+        .exec(source.ref.path);
+      if (match === null) {
+        fail('CONTRACT_INVALID', 'Evidence context must use a canonical Evidence Snapshot manifest');
+      }
+      await new ResearchEvidenceService(this.store).status(match[1]!);
+      const snapshot = validateContract<ResearchEvidenceSnapshotV1>(
+        'research-evidence-snapshot', JSON.parse(text) as unknown
+      );
+      if (privacyRank(source.privacy_classification) < privacyRank(snapshot.privacy_classification)) {
+        fail('PRIVACY_GATE_BLOCKED', 'Synthesis Evidence classification cannot be downgraded');
+      }
+    }
+    return text;
   }
 
   private boundedItem(
