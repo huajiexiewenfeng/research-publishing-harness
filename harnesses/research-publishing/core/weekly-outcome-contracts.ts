@@ -130,6 +130,7 @@ export function assertWeeklyPublicationOutcome(outcome: WeeklyPublicationOutcome
   validateContract<WeeklyPublicationOutcomeV1>('weekly-publication-outcome', outcome);
   assertOutcomeInvariants(outcome);
   const { outcome_digest, public_urls: _publicUrls, ...input } = outcome;
+  void _publicUrls;
   const recreated = createWeeklyPublicationOutcome(input);
   if (recreated.outcome_digest !== outcome_digest) {
     fail('Weekly Outcome digest mismatch');
@@ -166,6 +167,8 @@ export function createWeeklyOutcomeClosure(
 export function assertWeeklyOutcomeClosure(closure: WeeklyOutcomeClosureV1): void {
   validateContract<WeeklyOutcomeClosureV1>('weekly-outcome-closure', closure);
   const { closure_digest, status: _status, schema_version: _schema, ...input } = closure;
+  void _status;
+  void _schema;
   if (createWeeklyOutcomeClosure(input).closure_digest !== closure_digest) {
     fail('Weekly Outcome Closure digest mismatch');
   }

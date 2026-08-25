@@ -49,7 +49,9 @@ describe('research-publish CLI', () => {
     await writeFile(input, '{}', 'utf8');
     const operations = [
       'program week open', 'program week submit-candidates', 'program week select',
-      'program week cancel', 'program week compile-package', 'program week status'
+      'program week cancel', 'program week compile-package', 'program week status',
+      'program week outcome assemble', 'program week outcome status',
+      'program week outcome resume'
     ];
     for (const operation of operations) {
       const result = run([

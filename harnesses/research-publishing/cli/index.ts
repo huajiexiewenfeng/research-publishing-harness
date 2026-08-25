@@ -54,6 +54,7 @@ import type {
 } from '../core/research-program-types.js';
 import { ResearchRoadmapService } from '../core/research-roadmap-service.js';
 import { WeeklyResearchCycleService } from '../core/weekly-research-cycle-service.js';
+import { WeeklyOutcomeService } from '../core/weekly-outcome-service.js';
 import { WeeklyPackageCompiler } from '../core/weekly-package-compiler.js';
 import { ResearchTerminalHooks } from '../core/research-terminal-hooks.js';
 import {
@@ -440,6 +441,7 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     const reviews = new MonthlyEditorialReviewService(store);
     const programStatus = new ResearchProgramStatusService(store, roadmaps, backlog, reviews);
     const weeks = new WeeklyResearchCycleService(store, roadmaps, backlog);
+    const outcomes = new WeeklyOutcomeService(store, roadmaps, backlog, weeks);
     const compiler = new WeeklyPackageCompiler(store);
 
     if (operation === 'program roadmap create') {
@@ -514,6 +516,23 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     if (operation === 'program week status') {
       const input = await readInput<{ cycle_id: string }>(options);
       const artifact = await weeks.status(input.cycle_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'program week outcome assemble') {
+      const artifact = await outcomes.assemble(
+        await readInput<{ readonly cycle_id: string }>(options)
+      );
+      return { ok: true, operation, artifact, state: 'outcome_created' };
+    }
+    if (operation === 'program week outcome status') {
+      const { cycle_id } = await readInput<{ readonly cycle_id: string }>(options);
+      const artifact = await outcomes.status(cycle_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'program week outcome resume') {
+      const artifact = await outcomes.resume(
+        await readInput<{ readonly cycle_id: string }>(options)
+      );
       return { ok: true, operation, artifact, state: artifact.phase };
     }
     throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
