@@ -97,3 +97,4 @@
 - 设计明确“固化已发生事实、保持未来研究方向可调整”：发布后 Topic 返回 `available` 而非自动 `completed`；Roadmap、下一篇文章、Claim 与 Memory Promotion 均不自动变更。规格尚待用户书面确认，未创建实施计划或修改生产代码。
 - 用户确认 Phase 4 设计源摘要 `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`。设计 Flow 已完成；实施计划、生产代码、测试及所有外部操作仍需后续独立授权。
 - 用户于 2026-08-25 明确要求开始 Phase 4 实施计划。已起草九项 TDD 任务，分别覆盖 Program Closure、Research Bridge、AI Research Partner 与完整 Fake-AI 验收；当前仅进入计划审阅，未修改生产代码或测试，未执行任何外部操作。
+- 用户确认 Phase 4 实施计划摘要 `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`。计划 Flow 已完成；开发仍需单独的 `开始 Phase 4 inline 实现` 授权。

@@ -7,7 +7,7 @@
 - phase_1_status: implemented and passed-agent-local
 - phase_2_status: implemented and passed-agent-local
 - phase_3_status: implemented and passed-agent-local
-- phase_4_status: implementation plan review pending; development not authorized
+- phase_4_status: implementation plan confirmed; development not authorized
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -95,7 +95,7 @@ The external planning documents were reviewed as temporary local sources and are
 
 ## Open Questions
 
-- Phase 4 written design is confirmed and its implementation plan is in Human review. Development remains separately unauthorized; public bootstrap and Runtime protocol changes are excluded.
+- Phase 4 written design and implementation plan are confirmed. Development remains separately unauthorized; public bootstrap and Runtime protocol changes are excluded.
 
 ## Notes
 
@@ -108,4 +108,4 @@ The external planning documents were reviewed as temporary local sources and are
 - Phase 3 source-calibrated child specification is confirmed: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`. The user authorized inline implementation on 2026-08-24.
 - Phase 3 is complete within its local deterministic boundary: one exact Bundle confirmation derives Article-first child approvals, binds both executions before continuation, materializes only a publicly verified X Article URL, and ends in a joint Receipt while Weekly status remains `publication_planned`.
 - Phase 3 continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
-- Phase 4 confirmed child design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`. It treats AI as a research partner, separates Outcome facts from generated Synthesis, keeps Topic/Roadmap flexible and reuses the existing confirmed Promotion boundary. The confirmed source digest is `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`; the implementation plan is awaiting Human confirmation and development is not authorized.
+- Phase 4 confirmed child design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`. It treats AI as a research partner, separates Outcome facts from generated Synthesis, keeps Topic/Roadmap flexible and reuses the existing confirmed Promotion boundary. The implementation plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891` is Human-confirmed; development is not authorized.
