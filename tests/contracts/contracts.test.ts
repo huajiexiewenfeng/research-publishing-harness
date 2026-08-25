@@ -74,7 +74,10 @@ const names = [
   'publication-bundle-receipt',
   'weekly-publication-outcome',
   'weekly-outcome-closure',
-  'weekly-outcome-status'
+  'weekly-outcome-status',
+  'claim-projection',
+  'weekly-research-increment-binding',
+  'weekly-research-bridge-status'
 ] as const;
 
 const v1Names = new Set([
@@ -129,7 +132,10 @@ const v1Names = new Set([
   'publication-bundle-receipt',
   'weekly-publication-outcome',
   'weekly-outcome-closure',
-  'weekly-outcome-status'
+  'weekly-outcome-status',
+  'claim-projection',
+  'weekly-research-increment-binding',
+  'weekly-research-bridge-status'
 ]);
 
 describe('public contracts', () => {

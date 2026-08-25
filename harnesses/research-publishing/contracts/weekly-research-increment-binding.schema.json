@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/weekly-research-increment-binding/1.0",
+  "title": "Weekly Research Increment Binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cycle_id", "outcome_ref", "claim_projection_ref", "track_id", "increment_id", "increment_ref", "increment_revision_ref", "binding_policy", "bound_at", "binding_digest"],
+  "properties": {
+    "schema_version": { "const": "weekly-research-increment-binding/v1" },
+    "cycle_id": { "$ref": "#/$defs/id" },
+    "outcome_ref": { "$ref": "#/$defs/ref" },
+    "claim_projection_ref": { "$ref": "#/$defs/ref" },
+    "track_id": { "$ref": "#/$defs/id" },
+    "increment_id": { "$ref": "#/$defs/id" },
+    "increment_ref": { "type": "string", "pattern": "^increment:[a-z0-9][a-z0-9_-]{0,95}@1$" },
+    "increment_revision_ref": { "$ref": "#/$defs/ref" },
+    "binding_policy": { "const": "one-outcome-one-increment/v1" },
+    "bound_at": { "type": "string", "format": "date-time" },
+    "binding_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

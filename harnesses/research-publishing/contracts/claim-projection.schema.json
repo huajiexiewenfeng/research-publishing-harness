@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/claim-projection/1.0",
+  "title": "Claim Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "projection_id", "outcome_ref", "package_ref", "items", "projected_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "claim-projection/v1" },
+    "projection_id": { "$ref": "#/$defs/id" },
+    "outcome_ref": { "$ref": "#/$defs/ref" },
+    "package_ref": { "$ref": "#/$defs/ref" },
+    "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/item" } },
+    "projected_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_claim_ref", "source_claim_id", "statement_digest", "source_status", "candidate_claim_ref", "candidate_status", "evidence_refs", "projection_rule", "loss_note"],
+      "properties": {
+        "source_claim_ref": { "$ref": "#/$defs/text" },
+        "source_claim_id": { "$ref": "#/$defs/id" },
+        "statement_digest": { "$ref": "#/$defs/digest" },
+        "source_status": { "enum": ["shipped", "validated", "observed", "exploring", "planned", "hypothesis"] },
+        "candidate_claim_ref": { "type": "string", "pattern": "^claim-candidate:[a-z0-9][a-z0-9_-]{0,95}:[a-z0-9][a-z0-9_-]{0,95}$" },
+        "candidate_status": { "enum": ["verified", "observed", "inferred", "hypothesis", "planned"] },
+        "evidence_refs": { "$ref": "#/$defs/refs" },
+        "projection_rule": { "const": "package-to-memory-claim/v1" },
+        "loss_note": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}
