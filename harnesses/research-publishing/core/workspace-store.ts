@@ -14,6 +14,7 @@ const ALLOWED_TOP_LEVEL = new Set([
   'memory',
   'packages',
   'program',
+  'research',
   'receipts',
   'reviews',
   'runs',
