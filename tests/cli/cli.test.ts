@@ -124,6 +124,32 @@ describe('research-publish CLI', () => {
     }
   }, 120_000);
 
+  it('exposes the Phase 4 research partner command surface with JSON-only routing', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-research-routes-'));
+    const workspace = join(parent, 'workspace');
+    const input = join(parent, 'input.json');
+    await writeFile(input, '{}', 'utf8');
+    const operations = [
+      'research bridge assemble',
+      'research bridge status',
+      'research bridge resume',
+      'research synthesis plan',
+      'research synthesis record',
+      'research synthesis status',
+      'research continuation propose',
+      'research continuation status'
+    ];
+    for (const operation of operations) {
+      const result = run([
+        ...operation.split(' '), '--workspace', workspace,
+        '--input', input, '--output', 'json'
+      ]);
+      const payload = JSON.parse(result.stdout) as { operation: string; error?: { message: string } };
+      expect(payload.operation).toBe(operation);
+      expect(payload.error?.message ?? '').not.toMatch(/unknown operation/i);
+    }
+  }, 45_000);
+
   it('plans and degrades a Memory Query without configured Runtime', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-memory-query-'));
     const workspace = join(parent, 'workspace');

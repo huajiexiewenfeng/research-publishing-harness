@@ -637,7 +637,8 @@ try {
     scp_paths: [
       resolve('harnesses/research-publishing/memory/scp.yml'),
       resolve('skills/article-publishing-copilot/scp.yml'),
-      resolve('skills/x-publishing-copilot/scp.yml')
+      resolve('skills/x-publishing-copilot/scp.yml'),
+      resolve('skills/research-synthesis-copilot/scp.yml')
     ]
   }, {
     planId: () => 'promotion_plan_acceptance', approvalId: () => 'promotion_approval_acceptance',
@@ -823,7 +824,8 @@ try {
     scp_paths: [
       resolve('harnesses/research-publishing/memory/scp.yml'),
       resolve('skills/article-publishing-copilot/scp.yml'),
-      resolve('skills/x-publishing-copilot/scp.yml')
+      resolve('skills/x-publishing-copilot/scp.yml'),
+      resolve('skills/research-synthesis-copilot/scp.yml')
     ]
   }, {
     ingestId: () => `ingest_acceptance_${++memoryIngestId}`,

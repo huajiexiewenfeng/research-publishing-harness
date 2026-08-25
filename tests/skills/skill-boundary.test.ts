@@ -119,3 +119,24 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toContain('Memory Promotion requires a separate confirmation');
   });
 });
+
+describe('research-synthesis-copilot boundary', () => {
+  it('routes bounded checkpoints without manufacturing novelty or authority', async () => {
+    const content = await skill('research-synthesis-copilot');
+    const frontmatter = parse(content.split('---')[1]!) as { name: string; description: string };
+    expect(frontmatter.name).toBe('research-synthesis-copilot');
+    expect(frontmatter.description).toMatch(/^Use when /);
+    expect(content).toContain('scripts/invoke.mjs');
+    expect(content).toContain('meaningful checkpoint');
+    expect(content).toMatch(/no_material_change.*successful/is);
+    expect(content).toMatch(/insufficient_evidence.*successful/is);
+    expect(content).toMatch(/never.*force.*novel/is);
+    expect(content).toMatch(/Runtime.*unavailable.*limitation/is);
+    expect(content).toMatch(/never.*chain-of-thought/is);
+    expect(content).toMatch(/Continuation Proposal.*non-authoritative/is);
+    expect(content).toMatch(/Memory Promotion.*separate confirmation/is);
+    expect(content).toMatch(/never.*\.llm-wiki/is);
+    expect(content).toMatch(/at most three.*display|display.*at most three/is);
+    expect(content).toMatch(/Harness.*lossless|lossless.*Harness/is);
+  });
+});

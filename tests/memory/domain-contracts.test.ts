@@ -66,6 +66,7 @@ describe('research-publishing LLM Wiki domain assets', () => {
     const harnessScp = await yaml<ScpAsset>('harnesses/research-publishing/memory/scp.yml');
     const articleScp = await yaml<ScpAsset>('skills/article-publishing-copilot/scp.yml');
     const xScp = await yaml<ScpAsset>('skills/x-publishing-copilot/scp.yml');
+    const synthesisScp = await yaml<ScpAsset>('skills/research-synthesis-copilot/scp.yml');
 
     expect(mapping.mapping).toMatchObject({
       id: 'research-publishing-memory',
@@ -94,6 +95,23 @@ describe('research-publishing LLM Wiki domain assets', () => {
         { domain: 'research-publishing', record_type: 'candidate_insight' }
       ]));
     }
+    expect(synthesisScp.skill).toEqual({
+      id: 'research-synthesis-copilot', domain: 'research-publishing'
+    });
+    expect(synthesisScp.query).toEqual({
+      primary_domain: 'research-publishing', supports: []
+    });
+    expect(synthesisScp.llm_wiki).toMatchObject({
+      profile: 'research-publishing', required: false
+    });
+    expect(synthesisScp.ingest.produces).toEqual(expect.arrayContaining([
+      { domain: 'research-publishing', record_type: 'candidate_insight' },
+      { domain: 'research-publishing', record_type: 'research_increment' },
+      { domain: 'research-publishing', record_type: 'publication_expression' },
+      { domain: 'research-publishing', record_type: 'publication_evidence' },
+      { domain: 'research-publishing', record_type: 'open_question' },
+      { domain: 'research-publishing', record_type: 'research_evolution_edge' }
+    ]));
   });
 
   it('declares all V2.3 Runtime records, stable Catalog lookup, and bounded full index records', async () => {

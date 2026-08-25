@@ -53,7 +53,14 @@ import type {
   SubmitWeeklyCandidatesInput
 } from '../core/research-program-types.js';
 import { ResearchRoadmapService } from '../core/research-roadmap-service.js';
+import {
+  ResearchSynthesisService,
+  type PlanResearchSynthesisInput,
+  type ProposeResearchContinuationInput,
+  type RecordResearchSynthesisInput
+} from '../core/research-synthesis-service.js';
 import { WeeklyResearchCycleService } from '../core/weekly-research-cycle-service.js';
+import { WeeklyResearchBridgeService } from '../core/weekly-research-bridge-service.js';
 import { WeeklyOutcomeService } from '../core/weekly-outcome-service.js';
 import { WeeklyPackageCompiler } from '../core/weekly-package-compiler.js';
 import { ResearchTerminalHooks } from '../core/research-terminal-hooks.js';
@@ -177,6 +184,7 @@ interface PackagedMemoryAssets {
   readonly harnessScpPath: string;
   readonly articleScpPath: string;
   readonly xScpPath: string;
+  readonly synthesisScpPath: string;
 }
 
 async function packagedMemoryAssets(): Promise<PackagedMemoryAssets> {
@@ -202,7 +210,8 @@ async function packagedMemoryAssets(): Promise<PackagedMemoryAssets> {
     mappingPath: resolve(root, 'harnesses/research-publishing/memory/ingest-mapping.yml'),
     harnessScpPath: resolve(root, 'harnesses/research-publishing/memory/scp.yml'),
     articleScpPath: resolve(root, 'skills/article-publishing-copilot/scp.yml'),
-    xScpPath: resolve(root, 'skills/x-publishing-copilot/scp.yml')
+    xScpPath: resolve(root, 'skills/x-publishing-copilot/scp.yml'),
+    synthesisScpPath: resolve(root, 'skills/research-synthesis-copilot/scp.yml')
   };
 }
 
@@ -224,7 +233,9 @@ async function configuredMemoryRuntime(
     workspace: options.workspace,
     profile_path: assets.profilePath,
     mapping_path: assets.mappingPath,
-    scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+    scp_paths: [
+      assets.harnessScpPath, assets.articleScpPath, assets.xScpPath, assets.synthesisScpPath
+    ]
   });
 }
 
@@ -538,6 +549,61 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
   }
 
+  if (operation.startsWith('research ')) {
+    const bridge = new WeeklyResearchBridgeService(store);
+    const synthesis = new ResearchSynthesisService(store);
+    if (operation === 'research bridge assemble') {
+      const artifact = await bridge.assemble(await readInput<{
+        readonly cycle_id: string;
+        readonly workspace_identity_digest: `sha256:${string}`;
+      }>(options));
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'research bridge status') {
+      const { cycle_id } = await readInput<{ readonly cycle_id: string }>(options);
+      const artifact = await bridge.status(cycle_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'research bridge resume') {
+      const artifact = await bridge.resume(
+        await readInput<{ readonly cycle_id: string }>(options)
+      );
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'research synthesis plan') {
+      const artifact = await synthesis.plan(await readInput<PlanResearchSynthesisInput>(options));
+      return { ok: true, operation, artifact, state: 'planned' };
+    }
+    if (operation === 'research synthesis record') {
+      const artifact = await synthesis.record(
+        await readInput<RecordResearchSynthesisInput>(options)
+      );
+      return { ok: true, operation, artifact, state: artifact.disposition };
+    }
+    if (operation === 'research synthesis status') {
+      const { synthesis_id } = await readInput<{ readonly synthesis_id: string }>(options);
+      const artifact = await synthesis.status(synthesis_id);
+      return { ok: true, operation, artifact, state: artifact.phase };
+    }
+    if (operation === 'research continuation propose') {
+      const artifact = await synthesis.proposeContinuation(
+        await readInput<ProposeResearchContinuationInput>(options)
+      );
+      return { ok: true, operation, artifact, state: 'proposed' };
+    }
+    if (operation === 'research continuation status') {
+      const input = await readInput<{
+        readonly synthesis_id: string;
+        readonly proposal_id: string;
+      }>(options);
+      const artifact = await synthesis.continuationStatus(
+        input.synthesis_id, input.proposal_id
+      );
+      return { ok: true, operation, artifact, state: 'proposed' };
+    }
+    throw new HarnessError('CONTRACT_INVALID', `unknown operation: ${operation}`);
+  }
+
   if (operation.startsWith('memory ')) {
     const assets = await packagedMemoryAssets();
     const runtime = await configuredMemoryRuntime(options, assets);
@@ -553,7 +619,10 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       {
         profile_path: assets.profilePath,
         mapping_path: assets.mappingPath,
-        scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+        scp_paths: [
+          assets.harnessScpPath, assets.articleScpPath,
+          assets.xScpPath, assets.synthesisScpPath
+        ]
       }
     );
     const progressive = new ProgressiveResearchQueryService(
@@ -572,7 +641,10 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       {
         profile_path: assets.profilePath,
         mapping_path: assets.mappingPath,
-        scp_paths: [assets.harnessScpPath, assets.articleScpPath, assets.xScpPath]
+        scp_paths: [
+          assets.harnessScpPath, assets.articleScpPath,
+          assets.xScpPath, assets.synthesisScpPath
+        ]
       }
     );
 

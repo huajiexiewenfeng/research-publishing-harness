@@ -10,6 +10,7 @@ const sourceRoots = [
   'harnesses/research-publishing',
   'skills/article-publishing-copilot',
   'skills/x-publishing-copilot',
+  'skills/research-synthesis-copilot',
   'docs/guides',
   'docs/examples'
 ];
@@ -54,7 +55,9 @@ const manifest = {
     node: '>=20.19',
     contracts: '1.1',
     llm_wiki_runtime: '0.2.0',
-    skills: ['article-publishing-copilot', 'x-publishing-copilot']
+    skills: [
+      'article-publishing-copilot', 'x-publishing-copilot', 'research-synthesis-copilot'
+    ]
   },
   files
 };

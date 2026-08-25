@@ -1,0 +1,6 @@
+interface:
+  display_name: "Research Synthesis Copilot"
+  short_description: "Turn research evidence into bounded checkpoints"
+  default_prompt: "Use $research-synthesis-copilot to synthesize this research checkpoint and propose non-authoritative next directions."
+policy:
+  allow_implicit_invocation: true

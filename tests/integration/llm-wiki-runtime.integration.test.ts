@@ -24,7 +24,8 @@ describe.skipIf(!realRuntimeConfigured)('llm-wiki-runtime 0.2.0 integration', ()
     const scps = [
       resolve('harnesses/research-publishing/memory/scp.yml'),
       resolve('skills/article-publishing-copilot/scp.yml'),
-      resolve('skills/x-publishing-copilot/scp.yml')
+      resolve('skills/x-publishing-copilot/scp.yml'),
+      resolve('skills/research-synthesis-copilot/scp.yml')
     ];
     const runner = new NodeRuntimeProcessRunner();
     const previousPythonPath = process.env.PYTHONPATH;
