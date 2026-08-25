@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-synthesis-attempt/1.0",
+  "title": "Research Synthesis Attempt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "synthesis_id", "attempt_ordinal", "input_snapshot_ref", "candidate_digest", "status", "error_codes", "attempted_at", "attempt_digest"],
+  "properties": {
+    "schema_version": { "const": "research-synthesis-attempt/v1" },
+    "synthesis_id": { "$ref": "#/$defs/id" },
+    "attempt_ordinal": { "type": "integer", "minimum": 1 },
+    "input_snapshot_ref": { "$ref": "#/$defs/ref" },
+    "candidate_digest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["accepted", "rejected"] },
+    "error_codes": { "$ref": "#/$defs/refs" },
+    "attempted_at": { "type": "string", "format": "date-time" },
+    "attempt_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

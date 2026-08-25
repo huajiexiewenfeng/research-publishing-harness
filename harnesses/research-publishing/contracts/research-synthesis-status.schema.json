@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-synthesis-status/1.0",
+  "title": "Research Synthesis Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "synthesis_id", "phase", "input_snapshot_ref", "latest_revision_ref", "attempt_count", "blocked_reason", "updated_at", "projection_digest"],
+  "properties": {
+    "schema_version": { "const": "research-synthesis-status/v1" },
+    "synthesis_id": { "$ref": "#/$defs/id" },
+    "phase": { "enum": ["not_requested", "planned", "recorded", "blocked"] },
+    "input_snapshot_ref": { "$ref": "#/$defs/nullableRef" },
+    "latest_revision_ref": { "$ref": "#/$defs/nullableRef" },
+    "attempt_count": { "type": "integer", "minimum": 0 },
+    "blocked_reason": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "projection_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }] }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-synthesis-revision/1.0",
+  "title": "Research Synthesis Revision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "synthesis_id", "revision", "previous_revision_ref", "input_snapshot_ref", "disposition", "insights", "summary", "limitations", "memory_context_status", "generator_provenance", "recorded_at", "revision_digest"],
+  "properties": {
+    "schema_version": { "const": "research-synthesis-revision/v1" },
+    "synthesis_id": { "$ref": "#/$defs/id" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "previous_revision_ref": { "$ref": "#/$defs/nullableRef" },
+    "input_snapshot_ref": { "$ref": "#/$defs/ref" },
+    "disposition": { "$ref": "#/$defs/disposition" },
+    "insights": { "type": "array", "items": { "$ref": "#/$defs/insight" } },
+    "summary": { "$ref": "#/$defs/text" },
+    "limitations": { "$ref": "#/$defs/refs" },
+    "memory_context_status": { "enum": ["loaded", "empty", "unavailable"] },
+    "generator_provenance": { "$ref": "#/$defs/generator" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "revision_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }] },
+    "disposition": { "enum": ["material_update", "conflicting_evidence", "no_material_change", "insufficient_evidence"] },
+    "insight": { "type": "object", "additionalProperties": false, "required": ["insight_id", "kind", "epistemic_status", "statement", "rationale", "evidence_refs", "prior_semantic_refs", "confidence", "confidence_rationale", "falsification_condition", "missing_evidence", "potential_mainline_impact"], "properties": {
+      "insight_id": { "$ref": "#/$defs/id" },
+      "kind": { "enum": ["conclusion", "hypothesis", "correction", "contradiction", "architecture_connection", "proposed_decision", "open_question"] },
+      "epistemic_status": { "enum": ["observation", "inference", "hypothesis", "proposed_decision"] },
+      "statement": { "$ref": "#/$defs/text" },
+      "rationale": { "$ref": "#/$defs/text" },
+      "evidence_refs": { "$ref": "#/$defs/refs" },
+      "prior_semantic_refs": { "$ref": "#/$defs/refs" },
+      "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+      "confidence_rationale": { "$ref": "#/$defs/text" },
+      "falsification_condition": { "$ref": "#/$defs/text" },
+      "missing_evidence": { "$ref": "#/$defs/refs" },
+      "potential_mainline_impact": { "$ref": "#/$defs/text" }
+    } },
+    "generator": { "type": "object", "additionalProperties": false, "required": ["provider", "model", "invocation_id"], "properties": { "provider": { "$ref": "#/$defs/text" }, "model": { "$ref": "#/$defs/text" }, "invocation_id": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] } } }
+  }
+}

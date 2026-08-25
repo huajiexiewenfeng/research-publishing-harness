@@ -77,7 +77,13 @@ const names = [
   'weekly-outcome-status',
   'claim-projection',
   'weekly-research-increment-binding',
-  'weekly-research-bridge-status'
+  'weekly-research-bridge-status',
+  'synthesis-input-snapshot',
+  'research-synthesis-candidate',
+  'research-synthesis-attempt',
+  'research-synthesis-revision',
+  'research-continuation-proposal',
+  'research-synthesis-status'
 ] as const;
 
 const v1Names = new Set([
@@ -135,7 +141,13 @@ const v1Names = new Set([
   'weekly-outcome-status',
   'claim-projection',
   'weekly-research-increment-binding',
-  'weekly-research-bridge-status'
+  'weekly-research-bridge-status',
+  'synthesis-input-snapshot',
+  'research-synthesis-candidate',
+  'research-synthesis-attempt',
+  'research-synthesis-revision',
+  'research-continuation-proposal',
+  'research-synthesis-status'
 ]);
 
 describe('public contracts', () => {

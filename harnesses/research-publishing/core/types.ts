@@ -108,7 +108,13 @@ export const CONTRACT_NAMES = [
   'weekly-outcome-status',
   'claim-projection',
   'weekly-research-increment-binding',
-  'weekly-research-bridge-status'
+  'weekly-research-bridge-status',
+  'synthesis-input-snapshot',
+  'research-synthesis-candidate',
+  'research-synthesis-attempt',
+  'research-synthesis-revision',
+  'research-continuation-proposal',
+  'research-synthesis-status'
 ] as const;
 
 export type ContractName = (typeof CONTRACT_NAMES)[number];

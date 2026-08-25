@@ -58,4 +58,15 @@ describe('EvidenceObjectStore', () => {
       privacy_classification: 'internal'
     })).rejects.toMatchObject({ code: 'MEMORY_EVIDENCE_CORRUPT' });
   });
+
+  it('preserves restricted Evidence admission for existing capture workflows', async () => {
+    const { objects } = await fixture();
+    await expect(objects.put({
+      workspace_relative_path: 'articles/runtime/article.md',
+      role: 'canonical_article',
+      media_type: 'text/markdown',
+      canonical: true,
+      privacy_classification: 'restricted'
+    })).resolves.toMatchObject({ status: 'created' });
+  });
 });

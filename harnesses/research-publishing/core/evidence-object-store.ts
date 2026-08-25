@@ -1,4 +1,5 @@
 import { HarnessError } from './errors.js';
+import { assertArtifactAdmissible } from './artifact-admission-policy.js';
 import { createArtifactRefV2 } from './research-memory-contracts.js';
 import type {
   ArtifactRefV2,
@@ -20,38 +21,16 @@ export interface EvidenceObjectPutResult {
   readonly artifact_ref: ArtifactRefV2;
 }
 
-const SENSITIVE_PATH = /(?:^|\/)(?:cookies?|login[-_]?state|browser[-_]?state|credentials?)(?:\.|\/|$)/i;
-const SECRET_PATTERNS = [
-  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\bsk-[A-Za-z0-9_-]{16,}\b/,
-  /\b(?:api[_-]?(?:key|token)|token|password|secret)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{8,}/i
-] as const;
-
-function textLike(mediaType: string): boolean {
-  return mediaType.startsWith('text/') ||
-    mediaType === 'application/json' ||
-    mediaType === 'application/yaml' ||
-    mediaType === 'application/x-yaml';
-}
-
-function assertAdmissible(input: ContainedArtifactInput, bytes: Uint8Array): void {
-  const path = input.workspace_relative_path.replaceAll('\\', '/');
-  if (SENSITIVE_PATH.test(path)) {
-    throw new HarnessError('PRIVACY_GATE_BLOCKED', 'browser login state is not admissible Evidence');
-  }
-  if (!textLike(input.media_type)) return;
-  const text = Buffer.from(bytes).toString('utf8');
-  if (SECRET_PATTERNS.some((pattern) => pattern.test(text))) {
-    throw new HarnessError('PRIVACY_GATE_BLOCKED', 'potential secret detected in Evidence artifact');
-  }
-}
-
 export class EvidenceObjectStore {
   constructor(private readonly store: WorkspaceStore) {}
 
   async put(input: ContainedArtifactInput): Promise<EvidenceObjectPutResult> {
     const source = await this.store.readContainedArtifact(input.workspace_relative_path);
-    assertAdmissible(input, source.content);
+    assertArtifactAdmissible({
+      ...input,
+      bytes: source.content,
+      allow_restricted: true
+    });
     const artifactRef = createArtifactRefV2({
       ...input,
       workspace_relative_path: source.relative_path,

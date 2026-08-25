@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/research-continuation-proposal/1.0",
+  "title": "Research Continuation Proposal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "proposal_id", "synthesis_ref", "candidates", "authority", "proposed_at", "proposal_digest"],
+  "properties": {
+    "schema_version": { "const": "research-continuation-proposal/v1" },
+    "proposal_id": { "$ref": "#/$defs/id" },
+    "synthesis_ref": { "$ref": "#/$defs/ref" },
+    "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
+    "authority": { "const": "non_authoritative" },
+    "proposed_at": { "type": "string", "format": "date-time" },
+    "proposal_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "candidate": { "type": "object", "additionalProperties": false, "required": ["candidate_id", "kind", "proposal", "rationale", "origin_refs", "uncertainties"], "properties": {
+      "candidate_id": { "$ref": "#/$defs/id" },
+      "kind": { "enum": ["deepen_question", "test_hypothesis", "address_contradiction", "revise_thesis", "continue_topic", "reframe_topic", "split_topic", "merge_topic", "pause_topic", "run_experiment", "inspect_code", "draft_article_direction"] },
+      "proposal": { "$ref": "#/$defs/text" },
+      "rationale": { "$ref": "#/$defs/text" },
+      "origin_refs": { "$ref": "#/$defs/refs" },
+      "uncertainties": { "$ref": "#/$defs/refs" }
+    } }
+  }
+}

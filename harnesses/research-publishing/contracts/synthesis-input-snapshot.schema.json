@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/synthesis-input-snapshot/1.0",
+  "title": "Synthesis Input Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot_id", "trigger", "source_items", "evidence_refs", "prior_synthesis_ref", "runtime_context", "budgets", "policy_version", "generator_request", "created_at", "snapshot_digest"],
+  "properties": {
+    "schema_version": { "const": "synthesis-input-snapshot/v1" },
+    "snapshot_id": { "$ref": "#/$defs/id" },
+    "trigger": { "$ref": "#/$defs/trigger" },
+    "source_items": { "type": "array", "maxItems": 24, "items": { "$ref": "#/$defs/item" } },
+    "evidence_refs": { "$ref": "#/$defs/refs" },
+    "prior_synthesis_ref": { "$ref": "#/$defs/nullableRef" },
+    "runtime_context": { "$ref": "#/$defs/runtime" },
+    "budgets": { "$ref": "#/$defs/budgets" },
+    "policy_version": { "const": "research-synthesis-input/v1" },
+    "generator_request": { "$ref": "#/$defs/request" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "snapshot_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "ref": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "$ref": "#/$defs/text" }, "digest": { "$ref": "#/$defs/digest" } } },
+    "nullableRef": { "anyOf": [{ "$ref": "#/$defs/ref" }, { "type": "null" }] },
+    "trigger": { "type": "object", "additionalProperties": false, "required": ["kind", "reason"], "properties": { "kind": { "enum": ["important_evidence", "article_finalized", "weekly_outcome", "selected_feedback", "human_request"] }, "reason": { "$ref": "#/$defs/text" } } },
+    "item": { "type": "object", "additionalProperties": false, "required": ["ref", "role", "media_type", "privacy_classification", "content", "original_chars", "included_chars", "truncated"], "properties": {
+      "ref": { "$ref": "#/$defs/ref" },
+      "role": { "enum": ["outcome", "package", "article", "expression", "evidence", "feedback", "prior_synthesis", "runtime_context"] },
+      "media_type": { "$ref": "#/$defs/text" },
+      "privacy_classification": { "enum": ["public", "internal", "data_only"] },
+      "content": { "type": "string", "maxLength": 12000 },
+      "original_chars": { "type": "integer", "minimum": 0 },
+      "included_chars": { "type": "integer", "minimum": 0, "maximum": 12000 },
+      "truncated": { "type": "boolean" }
+    } },
+    "runtime": { "type": "object", "additionalProperties": false, "required": ["status", "query_plan_ref", "context_snapshot_ref", "review_ref", "selected_context_refs", "limitation"], "properties": {
+      "status": { "enum": ["loaded", "empty", "unavailable"] },
+      "query_plan_ref": { "$ref": "#/$defs/nullableRef" },
+      "context_snapshot_ref": { "$ref": "#/$defs/nullableRef" },
+      "review_ref": { "$ref": "#/$defs/nullableRef" },
+      "selected_context_refs": { "$ref": "#/$defs/refs" },
+      "limitation": { "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "null" }] }
+    } },
+    "budgets": { "type": "object", "additionalProperties": false, "required": ["max_items", "max_total_chars", "max_item_chars"], "properties": { "max_items": { "const": 24 }, "max_total_chars": { "const": 64000 }, "max_item_chars": { "const": 12000 } } },
+    "request": { "type": "object", "additionalProperties": false, "required": ["purpose", "output_schema"], "properties": { "purpose": { "const": "research_synthesis" }, "output_schema": { "const": "research-synthesis-candidate/v1" } } }
+  }
+}
