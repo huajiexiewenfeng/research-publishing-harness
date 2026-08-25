@@ -4,10 +4,13 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-4`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `plan-confirmed-awaiting-implementation`
+- status: `implementing`
 - design_status: `confirmed`
 - plan_status: `confirmed`
-- implementation_authorized: false
+- implementation_authorized: true
+- implementation_mode: `inline-current-main`
+- implementation_authorized_by: `human`
+- implementation_authorized_at: `2026-08-25`
 - source_head: `1eab543`
 - confirmed_source_digest: `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`
 - confirmed_by: `human`
@@ -461,10 +464,10 @@ This strengthens continuity but makes reframe/split/merge semantics overly rigid
 | source | done | Phase 1–3 handoffs and current V2.3 Memory/Program source at `1eab543` | 2026-08-24 |
 | design | done | Human confirmed the reviewed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5` | 2026-08-24 |
 | plan | done | Human confirmed implementation plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891` | 2026-08-25 |
-| development | pending | implementation is not authorized | 2026-08-24 |
+| development | active | Human authorized `开始 Phase 4 inline 实现`; Task 1 Weekly Outcome contracts is active | 2026-08-25 |
 | testing | pending | acceptance criteria and verification plan defined above | 2026-08-24 |
 | archive | pending | Phase 4 handoff after verified implementation | 2026-08-24 |
 
 ## Next Gate
 
-The written design and fixed implementation-plan digest were explicitly confirmed by the user. Production source and tests must not change until a further explicit `开始 Phase 4 inline 实现` authorization.
+The written design and fixed implementation-plan digest were explicitly confirmed by the user. The user then explicitly authorized `开始 Phase 4 inline 实现`; implementation proceeds task-by-task on current `main`, while real external actions and semantic Promotion remain separately gated.

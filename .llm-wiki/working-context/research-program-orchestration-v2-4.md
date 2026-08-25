@@ -3,9 +3,9 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: phase-4-plan-confirmed-awaiting-implementation
+- status: phase-4-inline-implementation-active
 - active_phase: `phase-4-adaptive-research-closure`
-- active_task: `await-inline-implementation-authorization`
+- active_task: `phase-4-task-1-weekly-outcome-contracts`
 - active_plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`
 
 ## Context Handoff
@@ -16,8 +16,8 @@
 - read_only_scope: all Phase 1–3 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
 - candidate_scope: future Trace/Eval trigger policy and public bootstrap, both excluded from V1
 - excluded_scope: Phase 4 implementation, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: explicit inline-implementation authorization
-- requested_stage_or_bridge: none
+- current_gate: Gate A / Task 1 RED
+- requested_stage_or_bridge: `executing-plans` with strict TDD
 - constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
 
 ## Scope Lock
@@ -25,9 +25,9 @@
 - locked_active_scope: Phase 4 Outcome, Outcome-to-Increment bridge, two Expressions, Evidence, AI Synthesis and optional Continuation Proposal design
 - locked_read_only_scope: all Phase 1–3 truth/projections, existing X Article and X V2/V2.1 contracts, V2.3 Query artifacts and Runtime `edge-001`
 - locked_candidate_scope: future continuous-event Synthesis, Trace/Eval and public bootstrap
-- locked_excluded_scope: Phase 4 implementation and all external side effects
+- locked_excluded_scope: all external side effects, Runtime source changes, public bootstrap and automatic semantic Promotion
 - accepted_assumptions: Phase 4 design source HEAD `1eab543`; original V2.4 design commit `f44c672`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb` is historical context only and is not present in the current object database; current child Browser protocols remain unchanged
-- escalation_rule: obtain explicit plan confirmation and then explicit inline-implementation authorization before modifying production source or tests
+- escalation_rule: stop for any scope expansion, Runtime contract change, real external effect or automatic semantic authority
 
 ## Implementation Rules
 
@@ -60,7 +60,8 @@
 - Phase 4 design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`; Human-confirmed against source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`.
 - Phase 4 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`; it splits Program Closure, Research Bridge and AI Research Partner into independently testable gates.
 - Confirmed plan digest: `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`.
-- Next action: wait for explicit `开始 Phase 4 inline 实现`. Do not create Outcome artifacts, modify production source/tests or promote Memory before that authorization.
+- Implementation authorization: user explicitly requested `开始 Phase 4 inline 实现` on 2026-08-25.
+- Next action: execute Task 1 RED → GREEN for Weekly Outcome contracts and the local completed-Bundle fixture. Do not perform real external actions or promote Memory.
 
 ## Verification Plan
 
@@ -79,6 +80,7 @@
 - 2026-08-24: User confirmed the Phase 4 written design after reviewing fixed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`. Design is complete; implementation planning and development remain separately unauthorized.
 - 2026-08-25: User explicitly requested the Phase 4 implementation plan. The plan was drafted as nine TDD tasks with independent Gate A/B boundaries; production source, tests and external actions remain unauthorized pending plan confirmation and a later execution command.
 - 2026-08-25: User confirmed the fixed Phase 4 implementation-plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`. The plan gate is complete; development remains closed until explicit inline-implementation authorization.
+- 2026-08-25: User explicitly authorized `开始 Phase 4 inline 实现`. Execution begins on current `main` at `51f2ab9`, inline and without subagents; Task 1 follows strict RED → GREEN and all external-action boundaries remain closed.
 
 ## Phase 1 Result
 

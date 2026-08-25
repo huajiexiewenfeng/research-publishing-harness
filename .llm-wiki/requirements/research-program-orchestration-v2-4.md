@@ -7,7 +7,7 @@
 - phase_1_status: implemented and passed-agent-local
 - phase_2_status: implemented and passed-agent-local
 - phase_3_status: implemented and passed-agent-local
-- phase_4_status: implementation plan confirmed; development not authorized
+- phase_4_status: inline implementation active at Gate A / Task 1
 - flow_id: `research-program-orchestration-v2-4`
 
 ## Why
@@ -89,13 +89,13 @@ The external planning documents were reviewed as temporary local sources and are
 | source | done | approved design `0a6ed18` and current V2.3 source/tests | 2026-08-23 |
 | design | done | approved six-month roadmap design; Phase 4 design review is tracked by its child Flow | 2026-08-24 |
 | plan | done | confirmed plan-suite commit `38a3efb`; Phase 1 selected | 2026-08-23 |
-| development | active | Phases 1–3 implemented; Phase 3 commits `e81d604` through `b4b3562`; Phase 4 remains | 2026-08-24 |
+| development | active | Phases 1–3 implemented; Phase 4 inline implementation authorized and active at Gate A / Task 1 | 2026-08-25 |
 | testing | active | Phase 3 passed-agent-local: focused 21 files / 59 tests; repository 141 files / 611 tests passed, 1/1 skipped | 2026-08-24 |
 | archive | active | Phase 1–3 handoffs archived; full V2.4 closure remains pending on Phase 4 | 2026-08-24 |
 
 ## Open Questions
 
-- Phase 4 written design and implementation plan are confirmed. Development remains separately unauthorized; public bootstrap and Runtime protocol changes are excluded.
+- Phase 4 written design and implementation plan are confirmed; inline development is active. Public bootstrap and Runtime protocol changes remain excluded.
 
 ## Notes
 
@@ -108,4 +108,4 @@ The external planning documents were reviewed as temporary local sources and are
 - Phase 3 source-calibrated child specification is confirmed: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-3.md`. The user authorized inline implementation on 2026-08-24.
 - Phase 3 is complete within its local deterministic boundary: one exact Bundle confirmation derives Article-first child approvals, binds both executions before continuation, materializes only a publicly verified X Article URL, and ends in a joint Receipt while Weekly status remains `publication_planned`.
 - Phase 3 continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
-- Phase 4 confirmed child design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`. It treats AI as a research partner, separates Outcome facts from generated Synthesis, keeps Topic/Roadmap flexible and reuses the existing confirmed Promotion boundary. The implementation plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891` is Human-confirmed; development is not authorized.
+- Phase 4 confirmed child design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`. It treats AI as a research partner, separates Outcome facts from generated Synthesis, keeps Topic/Roadmap flexible and reuses the existing confirmed Promotion boundary. The implementation plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891` is Human-confirmed; inline development was authorized on 2026-08-25.
