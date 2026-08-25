@@ -4,13 +4,14 @@
 
 - flow_id: `research-program-orchestration-v2-4-phase-4`
 - parent_flow_id: `research-program-orchestration-v2-4`
-- status: `implementing`
+- status: `implemented and passed-agent-local`
 - design_status: `confirmed`
 - plan_status: `confirmed`
 - implementation_authorized: true
 - implementation_mode: `inline-current-main`
 - implementation_authorized_by: `human`
 - implementation_authorized_at: `2026-08-25`
+- implementation_head: `da6350f`
 - source_head: `1eab543`
 - confirmed_source_digest: `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`
 - confirmed_by: `human`
@@ -18,7 +19,7 @@
 - confirmed_plan_digest: `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`
 - plan_confirmed_by: `human`
 - plan_confirmed_at: `2026-08-25`
-- trust: source-calibrated design; no implementation or external execution claimed
+- trust: `passed-agent-local`; Fake-AI/local-artifact verification only, with no real external execution claimed
 
 ## Why
 
@@ -464,10 +465,10 @@ This strengthens continuity but makes reframe/split/merge semantics overly rigid
 | source | done | Phase 1–3 handoffs and current V2.3 Memory/Program source at `1eab543` | 2026-08-24 |
 | design | done | Human confirmed the reviewed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5` | 2026-08-24 |
 | plan | done | Human confirmed implementation plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891` | 2026-08-25 |
-| development | active | Human authorized `开始 Phase 4 inline 实现`; Task 1 Weekly Outcome contracts is active | 2026-08-25 |
-| testing | pending | acceptance criteria and verification plan defined above | 2026-08-24 |
-| archive | pending | Phase 4 handoff after verified implementation | 2026-08-24 |
+| development | done | `6b01bb3`, `f500ed9`, `923e6fe`, `43505c8`, `1c5a0ab`, `5ea3516`, `5557967`, `5a5a654`, `da6350f` | 2026-08-25 |
+| testing | passed-agent-local | focused 22 files / 86 tests; repository 161 passed + 1 skipped files, 692 passed + 1 skipped tests; lint/typecheck/build/Skill validator/acceptance/diff checks passed | 2026-08-25 |
+| archive | done | `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-4.md` | 2026-08-25 |
 
 ## Next Gate
 
-The written design and fixed implementation-plan digest were explicitly confirmed by the user. The user then explicitly authorized `开始 Phase 4 inline 实现`; implementation proceeds task-by-task on current `main`, while real external actions and semantic Promotion remain separately gated.
+Phase 4 is implemented and passed agent-local verification. The next gate is ordinary Human-directed research use; any real Browser/X/GitHub action, Runtime/Wiki mutation, Semantic Delta review or Memory Promotion remains separately authorized.

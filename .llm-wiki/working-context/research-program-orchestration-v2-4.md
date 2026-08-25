@@ -3,22 +3,22 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: phase-4-inline-implementation-active
-- active_phase: `phase-4-adaptive-research-closure`
-- active_task: `phase-4-task-1-weekly-outcome-contracts`
+- status: phase-4-complete-passed-agent-local
+- active_phase: `none`
+- active_task: `none`
 - active_plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`
 
 ## Context Handoff
 
 - user_intent: complete a flexible Phase 4 design in which AI acts as a research partner without freezing the article sequence or research mainline
-- active_sources: Phase 1–3 handoffs, current Program/Memory source at `1eab543`, and Phase 4 child Change Brief
-- active_scope: confirmed Phase 4 requirements and implementation-plan lifecycle records only
-- read_only_scope: all Phase 1–3 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
+- active_sources: Phase 1–4 handoffs and implementation through `da6350f`
+- active_scope: no active implementation; ordinary Human-directed research use only
+- read_only_scope: all Phase 1–4 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
 - candidate_scope: future Trace/Eval trigger policy and public bootstrap, both excluded from V1
-- excluded_scope: Phase 4 implementation, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: Gate A / Task 1 RED
-- requested_stage_or_bridge: `executing-plans` with strict TDD
-- constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
+- excluded_scope: Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
+- current_gate: Phase 4 complete; external actions and semantic authority remain separately gated
+- requested_stage_or_bridge: handoff complete
+- constraints: current `main`; no real Browser/X/GitHub/Runtime/Wiki effects were used for Phase 4 acceptance
 
 ## Scope Lock
 
@@ -61,13 +61,17 @@
 - Phase 4 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`; it splits Program Closure, Research Bridge and AI Research Partner into independently testable gates.
 - Confirmed plan digest: `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`.
 - Implementation authorization: user explicitly requested `开始 Phase 4 inline 实现` on 2026-08-25.
-- Next action: execute Task 1 RED → GREEN for Weekly Outcome contracts and the local completed-Bundle fixture. Do not perform real external actions or promote Memory.
+- Phase 4 commits: lifecycle `233c377`; Outcome contracts `6b01bb3`; Outcome service `f500ed9`; Outcome CLI/recovery `923e6fe`; Bridge contracts `43505c8`; Bridge service `1c5a0ab`; Synthesis contracts `5ea3516`; Synthesis service `5557967`; CLI/Skill/package `5a5a654`; full loop/security/manifest `da6350f`.
+- Phase 4 verification: focused 22 files / 86 tests; repository 161 passed + 1 skipped files, 692 passed + 1 skipped tests; lint, typecheck, build, `research-synthesis-copilot` quick validator, acceptance and diff checks passed.
+- Phase 4 external effects: none. Fake AI and contained local artifacts only; acceptance reported `network: unused`; no real Browser, X, GitHub, Runtime or Wiki action and no semantic Promotion.
+- Phase 4 handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-4.md`.
+- Next action: use the completed flow only on a Human-directed research checkpoint. Any live publication, Topic/Roadmap decision, Delta Review or Memory Promotion needs its ordinary separate authority.
 
 ## Verification Plan
 
-- Preserve the fresh Phase 3 evidence: focused 21/59, repository 141 files / 611 tests passed with 1/1 skipped, plus lint/typecheck/build/Skill validation.
-- Verify the child Flow Record, parent link, handoff and next Phase 4 Gate agree.
-- Treat any future live X smoke or Memory Promotion as a separately authorized action, not as Phase 3 verification already completed.
+- Preserve the fresh Phase 4 evidence: focused 22/86, repository 161 passed + 1 skipped files and 692 passed + 1 skipped tests, plus lint/typecheck/build/Skill validation/acceptance/diff checks.
+- Treat the one skipped real Runtime integration as opt-in, not as a Phase 4 failure or as executed evidence.
+- Treat any live X action, Runtime/Wiki write or Memory Promotion as separately authorized, not as Phase 4 verification already completed.
 
 ## Escalation Log
 
@@ -81,6 +85,7 @@
 - 2026-08-25: User explicitly requested the Phase 4 implementation plan. The plan was drafted as nine TDD tasks with independent Gate A/B boundaries; production source, tests and external actions remain unauthorized pending plan confirmation and a later execution command.
 - 2026-08-25: User confirmed the fixed Phase 4 implementation-plan digest `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`. The plan gate is complete; development remains closed until explicit inline-implementation authorization.
 - 2026-08-25: User explicitly authorized `开始 Phase 4 inline 实现`. Execution begins on current `main` at `51f2ab9`, inline and without subagents; Task 1 follows strict RED → GREEN and all external-action boundaries remain closed.
+- 2026-08-25: Phase 4 implementation and local verification completed through `da6350f`. The full loop uses Fake AI/local artifacts only; no external write or semantic Promotion occurred.
 
 ## Phase 1 Result
 
@@ -106,3 +111,12 @@
 - Only a verified canonical `https://x.com/<approved-account>/(article|status)/<digits>` URL can materialize the Single.
 - The joint Receipt preserves exact child Plan/Receipt refs, ordered URLs and media limitations; Weekly Cycle stops at `publication_planned`.
 - Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
+
+## Phase 4 Result
+
+- A completed Publication Bundle now closes into an immutable Weekly Outcome, projects the Cycle to `published`, and releases the Topic to `available` without completing it or changing the Roadmap.
+- The Research Bridge derives one weekly Increment from the Roadmap Track, conservatively projects Claims, records separate Article/Single Expressions, and captures terminal Evidence.
+- Bounded Synthesis supports material update, conflict, honest no-change, and insufficient-evidence results across loaded/empty/unavailable Runtime context without storing hidden reasoning.
+- Continuation Proposals remain optional and non-authoritative; Topic/Roadmap decisions and Delta/Review/Promotion stay Human-controlled.
+- Eight JSON-only `research` operations and `research-synthesis-copilot` expose the flow without direct `.llm-wiki` access or model/Runtime mutation.
+- Continuation handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-4.md`.

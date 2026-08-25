@@ -99,3 +99,13 @@
 - 用户于 2026-08-25 明确要求开始 Phase 4 实施计划。已起草九项 TDD 任务，分别覆盖 Program Closure、Research Bridge、AI Research Partner 与完整 Fake-AI 验收；当前仅进入计划审阅，未修改生产代码或测试，未执行任何外部操作。
 - 用户确认 Phase 4 实施计划摘要 `sha256:9fe9cae3ddb6d07a9d4422d11ab2c43411fd31529c81c9d26cbf967f23c20891`。计划 Flow 已完成；开发仍需单独的 `开始 Phase 4 inline 实现` 授权。
 - 用户于 2026-08-25 明确授权 `开始 Phase 4 inline 实现`。实现按已确认九任务计划在当前 `main` 内联推进，首先进入 Gate A / Task 1 Weekly Outcome 契约；不使用子代理，不执行真实 Browser/X/GitHub/Runtime/Wiki 写入。
+
+## 2026-08-25
+
+- 完成 Research Program Orchestration V2.4 Phase 4：Weekly Outcome/Closure、Cycle `published`、Topic 释放、Outcome-to-Increment/Claim Projection、Article/Single Expression 与 terminal Evidence、bounded AI Synthesis、非权威 Continuation Proposal，以及 8 条 JSON-only `research` 路由。
+- 新增 `research-synthesis-copilot`，允许 `material_update`、`conflicting_evidence`、`no_material_change`、`insufficient_evidence` 四种诚实结果；不强制创新、不保存 chain-of-thought、不自动修改 Topic/Roadmap 或执行 Memory Promotion。
+- TDD 安全门补齐 Evidence Manifest 隐私等级校验，拒绝 `internal -> public` 降级；并发记录按既有锁契约 fail-fast，安全重试形成下一条不可变 revision。
+- Phase 4 实现提交为 `6b01bb3`、`f500ed9`、`923e6fe`、`43505c8`、`1c5a0ab`、`5ea3516`、`5557967`、`5a5a654`、`da6350f`。
+- fresh 验证：focused gate 22 个测试文件 / 86 项测试通过；全仓 161 个文件 / 692 项测试通过，1 个文件 / 1 项真实 Runtime opt-in 测试跳过；lint、typecheck、build、Skill validator、acceptance 和 diff check 通过。
+- Manifest 含 236 个文件、3 个 Skills，Runtime 仍固定为 `0.2.0`；离线 acceptance 返回 `network: unused`。
+- Phase 4 handoff 已归档；验证级别 `passed-agent-local`，未执行真实 Browser/X/GitHub/Runtime/Wiki 写入，未创建或执行 Memory Promotion。
