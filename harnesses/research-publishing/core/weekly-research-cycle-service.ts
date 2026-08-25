@@ -39,6 +39,17 @@ import { STABLE_ID_PATTERN } from './research-memory-contracts.js';
 import { validateContract } from './schema-validator.js';
 import type { ContractName } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
+import { assertPublicationBundlePlan } from './publication-bundle-contracts.js';
+import type { PublicationBundlePlanV1 } from './publication-bundle-types.js';
+import {
+  assertWeeklyOutcomeClosure,
+  assertWeeklyPublicationOutcome,
+  outcomeReleaseReason
+} from './weekly-outcome-contracts.js';
+import type {
+  WeeklyOutcomeClosureV1,
+  WeeklyPublicationOutcomeV1
+} from './weekly-outcome-types.js';
 
 const ROADMAP_REF_PATTERN = /^program\/roadmaps\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
 const TOPIC_REF_PATTERN = /^program\/backlog\/topics\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
@@ -237,6 +248,64 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
     const bundleBinding = await this.store.exists(`${root}/publication-bundle-binding.json`)
       ? await this.readPublicationBundleBinding(cycleId)
       : null;
+    if (await this.store.exists(`${root}/outcome-closure.json`)) {
+      if (bundleBinding === null || candidateSet === null || selection === null || cancellation !== null) {
+        fail('APPROVAL_STALE', 'Weekly Outcome Closure requires complete publication lineage');
+      }
+      const outcome = await this.readContract<WeeklyPublicationOutcomeV1>(
+        `${root}/outcome.json`, 'weekly-publication-outcome'
+      );
+      const closure = await this.readContract<WeeklyOutcomeClosureV1>(
+        `${root}/outcome-closure.json`, 'weekly-outcome-closure'
+      );
+      assertWeeklyPublicationOutcome(outcome);
+      assertWeeklyOutcomeClosure(closure);
+      const outcomeArtifact = await this.store.readContainedArtifact(`${root}/outcome.json`);
+      const bundlePlanArtifact = await this.store.readContainedArtifact(
+        bundleBinding.bundle_plan_ref.path
+      );
+      let bundlePlanValue: unknown;
+      try {
+        bundlePlanValue = JSON.parse(bundlePlanArtifact.content.toString('utf8'));
+      } catch {
+        fail('CONTRACT_INVALID', 'Weekly Publication Bundle Plan is not valid JSON');
+      }
+      const bundlePlan = validateContract<PublicationBundlePlanV1>(
+        'publication-bundle-plan', bundlePlanValue
+      );
+      assertPublicationBundlePlan(bundlePlan);
+      const releasedTopic = await this.readTopic(closure.released_topic_ref);
+      const closureMismatches = [
+        closure.outcome_ref.path !== `${root}/outcome.json` ? 'outcome_path' : null,
+        closure.outcome_ref.digest !== outcomeArtifact.digest ? 'outcome_digest' : null,
+        !exactRef(outcome.cycle_ref, {
+          path: `${root}/cycle.json`, digest: cycle.cycle_digest
+        }) ? 'cycle_ref' : null,
+        !exactRef(outcome.selection_ref, {
+          path: `${root}/selection.json`, digest: selection.selection_digest
+        }) ? 'selection_ref' : null,
+        bundleBinding.bundle_plan_ref.path !== outcome.bundle_plan_ref.path
+          ? 'bundle_plan_path' : null,
+        bundleBinding.bundle_plan_ref.digest !== bundlePlan.bundle_digest
+          ? 'bundle_plan_semantic_digest' : null,
+        outcome.bundle_plan_ref.digest !== bundlePlanArtifact.digest
+          ? 'bundle_plan_byte_digest' : null,
+        releasedTopic.availability !== 'available' ? 'topic_availability' : null,
+        releasedTopic.previous_revision_ref === null ? 'topic_previous_missing' : null,
+        releasedTopic.previous_revision_ref !== null &&
+          !exactRef(releasedTopic.previous_revision_ref, outcome.topic_ref)
+          ? 'topic_previous_ref' : null,
+        releasedTopic.change_reason !== outcomeReleaseReason(outcome)
+          ? 'topic_release_reason' : null
+      ].filter((item): item is string => item !== null);
+      if (closureMismatches.length > 0) {
+        fail(
+          'APPROVAL_STALE',
+          `Weekly Outcome Closure lineage is stale: ${closureMismatches.join(', ')}`
+        );
+      }
+      return this.projectPublished(cycle, candidateSet, selection, bundleBinding, closure);
+    }
     if (bundleBinding !== null) {
       if (
         candidateSet === null || selection === null || cancellation !== null ||
@@ -368,6 +437,37 @@ export class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
       outcome_ref: null,
       blocked_reason: null,
       updated_at: binding.bound_at
+    });
+    await this.store.replaceAtomic(`${root}/status.json`, status);
+    return this.readStatus(cycle.cycle_id);
+  }
+
+  private async projectPublished(
+    cycle: WeeklyResearchCycleV1,
+    candidateSet: WeeklyCandidateSetV1,
+    selection: WeeklyTopicSelectionV1,
+    binding: WeeklyPublicationBundleBindingV1,
+    closure: WeeklyOutcomeClosureV1
+  ): Promise<WeeklyCycleStatusV1> {
+    const root = cycleRoot(cycle.cycle_id);
+    const status = createWeeklyCycleStatus({
+      cycle_ref: { path: `${root}/cycle.json`, digest: cycle.cycle_digest },
+      phase: 'published',
+      candidate_set_ref: {
+        path: `${root}/candidates.json`, digest: candidateSet.candidate_set_digest
+      },
+      selection_ref: {
+        path: `${root}/selection.json`, digest: selection.selection_digest
+      },
+      cancellation_ref: null,
+      package_ref: binding.research_content_package_ref,
+      article_ref: binding.weekly_article_ref,
+      bundle_ref: {
+        path: `${root}/publication-bundle-binding.json`, digest: binding.binding_digest
+      },
+      outcome_ref: closure.outcome_ref,
+      blocked_reason: null,
+      updated_at: closure.closed_at
     });
     await this.store.replaceAtomic(`${root}/status.json`, status);
     return this.readStatus(cycle.cycle_id);

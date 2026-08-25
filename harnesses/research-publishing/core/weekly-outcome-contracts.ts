@@ -136,6 +136,11 @@ export function assertWeeklyPublicationOutcome(outcome: WeeklyPublicationOutcome
   }
 }
 
+export function outcomeReleaseReason(outcome: WeeklyPublicationOutcomeV1): string {
+  assertWeeklyPublicationOutcome(outcome);
+  return `released after Weekly Outcome ${outcome.outcome_id}@${outcome.outcome_digest}`;
+}
+
 export function createWeeklyOutcomeClosure(
   input: CreateWeeklyOutcomeClosureInput
 ): WeeklyOutcomeClosureV1 {
