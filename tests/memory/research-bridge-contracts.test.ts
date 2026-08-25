@@ -52,9 +52,9 @@ describe('Research Bridge contracts', () => {
       ),
       track_id: 'enterprise-agent-runtime',
       increment_id: 'weekly_week_01_2026_outcome_abcdef123456',
-      increment_ref: 'increment:weekly_week_01_2026_outcome_abcdef123456@1',
+      increment_ref: 'increment:enterprise-agent-runtime:weekly_week_01_2026_outcome_abcdef123456@1',
       increment_revision_ref: ref(
-        'memory/increments/weekly_week_01_2026_outcome_abcdef123456/revisions/1.json', 'e'
+        'memory/increments/weekly_week_01_2026_outcome_abcdef123456/revisions/1/revision.json', 'e'
       ),
       bound_at: '2026-08-25T09:01:00.000Z'
     });
@@ -78,5 +78,21 @@ describe('Research Bridge contracts', () => {
       blocked_reason: null,
       updated_at: '2026-08-25T09:02:00.000Z'
     })).toThrowError(/complete/i);
+  });
+
+  it('requires blocked Bridge status to explain the failure', () => {
+    expect(() => createWeeklyResearchBridgeStatus({
+      cycle_id: 'week_01_2026',
+      phase: 'blocked',
+      outcome_ref: projectionInput.outcome_ref,
+      claim_projection_ref: null,
+      increment_binding_ref: null,
+      article_expression_ref: null,
+      article_evidence_ref: null,
+      single_expression_ref: null,
+      single_evidence_ref: null,
+      blocked_reason: null,
+      updated_at: '2026-08-25T09:02:00.000Z'
+    })).toThrowError(/reason/i);
   });
 });

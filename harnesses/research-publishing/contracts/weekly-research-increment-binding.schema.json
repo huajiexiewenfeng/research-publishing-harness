@@ -12,7 +12,7 @@
     "claim_projection_ref": { "$ref": "#/$defs/ref" },
     "track_id": { "$ref": "#/$defs/id" },
     "increment_id": { "$ref": "#/$defs/id" },
-    "increment_ref": { "type": "string", "pattern": "^increment:[a-z0-9][a-z0-9_-]{0,95}@1$" },
+    "increment_ref": { "type": "string", "pattern": "^increment:[a-z0-9][a-z0-9_-]{0,95}:[a-z0-9][a-z0-9_-]{0,95}@1$" },
     "increment_revision_ref": { "$ref": "#/$defs/ref" },
     "binding_policy": { "const": "one-outcome-one-increment/v1" },
     "bound_at": { "type": "string", "format": "date-time" },

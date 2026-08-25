@@ -5,6 +5,8 @@ import type { ResearchRoadmapService } from '../../harnesses/research-publishing
 import type { WeeklyResearchCycleService } from '../../harnesses/research-publishing/core/weekly-research-cycle-service.js';
 import type { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import type { PublicationBundleService } from '../../harnesses/research-publishing/core/publication-bundle-service.js';
+import { WeeklyOutcomeService } from '../../harnesses/research-publishing/core/weekly-outcome-service.js';
+import type { WeeklyPublicationOutcomeV1 } from '../../harnesses/research-publishing/core/weekly-outcome-types.js';
 import {
   installSingleReceipt,
   prepareBundleThroughSingleAuthorization,
@@ -22,6 +24,11 @@ export interface CompletedPhase4BundleFixture {
   readonly bundle_id: string;
   readonly bundle_receipt: PublicationBundleReceiptV1;
   readonly workspace_identity_digest: `sha256:${string}`;
+}
+
+export interface ClosedPhase4OutcomeFixture extends CompletedPhase4BundleFixture {
+  readonly outcomes: WeeklyOutcomeService;
+  readonly outcome: WeeklyPublicationOutcomeV1;
 }
 
 export async function createCompletedPhase4BundleFixture(): Promise<CompletedPhase4BundleFixture> {
@@ -56,4 +63,17 @@ export async function createCompletedPhase4BundleFixture(): Promise<CompletedPha
       account: fixture.plan.article_plan.intent.target_account
     })
   };
+}
+
+export async function createClosedPhase4OutcomeFixture(): Promise<ClosedPhase4OutcomeFixture> {
+  const fixture = await createCompletedPhase4BundleFixture();
+  const outcomes = new WeeklyOutcomeService(
+    fixture.store,
+    fixture.roadmaps,
+    fixture.backlog,
+    fixture.weeks,
+    { now: () => new Date('2026-08-24T12:04:00.000Z') }
+  );
+  const outcome = await outcomes.assemble({ cycle_id: fixture.cycle_id });
+  return { ...fixture, outcomes, outcome };
 }

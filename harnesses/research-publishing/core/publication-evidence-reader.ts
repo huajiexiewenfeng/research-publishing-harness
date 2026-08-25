@@ -122,6 +122,7 @@ export class VersionedPublicationEvidenceReader implements PublicationEvidenceRe
     let order: readonly number[];
     let links: readonly string[];
     let visuals: readonly string[];
+    let approvedPlanDigest = input.digest;
     if (input.kind === 'explicit' || input.kind === 'article_package') {
       if (plan.schema_version !== 'publication-expression-intent/v1') {
         throw new HarnessError('CONTRACT_INVALID', 'explicit publication intent schema is unsupported');
@@ -141,6 +142,7 @@ export class VersionedPublicationEvidenceReader implements PublicationEvidenceRe
           ? 'publication-plan-v2-1'
           : 'x-article-publication-plan';
       validateContract(contract, plan);
+      approvedPlanDigest = string(plan.plan_digest, 'publication Plan digest') as `sha256:${string}`;
       const intent = object(plan.intent, 'publication intent');
       channel = input.kind === 'x_article'
         ? 'x_article'
@@ -155,7 +157,7 @@ export class VersionedPublicationEvidenceReader implements PublicationEvidenceRe
     return {
       channel,
       approved_plan_ref: input.path,
-      approved_plan_digest: input.digest,
+      approved_plan_digest: approvedPlanDigest,
       local_content_path: input.content_path,
       content_digest: input.content_digest,
       expected_item_order: order,
@@ -331,4 +333,3 @@ export class VersionedPublicationEvidenceReader implements PublicationEvidenceRe
       : media.public_media_verified === false ? 'mismatch' : 'unverified';
   }
 }
-

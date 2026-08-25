@@ -99,6 +99,14 @@ export function createClaimProjection(input: CreateClaimProjectionInput): ClaimP
   });
 }
 
+export function assertClaimProjection(value: ClaimProjectionV1): void {
+  const { schema_version: _schema, projection_digest, ...input } = value;
+  void _schema;
+  if (createClaimProjection(input).projection_digest !== projection_digest) {
+    fail('Claim Projection digest mismatch');
+  }
+}
+
 export function createWeeklyResearchIncrementBinding(
   input: CreateWeeklyResearchIncrementBindingInput
 ): WeeklyResearchIncrementBindingV1 {
@@ -112,9 +120,9 @@ export function createWeeklyResearchIncrementBinding(
   if (input.outcome_ref.path !== `program/weeks/${input.cycle_id}/outcome.json` ||
       input.claim_projection_ref.path !==
         `program/weeks/${input.cycle_id}/research-bridge/claim-projection.json` ||
-      input.increment_ref !== `increment:${input.increment_id}@1` ||
+      input.increment_ref !== `increment:${input.track_id}:${input.increment_id}@1` ||
       input.increment_revision_ref.path !==
-        `memory/increments/${input.increment_id}/revisions/1.json`) {
+        `memory/increments/${input.increment_id}/revisions/1/revision.json`) {
     fail('Weekly Research Increment Binding layout or Increment ref is invalid');
   }
   const body = {
@@ -126,6 +134,22 @@ export function createWeeklyResearchIncrementBinding(
     'weekly-research-increment-binding',
     { ...body, binding_digest: sha256(body) }
   );
+}
+
+export function assertWeeklyResearchIncrementBinding(
+  value: WeeklyResearchIncrementBindingV1
+): void {
+  const {
+    schema_version: _schema,
+    binding_policy: _policy,
+    binding_digest,
+    ...input
+  } = value;
+  void _schema;
+  void _policy;
+  if (createWeeklyResearchIncrementBinding(input).binding_digest !== binding_digest) {
+    fail('Weekly Research Increment Binding digest mismatch');
+  }
 }
 
 export function createWeeklyResearchBridgeStatus(
@@ -151,7 +175,9 @@ export function createWeeklyResearchBridgeStatus(
   )) {
     fail('complete Weekly Research Bridge Status requires every artifact and Evidence ref');
   }
-  if (input.phase === 'blocked' && input.blocked_reason?.trim().length === 0) {
+  if (input.phase === 'blocked' && (
+    input.blocked_reason === null || input.blocked_reason.trim().length === 0
+  )) {
     fail('blocked Weekly Research Bridge Status requires a reason');
   }
   if (input.phase !== 'blocked' && input.blocked_reason !== null) {
@@ -162,4 +188,12 @@ export function createWeeklyResearchBridgeStatus(
     ...body,
     projection_digest: sha256(body)
   });
+}
+
+export function assertWeeklyResearchBridgeStatus(value: WeeklyResearchBridgeStatusV1): void {
+  const { schema_version: _schema, projection_digest, ...input } = value;
+  void _schema;
+  if (createWeeklyResearchBridgeStatus(input).projection_digest !== projection_digest) {
+    fail('Weekly Research Bridge Status digest mismatch');
+  }
 }
