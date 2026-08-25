@@ -3,20 +3,20 @@
 ## Flow
 
 - flow_id: `research-program-orchestration-v2-4`
-- status: phase-4-design-confirmed-awaiting-plan-authorization
-- active_phase: `phase-4-adaptive-research-closure-design`
-- active_task: `none`
-- active_plan: none; implementation planning requires a separate explicit request
+- status: phase-4-plan-review-pending
+- active_phase: `phase-4-adaptive-research-closure`
+- active_task: `implementation-plan-review`
+- active_plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`
 
 ## Context Handoff
 
 - user_intent: complete a flexible Phase 4 design in which AI acts as a research partner without freezing the article sequence or research mainline
 - active_sources: Phase 1–3 handoffs, current Program/Memory source at `1eab543`, and Phase 4 child Change Brief
-- active_scope: confirmed Phase 4 requirements and design lifecycle records only
+- active_scope: confirmed Phase 4 requirements and implementation-plan lifecycle records only
 - read_only_scope: all Phase 1–3 source/artifacts, existing Browser child protocols, V2.3 Memory behavior and `llm-wiki-runtime` 0.2.0
 - candidate_scope: future Trace/Eval trigger policy and public bootstrap, both excluded from V1
 - excluded_scope: Phase 4 implementation, Browser/external writes, Runtime source, automatic Candidate ranking/selection, real publication or Promotion
-- current_gate: explicit implementation-plan authorization
+- current_gate: Human confirmation of the fixed implementation-plan digest
 - requested_stage_or_bridge: none
 - constraints: current `main`, inline execution, no subagents, no real Browser/X/GitHub/Runtime/Wiki effects
 
@@ -27,7 +27,7 @@
 - locked_candidate_scope: future continuous-event Synthesis, Trace/Eval and public bootstrap
 - locked_excluded_scope: Phase 4 implementation and all external side effects
 - accepted_assumptions: Phase 4 design source HEAD `1eab543`; original V2.4 design commit `f44c672`; Runtime `1ebcb04` / 0.2.0 remains read-only; external plan-suite commit `38a3efb` is historical context only and is not present in the current object database; current child Browser protocols remain unchanged
-- escalation_rule: obtain explicit design approval before writing an execution plan, and explicit implementation authorization before modifying production source or tests
+- escalation_rule: obtain explicit plan confirmation and then explicit inline-implementation authorization before modifying production source or tests
 
 ## Implementation Rules
 
@@ -58,7 +58,8 @@
 - Phase 3 external effects: none. Fake Hosts only; no real Browser, X, GitHub, Runtime or Wiki action.
 - Phase 3 handoff: `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-3.md`.
 - Phase 4 design: `.llm-wiki/requirements/research-program-orchestration-v2-4-phase-4.md`; Human-confirmed against source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`.
-- Next action: wait for an explicit request to create the Phase 4 implementation plan. Do not create Outcome artifacts, modify production source/tests or promote Memory before their later gates.
+- Phase 4 implementation plan: `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`; it splits Program Closure, Research Bridge and AI Research Partner into independently testable gates.
+- Next action: present the fixed implementation-plan digest for Human confirmation. Do not create Outcome artifacts, modify production source/tests or promote Memory before a later explicit inline-implementation authorization.
 
 ## Verification Plan
 
@@ -75,6 +76,7 @@
 - 2026-08-24: User authorized inline Phase 3 implementation. Five TDD increments completed with Fake Hosts only; Phase 4 and all real external actions remained excluded.
 - 2026-08-24: Phase 4 requirements discussion selected a layered research-partner model: immutable Outcome facts, separate AI Synthesis and optional Continuation Proposal, flexible Topic/Roadmap revisions, checkpoint-driven generation and unchanged Human Promotion gates. Written design remains review-pending.
 - 2026-08-24: User confirmed the Phase 4 written design after reviewing fixed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5`. Design is complete; implementation planning and development remain separately unauthorized.
+- 2026-08-25: User explicitly requested the Phase 4 implementation plan. The plan was drafted as nine TDD tasks with independent Gate A/B boundaries; production source, tests and external actions remain unauthorized pending plan confirmation and a later execution command.
 
 ## Phase 1 Result
 

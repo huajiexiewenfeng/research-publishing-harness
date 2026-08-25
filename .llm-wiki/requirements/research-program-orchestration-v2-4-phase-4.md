@@ -456,11 +456,11 @@ This strengthens continuity but makes reframe/split/merge semantics overly rigid
 |---|---|---|---|
 | source | done | Phase 1–3 handoffs and current V2.3 Memory/Program source at `1eab543` | 2026-08-24 |
 | design | done | Human confirmed the reviewed source digest `sha256:674847eb5582837cba20195eb1ed15a204335f24cf84b942d085bae4cc23fbd5` | 2026-08-24 |
-| plan | pending | design approval does not authorize an implementation plan | 2026-08-24 |
+| plan | review_pending | implementation plan drafted at `.llm-wiki/working-context/research-program-orchestration-v2-4-phase-4-implementation-plan.md`; implementation remains unauthorized | 2026-08-25 |
 | development | pending | implementation is not authorized | 2026-08-24 |
 | testing | pending | acceptance criteria and verification plan defined above | 2026-08-24 |
 | archive | pending | Phase 4 handoff after verified implementation | 2026-08-24 |
 
 ## Next Gate
 
-The written design was explicitly confirmed by the user after the fixed digest was presented. A separate explicit request is still required before creating an implementation plan, and a further implementation authorization is required before production source or tests change.
+The written design was explicitly confirmed by the user after the fixed digest was presented, and the user separately authorized creation of the implementation plan. The plan now awaits confirmation by its fixed digest. Production source and tests must not change until a further explicit inline-implementation authorization.
