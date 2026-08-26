@@ -763,6 +763,61 @@ describe('bounded X Article Browser Host transactions', () => {
       expect(result.human_content_overwrite_count).toBe(0);
     }
   );
+
+  it.each([
+    ['snapshot_body_tamper', 'import'],
+    ['snapshot_template_tamper', 'import'],
+    ['snapshot_visual_tamper', 'first_image'],
+    ['snapshot_counter_tamper', 'import'],
+    ['snapshot_completed_command_tamper', 'import'],
+    ['snapshot_schema_tamper', 'import'],
+    ['snapshot_clock_tamper', 'import']
+  ] as const)(
+    'rejects durable %s before reconstructing or reporting the recovered effect',
+    async (fault, restartAfterEffect) => {
+      await expect(runXArticleHostAcceptance({
+        body_blocks: 76,
+        inline_images: 3,
+        fault,
+        restart_after_effect: restartAfterEffect
+      })).rejects.toMatchObject({
+        code: 'ARTICLE_MATERIALIZATION_DRIFT',
+        message: 'X Article Host durable evidence changed',
+        details: {
+          new_host_transactions: 0,
+          new_effects: 0,
+          new_reports: 0
+        }
+      });
+    }
+  );
+
+  it.each([
+    'persisted_report_digest_tamper',
+    'persisted_evidence_digest_tamper',
+    'persisted_reported_at_tamper',
+    'persisted_report_command_tamper',
+    'persisted_observation_tamper',
+    'persisted_command_tamper',
+    'persisted_claim_tamper'
+  ] as const)(
+    'rereads durable files and rejects %s without a new report or Host effect',
+    async (fault) => {
+      await expect(runXArticleHostAcceptance({
+        body_blocks: 76,
+        inline_images: 3,
+        fault
+      })).rejects.toMatchObject({
+        code: 'ARTICLE_MATERIALIZATION_DRIFT',
+        message: 'X Article Host durable evidence changed',
+        details: {
+          new_host_transactions: 0,
+          new_effects: 0,
+          new_reports: 0
+        }
+      });
+    }
+  );
 });
 
 describe('X Article Browser workflow', () => {
