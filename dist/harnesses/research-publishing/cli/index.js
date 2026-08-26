@@ -15,9 +15,10 @@ import { approvePublication } from '../core/approval.js';
 import { approvePublicationV2 } from '../core/approval-v2.js';
 import { approvePublicationV2_1 } from '../core/approval-v2-1.js';
 import { approveXArticlePublication } from '../core/x-article-approval.js';
+import { XArticleMaterializationStore } from '../core/x-article-materialization-store.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError } from '../core/errors.js';
-import { sha256Bytes } from '../core/digest.js';
+import { sha256, sha256Bytes } from '../core/digest.js';
 import { MemoryFeedbackService } from '../core/memory-feedback-service.js';
 import { MemoryIngestService } from '../core/memory-ingest-service.js';
 import { MemoryInsightService } from '../core/memory-insight-service.js';
@@ -42,8 +43,28 @@ import { ResearchIncrementService } from '../core/research-increment-service.js'
 import { PackageService } from '../core/package-service.js';
 import { PublicationBundleService } from '../core/publication-bundle-service.js';
 import { ExecutionStore } from '../core/execution-store.js';
-import { assertContractsAvailable } from '../core/schema-validator.js';
+import { assertContractsAvailable, validateContract } from '../core/schema-validator.js';
 import { WorkspaceStore } from '../core/workspace-store.js';
+const KNOWN_OPTIONS = new Set([
+    'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
+    'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
+    'execution', 'confirmation'
+]);
+const V3_2_ROUTES = [
+    'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+    'x-article browser resume-editor --workspace <path> --execution <id> --output json',
+    'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
+    'x-article browser materialization-status --workspace <path> --execution <id> --output json'
+];
+const V3_2_COMPATIBILITY_ALIASES = [
+    'x-article browser resume-editor --execution-id <id>'
+];
+const X_ARTICLE_BROWSER_CAPABILITIES = new Set([
+    'observe_article_page', 'navigate', 'create_article_draft', 'set_article_title',
+    'upload_article_cover', 'import_article_document', 'insert_article_block',
+    'insert_article_image', 'replace_article_visual_anchor', 'set_article_image_alt',
+    'open_article_preview', 'open_publish_review', 'publish_article_once'
+]);
 function parseArguments(argv) {
     const positional = [];
     const values = {};
@@ -53,11 +74,18 @@ function parseArguments(argv) {
             positional.push(token);
             continue;
         }
+        const name = token.slice(2);
+        if (!KNOWN_OPTIONS.has(name)) {
+            throw new HarnessError('CONTRACT_INVALID', `unknown option ${token}`);
+        }
+        if (values[name] !== undefined) {
+            throw new HarnessError('CONTRACT_INVALID', `option ${token} may be provided only once`);
+        }
         const value = argv[index + 1];
         if (value === undefined || value.startsWith('--')) {
             throw new HarnessError('CONTRACT_INVALID', `option ${token} requires a value`);
         }
-        values[token.slice(2)] = value;
+        values[name] = value;
         index += 1;
     }
     const workspace = values['workspace'];
@@ -81,14 +109,90 @@ function parseArguments(argv) {
             ...(values['run-id'] === undefined ? {} : { runId: values['run-id'] }),
             ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
             ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
+            ...(values['plan'] === undefined ? {} : { plan: resolve(values['plan']) }),
+            ...(values['capabilities'] === undefined
+                ? {}
+                : { capabilities: resolve(values['capabilities']) }),
+            ...(values['execution'] === undefined ? {} : { execution: values['execution'] }),
+            ...(values['confirmation'] === undefined
+                ? {}
+                : { confirmation: resolve(values['confirmation']) }),
             ...(adapter === undefined ? {} : { adapter }),
             ...(values['runtime-executable'] === undefined
                 ? {}
                 : { runtimeExecutable: values['runtime-executable'] }),
             ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
             output: values['output'] ?? 'json'
-        }
+        },
+        providedOptions: new Set(Object.keys(values))
     };
+}
+function validateExactOptions(operation, provided, operationOptions) {
+    const allowed = new Set(['workspace', 'output', ...operationOptions]);
+    const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+    if (extra.length > 0) {
+        throw new HarnessError('CONTRACT_INVALID', `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`);
+    }
+    for (const name of operationOptions) {
+        if (!provided.has(name)) {
+            throw new HarnessError('CONTRACT_INVALID', `${operation} requires --${name}`);
+        }
+    }
+}
+function validateResumeEditorOptions(operation, provided) {
+    const allowed = new Set(['workspace', 'output', 'execution', 'execution-id']);
+    const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+    if (extra.length > 0) {
+        throw new HarnessError('CONTRACT_INVALID', `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`);
+    }
+    const supplied = ['execution', 'execution-id'].filter((name) => provided.has(name));
+    if (supplied.length !== 1) {
+        throw new HarnessError('CONTRACT_INVALID', `${operation} requires exactly one of --execution or --execution-id`);
+    }
+}
+function requiredStableExecutionId(options, allowCompatibilityAlias = false) {
+    const executionId = options.execution
+        ?? (allowCompatibilityAlias ? options.executionId : undefined);
+    if (executionId === undefined || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(executionId)) {
+        throw new HarnessError('WORKSPACE_PATH_INVALID', 'unsafe X Article execution identity');
+    }
+    return executionId;
+}
+async function readJsonFile(path, label) {
+    try {
+        return JSON.parse(await readFile(path, 'utf8'));
+    }
+    catch (error) {
+        if (error instanceof SyntaxError) {
+            throw new HarnessError('CONTRACT_INVALID', `${label} is not valid JSON: ${error.message}`);
+        }
+        throw error;
+    }
+}
+function assertCapabilityManifest(value) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new HarnessError('CONTRACT_INVALID', 'capabilities must be a JSON object');
+    }
+    const manifest = value;
+    const keys = Object.keys(manifest).sort();
+    const expected = [
+        'browser_family', 'capabilities', 'executor', 'executor_version', 'observed_at'
+    ];
+    if (JSON.stringify(keys) !== JSON.stringify(expected)
+        || manifest['executor'] !== 'codex-chrome'
+        || manifest['browser_family'] !== 'chrome'
+        || typeof manifest['executor_version'] !== 'string'
+        || manifest['executor_version'].trim().length === 0
+        || !Array.isArray(manifest['capabilities'])
+        || manifest['capabilities'].some((item) => typeof item !== 'string' || !X_ARTICLE_BROWSER_CAPABILITIES.has(item))
+        || new Set(manifest['capabilities']).size !== manifest['capabilities'].length
+        || typeof manifest['observed_at'] !== 'string'
+        || !Number.isFinite(Date.parse(manifest['observed_at']))) {
+        throw new HarnessError('CONTRACT_INVALID', 'capabilities do not match the Browser Host manifest schema');
+    }
+}
+function digestBody(value, digestField) {
+    return Object.fromEntries(Object.entries(value).filter(([key]) => key !== digestField));
 }
 async function packagedMemoryAssets() {
     const candidates = [
@@ -215,7 +319,18 @@ function requiredRunId(options, input) {
     return runId;
 }
 async function execute(argv) {
-    const { positional, options } = parseArguments(argv);
+    if (argv.length === 1 && argv[0] === '--help') {
+        return {
+            ok: true,
+            operation: 'help',
+            artifact: {
+                routes: V3_2_ROUTES,
+                compatibility_aliases: V3_2_COMPATIBILITY_ALIASES
+            },
+            state: 'ready'
+        };
+    }
+    const { positional, options, providedOptions } = parseArguments(argv);
     if (options.output !== 'json') {
         throw new HarnessError('CONTRACT_INVALID', 'V1 supports --output json only');
     }
@@ -772,6 +887,14 @@ async function execute(argv) {
         const browser = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), operation === 'x-article browser start' && executionId !== undefined
             ? { executionId: () => executionId }
             : {});
+        if (operation === 'x-article browser prepare') {
+            validateExactOptions(operation, providedOptions, ['plan', 'capabilities']);
+            const plan = await readJsonFile(options.plan, 'plan');
+            const capabilitiesValue = await readJsonFile(options.capabilities, 'capabilities');
+            assertCapabilityManifest(capabilitiesValue);
+            const artifact = await browser.prepare(plan, capabilitiesValue);
+            return { ok: true, operation, artifact, state: artifact.state };
+        }
         if (operation === 'x-article browser start') {
             const value = input;
             const snapshot = await browser.start(value.plan, value.approval, value.capability_manifest);
@@ -798,8 +921,90 @@ async function execute(argv) {
             return { ok: true, operation, artifact, state: artifact.state };
         }
         if (operation === 'x-article browser resume-editor') {
-            const artifact = await browser.resumeEditor(requiredExecutionId(options));
+            validateResumeEditorOptions(operation, providedOptions);
+            const artifact = await browser.resumeEditor(requiredStableExecutionId(options, true));
             return { ok: true, operation, artifact, state: artifact.state };
+        }
+        if (operation === 'x-article browser confirm-publish') {
+            validateExactOptions(operation, providedOptions, ['execution', 'confirmation']);
+            const id = requiredStableExecutionId(options);
+            const confirmation = validateContract('x-article-publish-confirmation', await readJsonFile(options.confirmation, 'confirmation'));
+            const artifact = await browser.confirmPublish(id, confirmation);
+            return { ok: true, operation, artifact, state: artifact.state };
+        }
+        if (operation === 'x-article browser materialization-status') {
+            validateExactOptions(operation, providedOptions, ['execution']);
+            const id = requiredStableExecutionId(options);
+            const snapshot = await browser.status(id);
+            const prefix = `runs/${id}/x-article/browser`;
+            const context = await store.readJson(`${prefix}/adapter-context.json`);
+            if (context.schema_version !== '1.0' || context.execution_mode !== 'materialization_v3_2') {
+                throw new HarnessError('CONTRACT_INVALID', 'materialization-status requires a V3.2 prepared execution');
+            }
+            const materializationStore = new XArticleMaterializationStore(store);
+            const plan = await materializationStore.readPlan(id);
+            const checkpoint = await materializationStore.readCheckpoint(id);
+            if (plan.execution_id !== id
+                || checkpoint.execution_id !== id
+                || checkpoint.materialization_digest !== plan.materialization_digest) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization status artifacts are not bound to the requested execution');
+            }
+            let receiptState = 'absent';
+            let receiptDigest = null;
+            const previewReceiptPath = `${prefix}/materialization-receipt.json`;
+            const publicReceiptPath = `${prefix}/materialization-receipt-public.json`;
+            for (const [path, state] of [
+                [previewReceiptPath, 'preview_verified'],
+                [publicReceiptPath, 'public_verified']
+            ]) {
+                if (!(await store.exists(path)))
+                    continue;
+                const receipt = validateContract('x-article-materialization-receipt', await store.readJson(path));
+                if (receipt.execution_id !== id
+                    || receipt.materialization_digest !== plan.materialization_digest
+                    || receipt.receipt_digest !== sha256(digestBody(receipt, 'receipt_digest'))
+                    || (state === 'public_verified' && receipt.supersedes_receipt_digest !== receiptDigest)) {
+                    throw new HarnessError('CONTRACT_INVALID', 'materialization receipt binding is invalid');
+                }
+                receiptState = state;
+                receiptDigest = receipt.receipt_digest;
+            }
+            const confirmationPath = `${prefix}/publish-confirmation.json`;
+            const confirmationExists = await store.exists(confirmationPath);
+            let confirmationState = checkpoint.publish_confirmation;
+            let confirmationDigest = null;
+            if (confirmationExists) {
+                const confirmation = validateContract('x-article-publish-confirmation', await store.readJson(confirmationPath));
+                if (confirmation.execution_id !== id
+                    || confirmation.plan_digest !== plan.publication_plan_digest
+                    || confirmation.document_digest !== plan.document_digest
+                    || confirmation.confirmation_digest !== sha256(digestBody(confirmation, 'confirmation_digest'))) {
+                    throw new HarnessError('CONTRACT_INVALID', 'publish confirmation binding is invalid');
+                }
+                confirmationDigest = confirmation.confirmation_digest;
+                if (checkpoint.publish_confirmation === 'absent')
+                    confirmationState = 'uncommitted';
+            }
+            else if (checkpoint.publish_confirmation !== 'absent') {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'durable publish confirmation state has no confirmation artifact');
+            }
+            const artifact = {
+                protocol: 'x-article-materialization/v3.2',
+                execution: snapshot,
+                checkpoint: {
+                    materialization_digest: checkpoint.materialization_digest,
+                    revision: checkpoint.revision,
+                    phase: checkpoint.phase,
+                    body_status: checkpoint.body.status,
+                    media_total: checkpoint.media.length,
+                    media_completed: checkpoint.media.filter((item) => item.status === 'completed').length,
+                    publish_confirmation: checkpoint.publish_confirmation,
+                    updated_at: checkpoint.updated_at
+                },
+                receipt: { state: receiptState, receipt_digest: receiptDigest },
+                confirmation: { state: confirmationState, confirmation_digest: confirmationDigest }
+            };
+            return { ok: true, operation, artifact, state: snapshot.state };
         }
         if (operation === 'x-article browser refresh-approval') {
             const value = input;

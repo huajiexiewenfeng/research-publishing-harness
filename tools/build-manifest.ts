@@ -12,8 +12,10 @@ const sourceRoots = [
   'skills/x-publishing-copilot',
   'skills/research-synthesis-copilot',
   'docs/guides',
-  'docs/examples'
+  'docs/examples',
+  'tools'
 ];
+const sourceFiles = ['README.md'];
 const excludedNames = new Set(['.git', 'dist', 'node_modules', 'workspaces', 'receipts', 'secrets']);
 
 async function filesBelow(directory: string): Promise<string[]> {
@@ -31,6 +33,7 @@ const paths = (
   await Promise.all(sourceRoots.map((sourceRoot) => filesBelow(resolve(root, sourceRoot))))
 )
   .flat()
+  .concat(sourceFiles.map((sourceFile) => resolve(root, sourceFile)))
   .filter((path) => resolve(path) !== output)
   .map((path) => ({ absolute: path, relative: relative(root, path).split(sep).join('/') }))
   .sort((left, right) =>
@@ -68,6 +71,37 @@ const manifest = {
           'Import one deterministic Article Document template bound to the approved Article Package and document digests.',
         replace_article_visual_anchor:
           'Replace one verified temporary visual anchor with its approved digest-bound inline asset at the planned block ordinal.'
+      },
+      materialization: {
+        protocol: 'x-article-materialization/v3.2',
+        default_strategy: 'rich_text_anchor_import/v1',
+        required_host_capabilities: {
+          account_and_product: [
+            'authenticated_target_account',
+            'premium_articles_available'
+          ],
+          page_contract: 'x-article-web/2026-08',
+          bulk_import: [
+            'import_article_document',
+            'structured_rich_text_paste'
+          ],
+          visual_anchor: [
+            'replace_article_visual_anchor',
+            'set_article_image_alt',
+            'read_article_image_alt'
+          ],
+          cover: [
+            'upload_article_cover',
+            'report_cover_alt_capability_state'
+          ],
+          preview: [
+            'open_article_preview',
+            'observe_article_preview'
+          ],
+          release_set: 'compatible_runtime_skill_manifest_browser_host'
+        },
+        incremental_fallback: 'explicit_only',
+        compatibility_modes: ['legacy_preapproved']
       }
     }
   },

@@ -89,6 +89,7 @@ describe('canonicalManifestBytes', () => {
           command_contract: string;
           observation_contract: string;
           capabilities: Record<string, string>;
+          materialization: Record<string, unknown>;
         };
       };
       files: Array<{ path: string; sha256: string; bytes: number }>;
@@ -102,8 +103,53 @@ describe('canonicalManifestBytes', () => {
           'Import one deterministic Article Document template bound to the approved Article Package and document digests.',
         replace_article_visual_anchor:
           'Replace one verified temporary visual anchor with its approved digest-bound inline asset at the planned block ordinal.'
+      },
+      materialization: {
+        protocol: 'x-article-materialization/v3.2',
+        default_strategy: 'rich_text_anchor_import/v1',
+        required_host_capabilities: {
+          account_and_product: [
+            'authenticated_target_account',
+            'premium_articles_available'
+          ],
+          page_contract: 'x-article-web/2026-08',
+          bulk_import: [
+            'import_article_document',
+            'structured_rich_text_paste'
+          ],
+          visual_anchor: [
+            'replace_article_visual_anchor',
+            'set_article_image_alt',
+            'read_article_image_alt'
+          ],
+          cover: [
+            'upload_article_cover',
+            'report_cover_alt_capability_state'
+          ],
+          preview: [
+            'open_article_preview',
+            'observe_article_preview'
+          ],
+          release_set: 'compatible_runtime_skill_manifest_browser_host'
+        },
+        incremental_fallback: 'explicit_only',
+        compatibility_modes: ['legacy_preapproved']
       }
     });
+
+    expect(manifest.files.map((file) => file.path)).toEqual(expect.arrayContaining([
+      'harnesses/research-publishing/cli/index.ts',
+      'harnesses/research-publishing/core/x-article-materialization.ts',
+      'harnesses/research-publishing/core/x-article-materialization-store.ts',
+      'harnesses/research-publishing/contracts/x-article-materialization-plan.schema.json',
+      'harnesses/research-publishing/contracts/x-article-materialization-checkpoint.schema.json',
+      'harnesses/research-publishing/contracts/x-article-materialization-progress.schema.json',
+      'harnesses/research-publishing/contracts/x-article-materialization-receipt.schema.json',
+      'harnesses/research-publishing/contracts/x-article-publish-confirmation.schema.json',
+      'README.md',
+      'tools/build-manifest.ts',
+      'tools/manifest-content.ts'
+    ]));
 
     for (const file of manifest.files) {
       const bytes = canonicalManifestBytes(await readFile(resolve(file.path)));
@@ -112,5 +158,15 @@ describe('canonicalManifestBytes', () => {
         bytes: bytes.byteLength
       });
     }
+
+    const first = await readFile(resolve('registry/manifests/research-publishing.json'));
+    const secondGenerator = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', resolve('tools/build-manifest.ts')],
+      { encoding: 'utf8' }
+    );
+    expect(secondGenerator.status, secondGenerator.stderr).toBe(0);
+    const second = await readFile(resolve('registry/manifests/research-publishing.json'));
+    expect(second).toEqual(first);
   });
 });

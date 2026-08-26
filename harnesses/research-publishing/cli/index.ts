@@ -26,10 +26,15 @@ import {
   approveXArticlePublication,
   type XArticleApprovalV1
 } from '../core/x-article-approval.js';
+import type { XArticlePublishConfirmationV1 } from '../core/x-article-publish-confirmation.js';
 import type { XArticlePublicationPlanV1 } from '../core/x-article-publication-plan.js';
+import { XArticleMaterializationStore } from '../core/x-article-materialization-store.js';
+import type {
+  XArticleMaterializationReceiptV1
+} from '../core/x-article-materialization.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
-import { sha256Bytes } from '../core/digest.js';
+import { sha256, sha256Bytes } from '../core/digest.js';
 import { MemoryFeedbackService, type CaptureFeedbackInput } from '../core/memory-feedback-service.js';
 import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpointInput } from '../core/memory-ingest-service.js';
 import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-insight-service.js';
@@ -97,7 +102,7 @@ import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
 import type { PublicationPlanV2_1 } from '../core/publication-plan-v2-1.js';
 import type { AttachVisualInput } from '../core/visual-assets.js';
-import { assertContractsAvailable } from '../core/schema-validator.js';
+import { assertContractsAvailable, validateContract } from '../core/schema-validator.js';
 import type {
   Candidate,
   CompileWeeklyPackageInput,
@@ -111,11 +116,37 @@ interface CliOptions {
   readonly runId?: string;
   readonly executionId?: string;
   readonly commandId?: string;
+  readonly plan?: string;
+  readonly capabilities?: string;
+  readonly execution?: string;
+  readonly confirmation?: string;
   readonly adapter?: 'manual' | 'browser';
   readonly runtimeExecutable?: string;
   readonly runtimeLauncher?: 'console-script' | 'python-module';
   readonly output: string;
 }
+
+const KNOWN_OPTIONS = new Set([
+  'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
+  'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
+  'execution', 'confirmation'
+]);
+
+const V3_2_ROUTES = [
+  'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+  'x-article browser resume-editor --workspace <path> --execution <id> --output json',
+  'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
+  'x-article browser materialization-status --workspace <path> --execution <id> --output json'
+] as const;
+const V3_2_COMPATIBILITY_ALIASES = [
+  'x-article browser resume-editor --execution-id <id>'
+] as const;
+const X_ARTICLE_BROWSER_CAPABILITIES = new Set([
+  'observe_article_page', 'navigate', 'create_article_draft', 'set_article_title',
+  'upload_article_cover', 'import_article_document', 'insert_article_block',
+  'insert_article_image', 'replace_article_visual_anchor', 'set_article_image_alt',
+  'open_article_preview', 'open_publish_review', 'publish_article_once'
+]);
 
 interface CliResult {
   readonly ok: boolean;
@@ -126,7 +157,11 @@ interface CliResult {
   readonly error?: { readonly code: string; readonly message: string };
 }
 
-function parseArguments(argv: readonly string[]): { positional: string[]; options: CliOptions } {
+function parseArguments(argv: readonly string[]): {
+  positional: string[];
+  options: CliOptions;
+  providedOptions: ReadonlySet<string>;
+} {
   const positional: string[] = [];
   const values: Record<string, string> = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -135,11 +170,18 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
       positional.push(token);
       continue;
     }
+    const name = token.slice(2);
+    if (!KNOWN_OPTIONS.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `unknown option ${token}`);
+    }
+    if (values[name] !== undefined) {
+      throw new HarnessError('CONTRACT_INVALID', `option ${token} may be provided only once`);
+    }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {
       throw new HarnessError('CONTRACT_INVALID', `option ${token} requires a value`);
     }
-    values[token.slice(2)] = value;
+    values[name] = value;
     index += 1;
   }
   const workspace = values['workspace'];
@@ -168,14 +210,117 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
       ...(values['run-id'] === undefined ? {} : { runId: values['run-id'] }),
       ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
       ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
+      ...(values['plan'] === undefined ? {} : { plan: resolve(values['plan']) }),
+      ...(values['capabilities'] === undefined
+        ? {}
+        : { capabilities: resolve(values['capabilities']) }),
+      ...(values['execution'] === undefined ? {} : { execution: values['execution'] }),
+      ...(values['confirmation'] === undefined
+        ? {}
+        : { confirmation: resolve(values['confirmation']) }),
       ...(adapter === undefined ? {} : { adapter }),
       ...(values['runtime-executable'] === undefined
         ? {}
         : { runtimeExecutable: values['runtime-executable'] }),
       ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
       output: values['output'] ?? 'json'
-    }
+    },
+    providedOptions: new Set(Object.keys(values))
   };
+}
+
+function validateExactOptions(
+  operation: string,
+  provided: ReadonlySet<string>,
+  operationOptions: readonly string[]
+): void {
+  const allowed = new Set(['workspace', 'output', ...operationOptions]);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  for (const name of operationOptions) {
+    if (!provided.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `${operation} requires --${name}`);
+    }
+  }
+}
+
+function validateResumeEditorOptions(
+  operation: string,
+  provided: ReadonlySet<string>
+): void {
+  const allowed = new Set(['workspace', 'output', 'execution', 'execution-id']);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  const supplied = ['execution', 'execution-id'].filter((name) => provided.has(name));
+  if (supplied.length !== 1) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} requires exactly one of --execution or --execution-id`
+    );
+  }
+}
+
+function requiredStableExecutionId(options: CliOptions, allowCompatibilityAlias = false): string {
+  const executionId = options.execution
+    ?? (allowCompatibilityAlias ? options.executionId : undefined);
+  if (executionId === undefined || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(executionId)) {
+    throw new HarnessError('WORKSPACE_PATH_INVALID', 'unsafe X Article execution identity');
+  }
+  return executionId;
+}
+
+async function readJsonFile<T>(path: string, label: string): Promise<T> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HarnessError('CONTRACT_INVALID', `${label} is not valid JSON: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+function assertCapabilityManifest(
+  value: unknown
+): asserts value is XArticleBrowserCapabilityManifestV1 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new HarnessError('CONTRACT_INVALID', 'capabilities must be a JSON object');
+  }
+  const manifest = value as Record<string, unknown>;
+  const keys = Object.keys(manifest).sort();
+  const expected = [
+    'browser_family', 'capabilities', 'executor', 'executor_version', 'observed_at'
+  ];
+  if (
+    JSON.stringify(keys) !== JSON.stringify(expected)
+    || manifest['executor'] !== 'codex-chrome'
+    || manifest['browser_family'] !== 'chrome'
+    || typeof manifest['executor_version'] !== 'string'
+    || manifest['executor_version'].trim().length === 0
+    || !Array.isArray(manifest['capabilities'])
+    || manifest['capabilities'].some((item) =>
+      typeof item !== 'string' || !X_ARTICLE_BROWSER_CAPABILITIES.has(item)
+    )
+    || new Set(manifest['capabilities']).size !== manifest['capabilities'].length
+    || typeof manifest['observed_at'] !== 'string'
+    || !Number.isFinite(Date.parse(manifest['observed_at']))
+  ) {
+    throw new HarnessError('CONTRACT_INVALID', 'capabilities do not match the Browser Host manifest schema');
+  }
+}
+
+function digestBody(value: Record<string, unknown>, digestField: string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== digestField));
 }
 
 interface PackagedMemoryAssets {
@@ -328,7 +473,18 @@ function requiredRunId(options: CliOptions, input?: { readonly run_id?: string }
 }
 
 async function execute(argv: readonly string[]): Promise<CliResult> {
-  const { positional, options } = parseArguments(argv);
+  if (argv.length === 1 && argv[0] === '--help') {
+    return {
+      ok: true,
+      operation: 'help',
+      artifact: {
+        routes: V3_2_ROUTES,
+        compatibility_aliases: V3_2_COMPATIBILITY_ALIASES
+      },
+      state: 'ready'
+    };
+  }
+  const { positional, options, providedOptions } = parseArguments(argv);
   if (options.output !== 'json') {
     throw new HarnessError('CONTRACT_INVALID', 'V1 supports --output json only');
   }
@@ -994,6 +1150,17 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         ? { executionId: () => executionId }
         : {}
     );
+    if (operation === 'x-article browser prepare') {
+      validateExactOptions(operation, providedOptions, ['plan', 'capabilities']);
+      const plan = await readJsonFile<XArticlePublicationPlanV1>(options.plan!, 'plan');
+      const capabilitiesValue = await readJsonFile<unknown>(
+        options.capabilities!,
+        'capabilities'
+      );
+      assertCapabilityManifest(capabilitiesValue);
+      const artifact = await browser.prepare(plan, capabilitiesValue);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
     if (operation === 'x-article browser start') {
       const value = input as unknown as {
         execution_id: string;
@@ -1027,8 +1194,124 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       return { ok: true, operation, artifact, state: artifact.state };
     }
     if (operation === 'x-article browser resume-editor') {
-      const artifact = await browser.resumeEditor(requiredExecutionId(options));
+      validateResumeEditorOptions(operation, providedOptions);
+      const artifact = await browser.resumeEditor(requiredStableExecutionId(options, true));
       return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser confirm-publish') {
+      validateExactOptions(operation, providedOptions, ['execution', 'confirmation']);
+      const id = requiredStableExecutionId(options);
+      const confirmation = validateContract<XArticlePublishConfirmationV1>(
+        'x-article-publish-confirmation',
+        await readJsonFile<unknown>(options.confirmation!, 'confirmation')
+      );
+      const artifact = await browser.confirmPublish(id, confirmation);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser materialization-status') {
+      validateExactOptions(operation, providedOptions, ['execution']);
+      const id = requiredStableExecutionId(options);
+      const snapshot = await browser.status(id);
+      const prefix = `runs/${id}/x-article/browser`;
+      const context = await store.readJson<{
+        readonly schema_version?: unknown;
+        readonly execution_mode?: unknown;
+      }>(`${prefix}/adapter-context.json`);
+      if (context.schema_version !== '1.0' || context.execution_mode !== 'materialization_v3_2') {
+        throw new HarnessError(
+          'CONTRACT_INVALID',
+          'materialization-status requires a V3.2 prepared execution'
+        );
+      }
+      const materializationStore = new XArticleMaterializationStore(store);
+      const plan = await materializationStore.readPlan(id);
+      const checkpoint = await materializationStore.readCheckpoint(id);
+      if (
+        plan.execution_id !== id
+        || checkpoint.execution_id !== id
+        || checkpoint.materialization_digest !== plan.materialization_digest
+      ) {
+        throw new HarnessError(
+          'ARTICLE_CHECKPOINT_CONFLICT',
+          'materialization status artifacts are not bound to the requested execution'
+        );
+      }
+
+      let receiptState: 'absent' | 'preview_verified' | 'public_verified' = 'absent';
+      let receiptDigest: `sha256:${string}` | null = null;
+      const previewReceiptPath = `${prefix}/materialization-receipt.json`;
+      const publicReceiptPath = `${prefix}/materialization-receipt-public.json`;
+      for (const [path, state] of [
+        [previewReceiptPath, 'preview_verified'],
+        [publicReceiptPath, 'public_verified']
+      ] as const) {
+        if (!(await store.exists(path))) continue;
+        const receipt = validateContract<XArticleMaterializationReceiptV1>(
+          'x-article-materialization-receipt',
+          await store.readJson<unknown>(path)
+        );
+        if (
+          receipt.execution_id !== id
+          || receipt.materialization_digest !== plan.materialization_digest
+          || receipt.receipt_digest !== sha256(digestBody(
+            receipt as unknown as Record<string, unknown>,
+            'receipt_digest'
+          ))
+          || (state === 'public_verified' && receipt.supersedes_receipt_digest !== receiptDigest)
+        ) {
+          throw new HarnessError('CONTRACT_INVALID', 'materialization receipt binding is invalid');
+        }
+        receiptState = state;
+        receiptDigest = receipt.receipt_digest;
+      }
+
+      const confirmationPath = `${prefix}/publish-confirmation.json`;
+      const confirmationExists = await store.exists(confirmationPath);
+      let confirmationState: 'absent' | 'uncommitted' | 'armed' | 'consumed' =
+        checkpoint.publish_confirmation;
+      let confirmationDigest: `sha256:${string}` | null = null;
+      if (confirmationExists) {
+        const confirmation = validateContract<XArticlePublishConfirmationV1>(
+          'x-article-publish-confirmation',
+          await store.readJson<unknown>(confirmationPath)
+        );
+        if (
+          confirmation.execution_id !== id
+          || confirmation.plan_digest !== plan.publication_plan_digest
+          || confirmation.document_digest !== plan.document_digest
+          || confirmation.confirmation_digest !== sha256(digestBody(
+            confirmation as unknown as Record<string, unknown>,
+            'confirmation_digest'
+          ))
+        ) {
+          throw new HarnessError('CONTRACT_INVALID', 'publish confirmation binding is invalid');
+        }
+        confirmationDigest = confirmation.confirmation_digest;
+        if (checkpoint.publish_confirmation === 'absent') confirmationState = 'uncommitted';
+      } else if (checkpoint.publish_confirmation !== 'absent') {
+        throw new HarnessError(
+          'PUBLISH_GATE_BLOCKED',
+          'durable publish confirmation state has no confirmation artifact'
+        );
+      }
+
+      const artifact = {
+        protocol: 'x-article-materialization/v3.2',
+        execution: snapshot,
+        checkpoint: {
+          materialization_digest: checkpoint.materialization_digest,
+          revision: checkpoint.revision,
+          phase: checkpoint.phase,
+          body_status: checkpoint.body.status,
+          media_total: checkpoint.media.length,
+          media_completed: checkpoint.media.filter((item) => item.status === 'completed').length,
+          publish_confirmation: checkpoint.publish_confirmation,
+          updated_at: checkpoint.updated_at
+        },
+        receipt: { state: receiptState, receipt_digest: receiptDigest },
+        confirmation: { state: confirmationState, confirmation_digest: confirmationDigest }
+      };
+      return { ok: true, operation, artifact, state: snapshot.state };
     }
     if (operation === 'x-article browser refresh-approval') {
       const value = input as unknown as { approval: XArticleApprovalV1 };
