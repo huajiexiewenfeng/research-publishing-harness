@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,6 +8,12 @@ import { describe, expect, it } from 'vitest';
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import {
+  createSupersedingXArticleMaterializationReceipt,
+  createXArticleMaterializationReceipt,
+  type XArticleMaterializationCheckpointV1,
+  type XArticleMaterializationPlanV1
+} from '../../harnesses/research-publishing/core/x-article-materialization.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { publicationPlanV2Fixture } from '../fixtures/publication-plan-v2.js';
@@ -23,6 +29,23 @@ function run(args: readonly string[]) {
 
 function runSource(args: readonly string[]) {
   return spawnSync(process.execPath, ['--import', 'tsx', sourceCli, ...args], { encoding: 'utf8' });
+}
+
+async function filesystemSnapshot(root: string): Promise<readonly string[]> {
+  const entries: string[] = [];
+  async function visit(path: string, relativePath: string): Promise<void> {
+    const metadata = await stat(path);
+    entries.push([
+      relativePath || '.', metadata.isDirectory() ? 'directory' : 'file',
+      metadata.size, metadata.mtimeMs
+    ].join('|'));
+    if (!metadata.isDirectory()) return;
+    for (const name of (await readdir(path)).sort()) {
+      await visit(join(path, name), relativePath.length === 0 ? name : `${relativePath}/${name}`);
+    }
+  }
+  await visit(root, '');
+  return entries;
 }
 
 function materializationCliPlan() {
@@ -83,6 +106,7 @@ describe('research-publish CLI', () => {
       },
       state: 'ready'
     });
+    expect(run(['--help']).stdout).toBe(result.stdout);
   });
 
   it('prepares V3.2 from separate validated files and reports redacted durable status', async () => {
@@ -111,6 +135,7 @@ describe('research-publish CLI', () => {
       'x-article', 'browser', 'materialization-status', '--workspace', workspace,
       '--execution', preparedJson.artifact.execution_id, '--output', 'json'
     ];
+    const beforeStatus = await filesystemSnapshot(workspace);
     const firstStatus = runSource(statusArgs);
     const secondStatus = runSource(statusArgs);
     expect(firstStatus.status).toBe(0);
@@ -120,18 +145,166 @@ describe('research-publish CLI', () => {
       ok: true,
       operation: 'x-article browser materialization-status',
       artifact: {
-        protocol: 'x-article-materialization/v3.2',
-        execution: { execution_id: preparedJson.artifact.execution_id, state: 'created' },
-        checkpoint: {
-          phase: 'preflight_pending', revision: 0, publish_confirmation: 'absent'
-        },
-        receipt: { state: 'absent', receipt_digest: null },
-        confirmation: { state: 'absent', confirmation_digest: null }
+        execution_id: preparedJson.artifact.execution_id,
+        phase: 'preflight_pending',
+        publication_plan_digest: expect.stringMatching(/^sha256:/),
+        materialization_digest: expect.stringMatching(/^sha256:/),
+        receipt: { present: false, status: 'absent', receipt_digest: null },
+        confirmation: { state: 'absent', confirmation_digest: null },
+        publication_status: 'pre_public'
       },
-      state: 'created'
+      state: 'pre_public'
     });
+    expect(run(statusArgs).stdout).toBe(firstStatus.stdout);
+    await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeStatus);
+    expect(Object.keys(status.artifact).sort()).toEqual([
+      'confirmation', 'execution_id', 'materialization_digest', 'phase',
+      'publication_plan_digest', 'publication_status', 'receipt'
+    ]);
     expect(firstStatus.stdout).not.toContain('confirmed_by');
     expect(firstStatus.stdout).not.toContain('Bulk import remains evidence-bound.');
+    expect(firstStatus.stdout).not.toMatch(/run_id|plan_id|draft_id|attempt_id|command_id|observation_id|latest_receipt_path/);
+
+    const base = join(
+      workspace, 'runs', preparedJson.artifact.execution_id, 'x-article', 'browser'
+    );
+    const context = JSON.parse(await readFile(join(base, 'adapter-context.json'), 'utf8'));
+    await writeFile(join(base, 'adapter-context.json'), JSON.stringify({
+      ...context,
+      snapshot: { ...context.snapshot, state: 'finalized' }
+    }));
+    const contextOnly = runSource(statusArgs);
+    expect(JSON.parse(contextOnly.stdout)).toMatchObject({
+      artifact: { publication_status: 'pre_public', receipt: { present: false } },
+      state: 'pre_public'
+    });
+
+    const materializationPlan = JSON.parse(
+      await readFile(join(base, 'materialization-plan.json'), 'utf8')
+    ) as XArticleMaterializationPlanV1;
+    const storedCheckpoint = JSON.parse(
+      await readFile(join(base, 'materialization-checkpoint.json'), 'utf8')
+    ) as XArticleMaterializationCheckpointV1;
+    const previewCheckpoint: XArticleMaterializationCheckpointV1 = {
+      ...storedCheckpoint,
+      draft_id: 'draft_cli_materialization',
+      phase: 'preview_verified',
+      body: { status: 'verified', observed_digest: materializationPlan.import_template_digest },
+      last_editor_revision: `sha256:${'b'.repeat(64)}`,
+      updated_at: '2026-08-27T09:01:00.000Z'
+    };
+    await writeFile(join(base, 'materialization-checkpoint.json'), JSON.stringify(previewCheckpoint));
+    const previewReceipt = createXArticleMaterializationReceipt({
+      plan: materializationPlan,
+      checkpoint: previewCheckpoint,
+      progress: [],
+      body_block_count: 1,
+      command_count: 0,
+      observation_count: 0,
+      automation_started_at: '2026-08-27T09:00:00.000Z',
+      preview_verified_at: previewCheckpoint.updated_at,
+      human_wait_seconds: 0,
+      preview_revision: `sha256:${'c'.repeat(64)}`,
+      issued_at: previewCheckpoint.updated_at
+    });
+    const publicReceipt = createSupersedingXArticleMaterializationReceipt({
+      preview_receipt: previewReceipt,
+      expected_preview_receipt_digest: previewReceipt.receipt_digest,
+      human_wait_seconds: 5,
+      issued_at: '2026-08-27T09:02:00.000Z'
+    });
+    await writeFile(join(base, 'materialization-receipt.json'), JSON.stringify(previewReceipt));
+    const previewStatus = runSource(statusArgs);
+    expect(JSON.parse(previewStatus.stdout)).toMatchObject({
+      artifact: {
+        receipt: { present: true, status: 'preview_verified' },
+        publication_status: 'pre_public'
+      },
+      state: 'pre_public'
+    });
+    await writeFile(join(base, 'materialization-receipt-public.json'), JSON.stringify(publicReceipt));
+    const publicStatus = runSource(statusArgs);
+    expect(JSON.parse(publicStatus.stdout)).toMatchObject({
+      artifact: {
+        receipt: {
+          present: true,
+          status: 'public_verified',
+          receipt_digest: publicReceipt.receipt_digest
+        },
+        publication_status: 'public_verified'
+      },
+      state: 'public_verified'
+    });
+    expect(run(statusArgs).stdout).toBe(publicStatus.stdout);
+  });
+
+  it('keeps missing status lookups strictly read-only and redacts filesystem paths', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-client-alpha-'));
+    const missingWorkspace = join(parent, 'secret-workspace-name');
+    const beforeParent = await filesystemSnapshot(parent);
+    const missing = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', missingWorkspace,
+      '--execution', 'missing_execution', '--output', 'json'
+    ]);
+    expect(missing.status).toBe(5);
+    expect(missing.stdout).not.toContain(parent);
+    expect(missing.stdout).not.toContain('secret-workspace-name');
+    expect(JSON.parse(missing.stdout)).toMatchObject({
+      error: { code: 'ARTIFACT_NOT_FOUND', message: 'workspace is unavailable' }
+    });
+    await expect(filesystemSnapshot(parent)).resolves.toEqual(beforeParent);
+
+    const workspace = join(parent, 'existing');
+    await mkdir(workspace);
+    const beforeWorkspace = await filesystemSnapshot(workspace);
+    const missingExecution = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', 'missing_execution', '--output', 'json'
+    ]);
+    expect(missingExecution.status).toBe(5);
+    expect(missingExecution.stdout).not.toContain(workspace);
+    await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeWorkspace);
+  });
+
+  it('returns stable redacted errors for malformed and non-file status artifacts', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-artifact-'));
+    const workspace = join(parent, 'workspace-secret');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare', '--workspace', workspace,
+      '--plan', planPath, '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+    const base = join(workspace, 'runs', executionId, 'x-article', 'browser');
+    const originalPlan = await readFile(join(base, 'materialization-plan.json'), 'utf8');
+    await writeFile(join(base, 'materialization-plan.json'), '{');
+    const malformed = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(JSON.parse(malformed.stdout)).toMatchObject({
+      error: { code: 'CONTRACT_INVALID', message: 'materialization plan contains malformed JSON' }
+    });
+    expect(malformed.stdout).not.toContain(parent);
+    expect(malformed.stdout).not.toMatch(/SyntaxError|Unexpected|position|stack/i);
+
+    await writeFile(join(base, 'materialization-plan.json'), originalPlan);
+    await mkdir(join(base, 'materialization-receipt.json'));
+    const unreadable = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(JSON.parse(unreadable.stdout)).toMatchObject({
+      error: {
+        code: 'ARTIFACT_NOT_FOUND',
+        message: 'Preview materialization receipt is unavailable'
+      }
+    });
+    expect(unreadable.stdout).not.toContain(parent);
+    expect(unreadable.stdout).not.toMatch(/EISDIR|EACCES|EPERM|stack/i);
   });
 
   it('rejects unknown, extra, unsafe, malformed, and wrong-schema V3.2 CLI inputs', async () => {

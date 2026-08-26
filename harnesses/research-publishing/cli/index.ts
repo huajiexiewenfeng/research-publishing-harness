@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { ManualAdapter, type ManualPublicResult, type PublishReceipt } from '../adapters/x/manual/manual-adapter.js';
@@ -27,9 +27,13 @@ import {
   type XArticleApprovalV1
 } from '../core/x-article-approval.js';
 import type { XArticlePublishConfirmationV1 } from '../core/x-article-publish-confirmation.js';
-import type { XArticlePublicationPlanV1 } from '../core/x-article-publication-plan.js';
-import { XArticleMaterializationStore } from '../core/x-article-materialization-store.js';
+import {
+  assertXArticlePublicationPlan,
+  type XArticlePublicationPlanV1
+} from '../core/x-article-publication-plan.js';
 import type {
+  XArticleMaterializationCheckpointV1,
+  XArticleMaterializationPlanV1,
   XArticleMaterializationReceiptV1
 } from '../core/x-article-materialization.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
@@ -284,9 +288,21 @@ async function readJsonFile<T>(path: string, label: string): Promise<T> {
     return JSON.parse(await readFile(path, 'utf8')) as T;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new HarnessError('CONTRACT_INVALID', `${label} is not valid JSON: ${error.message}`);
+      throw new HarnessError('CONTRACT_INVALID', `${label} contains malformed JSON`);
     }
-    throw error;
+    throw new HarnessError('ARTIFACT_NOT_FOUND', `${label} is unavailable`);
+  }
+}
+
+async function readOptionalJsonFile<T>(path: string, label: string): Promise<T | null> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (error instanceof SyntaxError) {
+      throw new HarnessError('CONTRACT_INVALID', `${label} contains malformed JSON`);
+    }
+    throw new HarnessError('ARTIFACT_NOT_FOUND', `${label} is unavailable`);
   }
 }
 
@@ -321,6 +337,211 @@ function assertCapabilityManifest(
 
 function digestBody(value: Record<string, unknown>, digestField: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== digestField));
+}
+
+function assertReceiptBinding(
+  receipt: XArticleMaterializationReceiptV1,
+  plan: XArticleMaterializationPlanV1,
+  executionId: string
+): void {
+  if (
+    receipt.execution_id !== executionId
+    || receipt.materialization_digest !== plan.materialization_digest
+    || receipt.strategy !== plan.strategy
+    || receipt.inline_image_count !== plan.visual_anchors.length
+    || receipt.command_ceiling !== plan.expected_command_ceiling
+    || receipt.observation_ceiling !== plan.expected_observation_ceiling
+    || receipt.receipt_digest !== sha256(digestBody(
+      receipt as unknown as Record<string, unknown>,
+      'receipt_digest'
+    ))
+  ) {
+    throw new HarnessError('CONTRACT_INVALID', 'materialization receipt binding is invalid');
+  }
+}
+
+async function readMaterializationStatus(
+  operation: string,
+  options: CliOptions,
+  providedOptions: ReadonlySet<string>
+): Promise<CliResult> {
+  validateExactOptions(operation, providedOptions, ['execution']);
+  const executionId = requiredStableExecutionId(options);
+  try {
+    if (!(await stat(options.workspace)).isDirectory()) {
+      throw new HarnessError('ARTIFACT_NOT_FOUND', 'workspace is unavailable');
+    }
+  } catch (error) {
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError('ARTIFACT_NOT_FOUND', 'workspace is unavailable');
+  }
+  const prefix = resolve(
+    options.workspace,
+    'runs', executionId, 'x-article', 'browser'
+  );
+  const context = await readJsonFile<{
+    readonly schema_version?: unknown;
+    readonly execution_mode?: unknown;
+    readonly plan?: unknown;
+  }>(resolve(prefix, 'adapter-context.json'), 'execution state');
+  if (
+    context.schema_version !== '1.0'
+    || context.execution_mode !== 'materialization_v3_2'
+    || context.plan === undefined
+  ) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'materialization-status requires a V3.2 prepared execution'
+    );
+  }
+  assertXArticlePublicationPlan(context.plan as XArticlePublicationPlanV1);
+  const publicationPlan = context.plan as XArticlePublicationPlanV1;
+  const plan = validateContract<XArticleMaterializationPlanV1>(
+    'x-article-materialization-plan',
+    await readJsonFile<unknown>(
+      resolve(prefix, 'materialization-plan.json'),
+      'materialization plan'
+    )
+  );
+  const checkpoint = validateContract<XArticleMaterializationCheckpointV1>(
+    'x-article-materialization-checkpoint',
+    await readJsonFile<unknown>(
+      resolve(prefix, 'materialization-checkpoint.json'),
+      'materialization checkpoint'
+    )
+  );
+  const planBody = digestBody(
+    plan as unknown as Record<string, unknown>,
+    'materialization_digest'
+  );
+  const mediaBound = checkpoint.media.length === plan.visual_anchors.length
+    && checkpoint.media.every((entry, index) => {
+      const anchor = plan.visual_anchors[index];
+      return anchor !== undefined
+        && entry.anchor_id === anchor.anchor_id
+        && entry.asset_id === anchor.asset_id
+        && entry.block_ordinal === anchor.block_ordinal
+        && entry.asset_digest === anchor.asset_digest;
+    });
+  if (
+    plan.execution_id !== executionId
+    || plan.publication_plan_digest !== publicationPlan.plan_digest
+    || plan.target_account !== publicationPlan.intent.target_account
+    || plan.materialization_digest !== sha256(planBody)
+    || checkpoint.execution_id !== executionId
+    || checkpoint.materialization_digest !== plan.materialization_digest
+    || !mediaBound
+  ) {
+    throw new HarnessError(
+      'ARTICLE_CHECKPOINT_CONFLICT',
+      'materialization status artifacts are not bound to the requested execution'
+    );
+  }
+
+  const preview = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-receipt.json'),
+    'Preview materialization receipt'
+  );
+  let previewReceipt: XArticleMaterializationReceiptV1 | null = null;
+  if (preview !== null) {
+    previewReceipt = validateContract<XArticleMaterializationReceiptV1>(
+      'x-article-materialization-receipt', preview
+    );
+    assertReceiptBinding(previewReceipt, plan, executionId);
+    if (previewReceipt.supersedes_receipt_digest !== null) {
+      throw new HarnessError('CONTRACT_INVALID', 'Preview materialization receipt is invalid');
+    }
+  }
+
+  const publicValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-receipt-public.json'),
+    'public materialization receipt'
+  );
+  let publicReceipt: XArticleMaterializationReceiptV1 | null = null;
+  if (publicValue !== null) {
+    publicReceipt = validateContract<XArticleMaterializationReceiptV1>(
+      'x-article-materialization-receipt', publicValue
+    );
+    assertReceiptBinding(publicReceipt, plan, executionId);
+    if (
+      previewReceipt === null
+      || publicReceipt.supersedes_receipt_digest !== previewReceipt.receipt_digest
+      || Date.parse(publicReceipt.issued_at) < Date.parse(previewReceipt.issued_at)
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'public materialization receipt is not bound to Preview');
+    }
+    const expectedPublicBody = {
+      ...digestBody(
+        previewReceipt as unknown as Record<string, unknown>,
+        'receipt_digest'
+      ),
+      human_wait_seconds: publicReceipt.human_wait_seconds,
+      supersedes_receipt_digest: previewReceipt.receipt_digest,
+      issued_at: publicReceipt.issued_at
+    };
+    if (publicReceipt.receipt_digest !== sha256(expectedPublicBody)) {
+      throw new HarnessError('CONTRACT_INVALID', 'public materialization receipt is not authoritative');
+    }
+  }
+
+  const confirmationValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'publish-confirmation.json'),
+    'publish confirmation'
+  );
+  let confirmationState: 'absent' | 'uncommitted' | 'armed' | 'consumed' =
+    checkpoint.publish_confirmation;
+  let confirmationDigest: `sha256:${string}` | null = null;
+  if (confirmationValue !== null) {
+    const confirmation = validateContract<XArticlePublishConfirmationV1>(
+      'x-article-publish-confirmation', confirmationValue
+    );
+    const assetDigests = publicationPlan.intent.visuals.map((item) => item.asset.digest);
+    if (
+      confirmation.execution_id !== executionId
+      || confirmation.draft_id !== checkpoint.draft_id
+      || confirmation.target_account !== plan.target_account
+      || confirmation.plan_digest !== plan.publication_plan_digest
+      || confirmation.document_digest !== plan.document_digest
+      || JSON.stringify(confirmation.asset_digests) !== JSON.stringify(assetDigests)
+      || confirmation.confirmation_digest !== sha256(digestBody(
+        confirmation as unknown as Record<string, unknown>,
+        'confirmation_digest'
+      ))
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'publish confirmation binding is invalid');
+    }
+    confirmationDigest = confirmation.confirmation_digest;
+    if (checkpoint.publish_confirmation === 'absent') confirmationState = 'uncommitted';
+  } else if (checkpoint.publish_confirmation !== 'absent') {
+    throw new HarnessError('PUBLISH_GATE_BLOCKED', 'publish confirmation is unavailable');
+  }
+
+  const receiptStatus = publicReceipt !== null
+    ? 'public_verified'
+    : previewReceipt !== null
+      ? 'preview_verified'
+      : 'absent';
+  const receiptDigest = publicReceipt?.receipt_digest ?? previewReceipt?.receipt_digest ?? null;
+  const publicationStatus = publicReceipt !== null
+    ? 'public_verified'
+    : 'pre_public';
+  const artifact = {
+    execution_id: executionId,
+    phase: checkpoint.phase,
+    publication_plan_digest: plan.publication_plan_digest,
+    materialization_digest: plan.materialization_digest,
+    receipt: {
+      present: previewReceipt !== null || publicReceipt !== null,
+      status: receiptStatus,
+      receipt_digest: receiptDigest
+    },
+    confirmation: {
+      state: confirmationState,
+      confirmation_digest: confirmationDigest
+    },
+    publication_status: publicationStatus
+  };
+  return { ok: true, operation, artifact, state: publicationStatus };
 }
 
 interface PackagedMemoryAssets {
@@ -454,14 +675,7 @@ async function readInput<T>(options: CliOptions): Promise<T> {
   if (options.input === undefined) {
     throw new HarnessError('CONTRACT_INVALID', '--input <json> is required for this operation');
   }
-  try {
-    return JSON.parse(await readFile(options.input, 'utf8')) as T;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new HarnessError('CONTRACT_INVALID', `input is not valid JSON: ${error.message}`);
-    }
-    throw error;
-  }
+  return readJsonFile<T>(options.input, 'input');
 }
 
 function requiredRunId(options: CliOptions, input?: { readonly run_id?: string }): string {
@@ -489,6 +703,9 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     throw new HarnessError('CONTRACT_INVALID', 'V1 supports --output json only');
   }
   const operation = positional.join(' ');
+  if (operation === 'x-article browser materialization-status') {
+    return readMaterializationStatus(operation, options, providedOptions);
+  }
   const store = await WorkspaceStore.open(options.workspace);
   const packages = new PackageService(store);
 
@@ -1208,111 +1425,6 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const artifact = await browser.confirmPublish(id, confirmation);
       return { ok: true, operation, artifact, state: artifact.state };
     }
-    if (operation === 'x-article browser materialization-status') {
-      validateExactOptions(operation, providedOptions, ['execution']);
-      const id = requiredStableExecutionId(options);
-      const snapshot = await browser.status(id);
-      const prefix = `runs/${id}/x-article/browser`;
-      const context = await store.readJson<{
-        readonly schema_version?: unknown;
-        readonly execution_mode?: unknown;
-      }>(`${prefix}/adapter-context.json`);
-      if (context.schema_version !== '1.0' || context.execution_mode !== 'materialization_v3_2') {
-        throw new HarnessError(
-          'CONTRACT_INVALID',
-          'materialization-status requires a V3.2 prepared execution'
-        );
-      }
-      const materializationStore = new XArticleMaterializationStore(store);
-      const plan = await materializationStore.readPlan(id);
-      const checkpoint = await materializationStore.readCheckpoint(id);
-      if (
-        plan.execution_id !== id
-        || checkpoint.execution_id !== id
-        || checkpoint.materialization_digest !== plan.materialization_digest
-      ) {
-        throw new HarnessError(
-          'ARTICLE_CHECKPOINT_CONFLICT',
-          'materialization status artifacts are not bound to the requested execution'
-        );
-      }
-
-      let receiptState: 'absent' | 'preview_verified' | 'public_verified' = 'absent';
-      let receiptDigest: `sha256:${string}` | null = null;
-      const previewReceiptPath = `${prefix}/materialization-receipt.json`;
-      const publicReceiptPath = `${prefix}/materialization-receipt-public.json`;
-      for (const [path, state] of [
-        [previewReceiptPath, 'preview_verified'],
-        [publicReceiptPath, 'public_verified']
-      ] as const) {
-        if (!(await store.exists(path))) continue;
-        const receipt = validateContract<XArticleMaterializationReceiptV1>(
-          'x-article-materialization-receipt',
-          await store.readJson<unknown>(path)
-        );
-        if (
-          receipt.execution_id !== id
-          || receipt.materialization_digest !== plan.materialization_digest
-          || receipt.receipt_digest !== sha256(digestBody(
-            receipt as unknown as Record<string, unknown>,
-            'receipt_digest'
-          ))
-          || (state === 'public_verified' && receipt.supersedes_receipt_digest !== receiptDigest)
-        ) {
-          throw new HarnessError('CONTRACT_INVALID', 'materialization receipt binding is invalid');
-        }
-        receiptState = state;
-        receiptDigest = receipt.receipt_digest;
-      }
-
-      const confirmationPath = `${prefix}/publish-confirmation.json`;
-      const confirmationExists = await store.exists(confirmationPath);
-      let confirmationState: 'absent' | 'uncommitted' | 'armed' | 'consumed' =
-        checkpoint.publish_confirmation;
-      let confirmationDigest: `sha256:${string}` | null = null;
-      if (confirmationExists) {
-        const confirmation = validateContract<XArticlePublishConfirmationV1>(
-          'x-article-publish-confirmation',
-          await store.readJson<unknown>(confirmationPath)
-        );
-        if (
-          confirmation.execution_id !== id
-          || confirmation.plan_digest !== plan.publication_plan_digest
-          || confirmation.document_digest !== plan.document_digest
-          || confirmation.confirmation_digest !== sha256(digestBody(
-            confirmation as unknown as Record<string, unknown>,
-            'confirmation_digest'
-          ))
-        ) {
-          throw new HarnessError('CONTRACT_INVALID', 'publish confirmation binding is invalid');
-        }
-        confirmationDigest = confirmation.confirmation_digest;
-        if (checkpoint.publish_confirmation === 'absent') confirmationState = 'uncommitted';
-      } else if (checkpoint.publish_confirmation !== 'absent') {
-        throw new HarnessError(
-          'PUBLISH_GATE_BLOCKED',
-          'durable publish confirmation state has no confirmation artifact'
-        );
-      }
-
-      const artifact = {
-        protocol: 'x-article-materialization/v3.2',
-        execution: snapshot,
-        checkpoint: {
-          materialization_digest: checkpoint.materialization_digest,
-          revision: checkpoint.revision,
-          phase: checkpoint.phase,
-          body_status: checkpoint.body.status,
-          media_total: checkpoint.media.length,
-          media_completed: checkpoint.media.filter((item) => item.status === 'completed').length,
-          publish_confirmation: checkpoint.publish_confirmation,
-          updated_at: checkpoint.updated_at
-        },
-        receipt: { state: receiptState, receipt_digest: receiptDigest },
-        confirmation: { state: confirmationState, confirmation_digest: confirmationDigest }
-      };
-      return { ok: true, operation, artifact, state: snapshot.state };
-    }
     if (operation === 'x-article browser refresh-approval') {
       const value = input as unknown as { approval: XArticleApprovalV1 };
       const artifact = await browser.refreshApproval(requiredExecutionId(options), value.approval);
@@ -1497,7 +1609,9 @@ async function main(): Promise<void> {
     const code = error instanceof HarnessError
       ? error.code
       : (error as NodeJS.ErrnoException).code ?? 'UNEXPECTED';
-    const message = error instanceof Error ? error.message : 'unexpected error';
+    const message = error instanceof HarnessError
+      ? error.message
+      : 'operation failed';
     process.stdout.write(`${JSON.stringify({ ok: false, operation, error: { code, message } })}\n`);
     process.exitCode = exitCode(error);
   }

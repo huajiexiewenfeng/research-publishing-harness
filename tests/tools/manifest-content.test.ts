@@ -1,12 +1,37 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { canonicalManifestBytes } from '../../tools/manifest-content.js';
+
+const inventoryRoots = [
+  'harnesses/research-publishing',
+  'skills/article-publishing-copilot',
+  'skills/x-publishing-copilot',
+  'skills/research-synthesis-copilot',
+  'docs/guides',
+  'docs/examples',
+  'tools'
+] as const;
+const inventoryFiles = ['README.md'] as const;
+const excludedInventoryNames = new Set([
+  '.git', 'dist', 'node_modules', 'workspaces', 'receipts', 'secrets'
+]);
+
+async function intendedInventory(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(resolve(directory), { withFileTypes: true })) {
+    if (excludedInventoryNames.has(entry.name)) continue;
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await intendedInventory(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
+}
 
 describe('canonicalManifestBytes', () => {
   it('produces identical manifest evidence for LF and CRLF checkouts', () => {
@@ -137,19 +162,14 @@ describe('canonicalManifestBytes', () => {
       }
     });
 
-    expect(manifest.files.map((file) => file.path)).toEqual(expect.arrayContaining([
-      'harnesses/research-publishing/cli/index.ts',
-      'harnesses/research-publishing/core/x-article-materialization.ts',
-      'harnesses/research-publishing/core/x-article-materialization-store.ts',
-      'harnesses/research-publishing/contracts/x-article-materialization-plan.schema.json',
-      'harnesses/research-publishing/contracts/x-article-materialization-checkpoint.schema.json',
-      'harnesses/research-publishing/contracts/x-article-materialization-progress.schema.json',
-      'harnesses/research-publishing/contracts/x-article-materialization-receipt.schema.json',
-      'harnesses/research-publishing/contracts/x-article-publish-confirmation.schema.json',
-      'README.md',
-      'tools/build-manifest.ts',
-      'tools/manifest-content.ts'
-    ]));
+    const root = resolve('.');
+    const expectedPaths = (
+      await Promise.all(inventoryRoots.map((directory) => intendedInventory(directory)))
+    ).flat()
+      .concat(inventoryFiles.map((file) => resolve(file)))
+      .map((path) => path.slice(root.length + 1).replaceAll('\\', '/'))
+      .sort();
+    expect(manifest.files.map((file) => file.path)).toEqual(expectedPaths);
 
     for (const file of manifest.files) {
       const bytes = canonicalManifestBytes(await readFile(resolve(file.path)));

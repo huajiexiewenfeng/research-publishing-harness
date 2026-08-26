@@ -240,8 +240,8 @@
     },
     {
       "path": "harnesses/research-publishing/cli/index.ts",
-      "sha256": "483551696d74ee858419e014997151fa4f10d70336a83d11784ce8b5aca4e036",
-      "bytes": 68685
+      "sha256": "1d3e015bca20bd41864632ca1c63d2b34f22f9d78a690e594d6d748a799e3e75",
+      "bytes": 72341
     },
     {
       "path": "harnesses/research-publishing/contracts/approval-v2-1.schema.json",
