@@ -1,4 +1,4 @@
-import type { XArticleImportTemplateV1 } from '../adapters/x/article-browser/article-import-template.js';
+import { type XArticleImportTemplateV1 } from '../adapters/x/article-browser/article-import-template.js';
 import { type XArticlePublicationPlanV1 } from './x-article-publication-plan.js';
 export type XArticleMaterializationStrategy = 'rich_text_anchor_import/v1' | 'block_materialization/v1';
 export interface XArticleMaterializationPlanV1 {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  createXArticleImportTemplate
+  createXArticleImportTemplate,
+  type XArticleImportTemplateV1
 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import type {
   XArticleBlockV1,
@@ -86,6 +87,28 @@ function materializationPlan() {
   });
 }
 
+function resignImportTemplate(
+  override: Partial<Omit<XArticleImportTemplateV1, 'template_digest'>>
+): XArticleImportTemplateV1 {
+  const body = {
+    schema_version: importTemplate.schema_version,
+    source_document_digest: importTemplate.source_document_digest,
+    blocks: importTemplate.blocks,
+    anchors: importTemplate.anchors,
+    ...override
+  };
+  return { ...body, template_digest: sha256(body) };
+}
+
+function createWithImportTemplate(forgedTemplate: XArticleImportTemplateV1) {
+  return createXArticleMaterializationPlan({
+    execution_id: 'execution_v32',
+    publication_plan: publicationPlan,
+    import_template: forgedTemplate,
+    strategy: 'rich_text_anchor_import/v1'
+  });
+}
+
 describe('X Article materialization contracts', () => {
   it('creates a deterministic, budgeted plan for three inline visuals', () => {
     const result = materializationPlan();
@@ -114,8 +137,23 @@ describe('X Article materialization contracts', () => {
       asset_digest: inlineVisuals[0].digest,
       alt_text: 'The runtime boundary.'
     });
-    expect(result.visual_anchors.every((anchor) => /^sha256:[0-9a-f]{64}$/.test(anchor.context_digest)))
-      .toBe(true);
+    expect(result.visual_anchors.map((anchor) => anchor.context_digest)).toEqual([
+      sha256({
+        previous_block: importTemplate.blocks[0],
+        anchor_block: importTemplate.blocks[1],
+        next_block: importTemplate.blocks[2]
+      }),
+      sha256({
+        previous_block: importTemplate.blocks[2],
+        anchor_block: importTemplate.blocks[3],
+        next_block: importTemplate.blocks[4]
+      }),
+      sha256({
+        previous_block: importTemplate.blocks[4],
+        anchor_block: importTemplate.blocks[5],
+        next_block: null
+      })
+    ]);
     expect(result.materialization_digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(materializationPlan()).toEqual(result);
   });
@@ -187,10 +225,46 @@ describe('X Article materialization contracts', () => {
   });
 
   it.each([
+    {
+      case: 'removed final block and anchor',
+      template: resignImportTemplate({
+        blocks: importTemplate.blocks.slice(0, -1),
+        anchors: importTemplate.anchors.slice(0, -1)
+      })
+    },
+    {
+      case: 'reordered non-anchor blocks',
+      template: resignImportTemplate({
+        blocks: importTemplate.blocks.map((block, index) => {
+          if (index === 0) return importTemplate.blocks[2]!;
+          if (index === 2) return importTemplate.blocks[0]!;
+          return block;
+        })
+      })
+    },
+    {
+      case: 'altered anchor marker',
+      template: resignImportTemplate({
+        blocks: importTemplate.blocks.map((block, index) => index === 1
+          ? { ...block, marker: `${importTemplate.anchors[0]!.marker}:forged` }
+          : block),
+        anchors: importTemplate.anchors.map((anchor, index) => index === 0
+          ? { ...anchor, marker: `${anchor.marker}:forged` }
+          : anchor)
+      })
+    }
+  ])('rejects attacker-recomputed import templates with $case', ({ template }) => {
+    expect(() => createWithImportTemplate(template))
+      .toThrowError(expect.objectContaining({ code: 'ARTICLE_MATERIALIZATION_DRIFT' }));
+  });
+
+  it.each([
     { execution_id: '../escape' },
     { materialization_digest: digest('0') },
     { visual_anchors: [...materializationPlan().visual_anchors].reverse() },
-    { expected_command_ceiling: 14 }
+    { expected_command_ceiling: 14 },
+    { expected_observation_ceiling: 11 },
+    { budget: { ...materializationPlan().budget, fixed_seconds: 179 } }
   ])('rejects invalid materialization plan values: $override', (override) => {
     expect(() => validateContract('x-article-materialization-plan', {
       ...materializationPlan(),

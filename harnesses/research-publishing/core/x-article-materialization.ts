@@ -1,5 +1,6 @@
-import type {
-  XArticleImportTemplateV1
+import {
+  createXArticleImportTemplate,
+  type XArticleImportTemplateV1
 } from '../adapters/x/article-browser/article-import-template.js';
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
@@ -127,20 +128,23 @@ const MATERIALIZATION_BUDGET = {
 function assertImportTemplateMatchesPlan(
   publicationPlan: XArticlePublicationPlanV1,
   importTemplate: XArticleImportTemplateV1
-): void {
+): XArticleImportTemplateV1 {
   const expectedDocumentDigest = sha256(publicationPlan.intent.document);
+  const canonicalTemplate = createXArticleImportTemplate(publicationPlan.intent.document);
   const templateBody = Object.fromEntries(
     Object.entries(importTemplate).filter(([key]) => key !== 'template_digest')
   );
   if (
     importTemplate.source_document_digest !== expectedDocumentDigest
     || importTemplate.template_digest !== sha256(templateBody)
+    || importTemplate.template_digest !== canonicalTemplate.template_digest
   ) {
     throw new HarnessError(
       'ARTICLE_MATERIALIZATION_DRIFT',
       'X Article import template does not match the locked publication document'
     );
   }
+  return canonicalTemplate;
 }
 
 function materializationAnchor(
@@ -192,10 +196,13 @@ export function createXArticleMaterializationPlan(
   input: CreateXArticleMaterializationPlanInput
 ): XArticleMaterializationPlanV1 {
   assertXArticlePublicationPlan(input.publication_plan);
-  assertImportTemplateMatchesPlan(input.publication_plan, input.import_template);
+  const canonicalImportTemplate = assertImportTemplateMatchesPlan(
+    input.publication_plan,
+    input.import_template
+  );
 
-  const visualAnchors = input.import_template.anchors.map((_anchor, index) =>
-    materializationAnchor(input.publication_plan, input.import_template, index)
+  const visualAnchors = canonicalImportTemplate.anchors.map((_anchor, index) =>
+    materializationAnchor(input.publication_plan, canonicalImportTemplate, index)
   );
   const body = {
     schema_version: 'x-article-materialization-plan/v1' as const,
@@ -203,8 +210,8 @@ export function createXArticleMaterializationPlan(
     publication_plan_digest: input.publication_plan.plan_digest as `sha256:${string}`,
     target_account: input.publication_plan.intent.target_account,
     strategy: input.strategy,
-    document_digest: input.import_template.source_document_digest as `sha256:${string}`,
-    import_template_digest: input.import_template.template_digest as `sha256:${string}`,
+    document_digest: canonicalImportTemplate.source_document_digest as `sha256:${string}`,
+    import_template_digest: canonicalImportTemplate.template_digest as `sha256:${string}`,
     visual_anchors: visualAnchors,
     expected_command_ceiling: 12 + visualAnchors.length,
     expected_observation_ceiling: 9 + visualAnchors.length,
