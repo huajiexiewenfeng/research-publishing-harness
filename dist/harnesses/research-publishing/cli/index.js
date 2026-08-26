@@ -232,7 +232,13 @@ async function readMaterializationStatus(operation, options, providedOptions) {
         throw new HarnessError('ARTIFACT_NOT_FOUND', 'workspace is unavailable');
     }
     const prefix = resolve(options.workspace, 'runs', executionId, 'x-article', 'browser');
-    const context = await readJsonFile(resolve(prefix, 'adapter-context.json'), 'execution state');
+    const contextValue = await readJsonFile(resolve(prefix, 'adapter-context.json'), 'execution state');
+    if (typeof contextValue !== 'object'
+        || contextValue === null
+        || Array.isArray(contextValue)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization-status requires a V3.2 prepared execution');
+    }
+    const context = contextValue;
     if (context.schema_version !== '1.0'
         || context.execution_mode !== 'materialization_v3_2'
         || context.plan === undefined) {

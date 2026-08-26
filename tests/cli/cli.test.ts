@@ -307,6 +307,49 @@ describe('research-publish CLI', () => {
     expect(unreadable.stdout).not.toMatch(/EISDIR|EACCES|EPERM|stack/i);
   });
 
+  it('rejects non-object adapter contexts without mutation or path leakage in source and dist', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-context-'));
+    const workspace = join(parent, 'workspace-secret');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare', '--workspace', workspace,
+      '--plan', planPath, '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+    const contextPath = join(
+      workspace, 'runs', executionId, 'x-article', 'browser', 'adapter-context.json'
+    );
+    const statusArgs = [
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ];
+
+    for (const invalidContext of [null, []] as const) {
+      await writeFile(contextPath, JSON.stringify(invalidContext));
+      const beforeStatus = await filesystemSnapshot(workspace);
+      const sourceResult = runSource(statusArgs);
+      const distResult = run(statusArgs);
+
+      for (const result of [sourceResult, distResult]) {
+        expect(result.status).toBe(2);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          error: {
+            code: 'CONTRACT_INVALID',
+            message: 'materialization-status requires a V3.2 prepared execution'
+          }
+        });
+        expect(result.stdout).not.toContain(parent);
+        expect(result.stdout).not.toContain('workspace-secret');
+        expect(result.stdout).not.toMatch(/TypeError|Cannot read|stack|cause/i);
+      }
+      expect(distResult.stdout).toBe(sourceResult.stdout);
+      await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeStatus);
+    }
+  });
+
   it('rejects unknown, extra, unsafe, malformed, and wrong-schema V3.2 CLI inputs', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-materialization-invalid-'));
     const workspace = join(parent, 'workspace');

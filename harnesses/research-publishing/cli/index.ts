@@ -379,11 +379,25 @@ async function readMaterializationStatus(
     options.workspace,
     'runs', executionId, 'x-article', 'browser'
   );
-  const context = await readJsonFile<{
+  const contextValue = await readJsonFile<unknown>(
+    resolve(prefix, 'adapter-context.json'),
+    'execution state'
+  );
+  if (
+    typeof contextValue !== 'object'
+    || contextValue === null
+    || Array.isArray(contextValue)
+  ) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'materialization-status requires a V3.2 prepared execution'
+    );
+  }
+  const context = contextValue as {
     readonly schema_version?: unknown;
     readonly execution_mode?: unknown;
     readonly plan?: unknown;
-  }>(resolve(prefix, 'adapter-context.json'), 'execution state');
+  };
   if (
     context.schema_version !== '1.0'
     || context.execution_mode !== 'materialization_v3_2'
