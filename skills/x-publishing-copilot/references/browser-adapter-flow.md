@@ -1,6 +1,6 @@
 # Browser Adapter Host Flow
 
-Use this reference only after a V2.0 or V2.1 Browser Plan and its digest-bound Approval exist.
+Use the first section only after a V2.0 or V2.1 Single, Thread, or Reply Browser Plan and its digest-bound Approval exist. Prepared X Article V3.2 executions use the version-bound section below.
 
 ```text
 Harness next
@@ -15,25 +15,30 @@ Harness next
 
 The Host reuses the explicit Chrome Browser binding and its existing login. If the bound tab becomes stale, reacquire only the X tab and obtain a fresh Harness Observation before continuing. Read no Browser storage and persist no credentials, unrelated tabs, timelines, or private messages.
 
-`next → claim → execute → report` is the only action loop. Never make a second Submit claim. A claimed Submit with an uncertain result permanently switches the workflow to read-only verification; call `resume-verification` rather than attempting another write.
+`next → claim → execute → report` is the only Single, Thread, or Reply action loop. Never make a second Submit claim. A claimed Submit with an uncertain result permanently switches the workflow to read-only verification; call `resume-verification` rather than attempting another write.
 
 Execute only the command kind and target reference in the claimed envelope. Reject a changed page revision, non-X origin, unknown command kind, unsupported Browser family, or extra Host payload. When the Chrome binding is unavailable, report `BROWSER_EXECUTOR_UNAVAILABLE` and stop instead of switching surfaces.
 
 For V2.1, the only additional commands are `upload_attachment` and `set_attachment_alt_text`. Re-resolve Package containment, reject directory/symlink/escape, and recompute source digest and MIME before upload. Upload no arbitrary Host path. Re-observe attachment count, ordinal, type, state, Alt Text, and unchanged text before Submit.
 
-## X Article bulk document import
+## X Article V3.2 materialization
 
-The observed X Article editor has no `.md` file-upload path. When the manifest advertises both `import_article_document` and `replace_article_visual_anchor`, keep the normal claim loop and execute this sequence:
+Read [the complete V3.2 Host protocol](x-article-materialization-v3-2.md) before any X Article Chrome action. Its loop is version-bound to `x-article-materialization/v3.2` and `rich_text_anchor_import/v1`.
 
 ```text
-Harness import command
-→ Host pastes the digest-bound structured document once
-→ Harness verifies template digest and ordered anchors
-→ Host replaces each approved visual anchor
-→ Harness verifies the final Article Document
-→ Preview → action-time confirmation → publish_once
+materialization-status
+→ next
+→ verify the exact release, Plan, account, origin, Draft, revision, payload digest, and strategy
+→ claim
+→ execute the complete claimed semantic Chrome transaction
+→ emit materialization_progress every 20 seconds only during a bounded wait
+→ capture one normalized post-transaction observation
+→ report
+→ repeat until confirmation_pending
 ```
 
-`import_article_document` is one controlled editor action. Do not upload a Markdown file or paste raw or unplanned Markdown. Import only into the claimed empty titled draft: any body block, visual, anchor, or unknown content fails closed. The temporary anchors reserve the approved inline-image ordinals; each `replace_article_visual_anchor` action must replace the named anchor at that ordinal rather than append an image.
+One V3.2 claim authorizes one complete semantic transaction, which may contain the bounded local UI substeps needed to finish that command. It does not authorize a second command, a second report, or unrelated typing, file selection, navigation, observation, or recovery. The only local file allowed during a claimed asset command is the exact Package-contained, digest-matching asset in its payload.
 
-After bulk import starts, never switch to incremental `insert_article_block`. On recovery, observe the exact template digest and remaining ordered anchors, then resume the next approved replacement without reimporting or changing strategy. Do not open Preview while any anchor remains. The final Article Document must match exactly before Preview, and action-time confirmation before the final `publish_once` claim remains required.
+The observed X Article editor has no `.md` upload path. `import_article_document` imports the structured template once into the claimed empty titled Draft and verifies its template/source digests, ordered anchors, unknown-content flag, and autosave state. `replace_article_visual_anchor` replaces exactly one named anchor with the one claimed asset, restores its planned ordinal, writes and reads back inline Alt, removes the anchor, and waits for autosave before the single observation.
+
+After bulk import starts, never use `insert_article_block`, reimport, or change strategy. Recovery begins with `resume-editor` and a newly issued observe/reconcile command; never perform an unclaimed recovery action. Stop at `confirmation_pending`, display the verified Preview card, and wait for the Human. `confirm-publish` and the later at-most-once Publish loop are outside the Draft materialization transaction.

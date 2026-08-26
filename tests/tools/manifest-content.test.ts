@@ -49,16 +49,27 @@ describe('canonicalManifestBytes', () => {
     const manifest = JSON.parse(
       await readFile(resolve('registry/manifests/research-publishing.json'), 'utf8')
     ) as {
+      schema_version: string;
+      harness: Record<string, unknown>;
       compatibility: { llm_wiki_runtime: string; skills: string[] };
+      interfaces: Record<string, unknown>;
       files: Array<{ path: string }>;
     };
     const paths = manifest.files.map((file) => file.path);
+    expect(Object.keys(manifest).sort()).toEqual([
+      'compatibility', 'files', 'harness', 'interfaces', 'schema_version'
+    ]);
     expect(paths).toContain(
       'harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts'
     );
     expect(paths).toContain(
       'skills/x-publishing-copilot/references/x-article-browser-flow.md'
     );
+    expect(paths).toContain(
+      'skills/x-publishing-copilot/references/x-article-materialization-v3-2.md'
+    );
+    expect(paths.every((path) => !/^(?:[A-Za-z]:|\/|\\\\)/.test(path))).toBe(true);
+    expect(paths.every((path) => !path.includes('\\'))).toBe(true);
     expect(paths).toEqual(expect.arrayContaining([
       'harnesses/research-publishing/core/memory-query-service.ts',
       'harnesses/research-publishing/core/memory-ingest-service.ts',

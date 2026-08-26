@@ -1260,8 +1260,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/SKILL.md",
-      "sha256": "dfc75110020c55c2e8ef10c9a4d0d94c98ab9f20442dcc9d1fd217a5e5054a3b",
-      "bytes": 5007
+      "sha256": "4b80340f2bdab2c333b730144d5fef180fa62f8a8486181a8e8f6d31df77d1da",
+      "bytes": 5738
     },
     {
       "path": "skills/x-publishing-copilot/agents/openai.yaml",
@@ -1270,8 +1270,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/browser-adapter-flow.md",
-      "sha256": "9c156de2143e4cfdcf537dd19d59411f0b1c5e8b0ab0a5cdf3185cb556b4637e",
-      "bytes": 3035
+      "sha256": "f0ec27ebdcf6cf93aff670fba0025700fb04f2841ae1b97538507b139d1bb600",
+      "bytes": 3699
     },
     {
       "path": "skills/x-publishing-copilot/references/memory-loop.md",
@@ -1285,8 +1285,13 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-browser-flow.md",
-      "sha256": "7619bb35a66415a4ec5e5418d6da0bfc976221a7d806f2349b11fce509daae86",
-      "bytes": 1465
+      "sha256": "16c2172b2928c08e62125a5240cd2409b279ab23c9d5902ddd24353a0eb61d8c",
+      "bytes": 2703
+    },
+    {
+      "path": "skills/x-publishing-copilot/references/x-article-materialization-v3-2.md",
+      "sha256": "79fce7d0ddecdcc0cfe679998d400d8ae73d758da03cd34d4f6679e213d1a7a0",
+      "bytes": 9889
     },
     {
       "path": "skills/x-publishing-copilot/scp.yml",

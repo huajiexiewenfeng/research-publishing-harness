@@ -636,10 +636,14 @@ describe('research-publish CLI', () => {
     ]));
   });
 
-  it('packages both X Article bulk-import capabilities in the manifest and Host reference', async () => {
-    const [manifestText, reference] = await Promise.all([
+  it('packages the executable X Article V3.2 Browser Host protocol', async () => {
+    const [manifestText, browserReference, materializationReference] = await Promise.all([
       readFile(resolve('registry/manifests/research-publishing.json'), 'utf8'),
-      readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8')
+      readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8'),
+      readFile(
+        resolve('skills/x-publishing-copilot/references/x-article-materialization-v3-2.md'),
+        'utf8'
+      )
     ]);
     const manifest = JSON.parse(manifestText) as {
       interfaces: { x_article_browser: { capabilities: Record<string, string> } };
@@ -647,8 +651,16 @@ describe('research-publish CLI', () => {
 
     expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('import_article_document');
     expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('replace_article_visual_anchor');
-    expect(reference).toContain('import_article_document');
-    expect(reference).toContain('replace_article_visual_anchor');
+    expect(browserReference).toContain('import_article_document');
+    expect(browserReference).toContain('replace_article_visual_anchor');
+    expect(materializationReference).toContain('x-article-materialization/v3.2');
+    expect(materializationReference).toContain('rich_text_anchor_import/v1');
+    expect(materializationReference).toContain('import_article_document');
+    expect(materializationReference).toContain('replace_article_visual_anchor');
+    expect(materializationReference).toContain('materialization_progress');
+    expect(materializationReference).toContain('confirm-publish');
+    expect(materializationReference).toContain('never switch to `block_materialization/v1`');
+    expect(materializationReference).not.toMatch(/^x-article browser progress\b/m);
   });
 
   it('captures a Candidate only below the selected workspace', async () => {
