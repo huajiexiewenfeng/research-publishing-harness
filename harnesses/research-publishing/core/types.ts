@@ -5,18 +5,21 @@ import type {
   AttachArticleReceiptInput,
   AttachSingleReceiptInput,
   BindArticleExecutionInput,
+  BindPreparedArticleInput,
   BindSingleExecutionInput,
+  BoundPreparedArticleV1,
   DerivedArticleAuthorizationV1,
   DerivedSingleAuthorizationV1,
   MaterializedSinglePublicationV1,
   PlanPublicationBundleInput,
-  PublicationBundleApprovalV1,
+  PublicationBundleApproval,
   PublicationBundleAuditV1,
   PublicationBundlePlanV1,
   PublicationBundleReceiptV1,
   PublicationBundleStatusV1,
   SingleExecutionBindingV1
 } from './publication-bundle-types.js';
+import type { XArticlePublishConfirmationV1 } from './x-article-publish-confirmation.js';
 import type {
   ClaimBoundaryStatus as ProgramClaimBoundaryStatus,
   ResearchArtifactRefV1
@@ -100,6 +103,7 @@ export const CONTRACT_NAMES = [
   'weekly-cycle-status',
   'publication-bundle-plan',
   'publication-bundle-approval',
+  'publication-bundle-approval-v2',
   'publication-bundle-status',
   'publication-bundle-execution-binding',
   'publication-bundle-receipt-binding',
@@ -364,7 +368,10 @@ export interface VisualReviewReport {
 export interface PublicationBundlePort {
   plan(input: PlanPublicationBundleInput): Promise<PublicationBundlePlanV1>;
   audit(bundleId: string): Promise<PublicationBundleAuditV1>;
-  approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApprovalV1>;
+  approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApproval>;
+  bindPreparedArticle(input: BindPreparedArticleInput): Promise<BoundPreparedArticleV1>;
+  unbindPreparedArticle(bundleId: string): Promise<PublicationBundleStatusV1>;
+  articlePublishConfirmation(bundleId: string): Promise<XArticlePublishConfirmationV1>;
   articleAuthorization(bundleId: string): Promise<DerivedArticleAuthorizationV1>;
   bindArticleExecution(input: BindArticleExecutionInput): Promise<ArticleExecutionBindingV1>;
   attachArticleReceipt(input: AttachArticleReceiptInput): Promise<PublicationBundleStatusV1>;

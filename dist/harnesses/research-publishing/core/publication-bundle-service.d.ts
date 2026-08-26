@@ -1,7 +1,8 @@
 import { type PublicationChildExecutionInspector } from './publication-child-execution-inspector.js';
-import type { ApprovePublicationBundleInput, ArticleExecutionBindingV1, AttachArticleReceiptInput, AttachSingleReceiptInput, BindArticleExecutionInput, BindSingleExecutionInput, DerivedArticleAuthorizationV1, DerivedSingleAuthorizationV1, MaterializedSinglePublicationV1, PlanPublicationBundleInput, PublicationBundleApprovalV1, PublicationBundleAuditV1, PublicationBundlePlanV1, PublicationBundleReceiptV1, PublicationBundleStatusV1, SingleExecutionBindingV1 } from './publication-bundle-types.js';
+import type { ApprovePublicationBundleInput, ArticleExecutionBindingV1, AttachArticleReceiptInput, AttachSingleReceiptInput, BindArticleExecutionInput, BindPreparedArticleInput, BindSingleExecutionInput, BoundPreparedArticleV1, DerivedArticleAuthorizationV1, DerivedSingleAuthorizationV1, MaterializedSinglePublicationV1, PlanPublicationBundleInput, PublicationBundleApproval, PublicationBundleAuditV1, PublicationBundlePlanV1, PublicationBundleReceiptV1, PublicationBundleStatusV1, SingleExecutionBindingV1 } from './publication-bundle-types.js';
 import type { WeeklyResearchCycleService } from './weekly-research-cycle-service.js';
 import type { WorkspaceStore } from './workspace-store.js';
+import { type XArticlePublishConfirmationV1 } from './x-article-publish-confirmation.js';
 interface PublicationBundleServiceOptions {
     readonly now?: () => Date;
     readonly approvalId?: () => string;
@@ -16,7 +17,10 @@ export declare class PublicationBundleService {
     constructor(store: WorkspaceStore, weeks: WeeklyResearchCycleService, options?: PublicationBundleServiceOptions);
     plan(input: PlanPublicationBundleInput): Promise<PublicationBundlePlanV1>;
     audit(bundleId: string): Promise<PublicationBundleAuditV1>;
-    approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApprovalV1>;
+    approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApproval>;
+    bindPreparedArticle(input: BindPreparedArticleInput): Promise<BoundPreparedArticleV1>;
+    unbindPreparedArticle(bundleId: string): Promise<PublicationBundleStatusV1>;
+    articlePublishConfirmation(bundleId: string): Promise<XArticlePublishConfirmationV1>;
     articleAuthorization(bundleId: string): Promise<DerivedArticleAuthorizationV1>;
     bindArticleExecution(input: BindArticleExecutionInput): Promise<ArticleExecutionBindingV1>;
     attachArticleReceipt(input: AttachArticleReceiptInput): Promise<PublicationBundleStatusV1>;
@@ -25,6 +29,20 @@ export declare class PublicationBundleService {
     bindSingleExecution(input: BindSingleExecutionInput): Promise<SingleExecutionBindingV1>;
     attachSingleReceipt(input: AttachSingleReceiptInput): Promise<PublicationBundleReceiptV1 | PublicationBundleStatusV1>;
     status(bundleId: string): Promise<PublicationBundleStatusV1>;
+    private approvePreparedArticle;
+    private verifyPreparedArticle;
+    private readPreparedProgress;
+    private preparedBindingMatchesInput;
+    private createPreparedProjection;
+    private optionalPreparedProjection;
+    private readPreparedProjection;
+    private readPreparedBindingRef;
+    private isPreparedBindingUnbound;
+    private ensurePreparedExecutionOwner;
+    private assertPreparedApproval;
+    private persistDerivedArticleConfirmation;
+    private readDerivedArticleConfirmation;
+    private assertApprovalForChildAction;
     private verifySources;
     private assertContentGates;
     private verifyVisual;
@@ -53,6 +71,15 @@ export declare class PublicationBundleService {
     private fileRef;
     private planPath;
     private approvalPath;
+    private bundleLockPath;
+    private articleAdapterPrefix;
+    private articleAdapterLockPath;
+    private preparedExecutionOwnerPath;
+    private preparedBindingsDirectory;
+    private preparedBindingPath;
+    private preparedProjectionPath;
+    private preparedUnbindingPath;
+    private articlePublishConfirmationPath;
     private articleAuthorizationPath;
     private articleExecutionBindingPath;
     private articleReceiptBindingPath;

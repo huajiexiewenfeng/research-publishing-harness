@@ -2,7 +2,10 @@ import { HarnessError } from './errors.js';
 import type { PublicationBundlePhase } from './publication-bundle-types.js';
 
 const TRANSITIONS: Readonly<Record<PublicationBundlePhase, readonly PublicationBundlePhase[]>> = {
-  planned: ['approved'],
+  planned: ['approved', 'article_materializing', 'article_preview_ready'],
+  article_materializing: ['article_preview_ready'],
+  article_preview_ready: ['article_materializing', 'confirmation_pending'],
+  confirmation_pending: ['article_authorized', 'approval_expired'],
   approved: ['article_authorized', 'approval_expired'],
   article_authorized: ['article_in_progress', 'approval_expired'],
   article_in_progress: [

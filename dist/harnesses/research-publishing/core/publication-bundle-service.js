@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { verifyFinalizedArticlePackage } from '../branches/article-harness/article-package-verifier.js';
+import { createXArticleImportTemplate } from '../adapters/x/article-browser/article-import-template.js';
+import { computeXArticlePageRevision } from '../adapters/x/article-browser/article-browser-protocol.js';
 import { assertFinalReceiptV2 } from '../adapters/x/browser/receipt-v2.js';
 import { approvePublicationV2, verifyApprovalV2 } from './approval-v2.js';
 import { approvePublicationV2_1, verifyApprovalV2_1 } from './approval-v2-1.js';
@@ -15,6 +18,8 @@ import { assertPublicationPlanV2, createPublicationPlanV2 } from './publication-
 import { assertPublicationPlanV2_1, createPublicationPlanV2_1 } from './publication-plan-v2-1.js';
 import { createWeeklyPublicationBundleBinding, createWeeklyResearchCycle, createWeeklyTopicSelection } from './research-program-contracts.js';
 import { validateContract } from './schema-validator.js';
+import { createXArticleMaterializationPlan, createXArticleMaterializationReceipt, createXArticleMaterializationStartEvidence } from './x-article-materialization.js';
+import { createXArticlePublishConfirmation, verifyXArticlePublishConfirmation } from './x-article-publish-confirmation.js';
 import { assertApprovedXArticleUrl, materializeXArticleUrl } from './x-article-url-materializer.js';
 import { approveXArticlePublication, verifyXArticleApproval } from './x-article-approval.js';
 import { assertXArticlePublicationPlan } from './x-article-publication-plan.js';
@@ -99,6 +104,9 @@ export class PublicationBundleService {
         return renderPublicationBundleAudit(await this.readPlan(bundleId));
     }
     async approve(input) {
+        if ('confirmed_preview_revision' in input) {
+            return this.approvePreparedArticle(input);
+        }
         const plan = await this.readPlan(input.bundle_id);
         const path = this.approvalPath(input.bundle_id);
         if (await this.store.exists(path)) {
@@ -112,6 +120,129 @@ export class PublicationBundleService {
         const approval = createPublicationBundleApproval(plan, input, this.now(), this.approvalId());
         await this.store.writeNew(path, approval);
         return this.readApproval(plan);
+    }
+    async bindPreparedArticle(input) {
+        const detached = structuredClone(input);
+        return this.store.withLock(this.bundleLockPath(detached.bundle_id), async () => {
+            const plan = await this.readPlan(detached.bundle_id);
+            if (await this.store.exists(this.approvalPath(detached.bundle_id))) {
+                throw new HarnessError('STATE_TRANSITION_INVALID', 'Prepared Article binding cannot change after Bundle approval');
+            }
+            return this.store.withLock(this.articleAdapterLockPath(detached.execution_id), async () => {
+                const verified = await this.verifyPreparedArticle(plan, detached);
+                await this.ensurePreparedExecutionOwner(plan, detached.execution_id);
+                const projection = await this.optionalPreparedProjection(detached.bundle_id);
+                if (projection?.active_binding_ref !== null && projection !== undefined) {
+                    const active = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+                    if (!this.preparedBindingMatchesInput(active, detached, verified)) {
+                        throw new HarnessError('STATE_TRANSITION_INVALID', 'Publication Bundle already has a different active prepared Article binding');
+                    }
+                    return { ...active, binding_ref: projection.active_binding_ref };
+                }
+                const entries = await this.store.list(this.preparedBindingsDirectory(detached.bundle_id));
+                const versions = entries
+                    .filter((entry) => entry.kind === 'file' && /^\d{6}\.json$/.test(entry.name))
+                    .map((entry) => Number.parseInt(entry.name.slice(0, 6), 10));
+                const latestVersion = versions.length === 0 ? 0 : Math.max(...versions);
+                let binding;
+                let bindingPath;
+                let recoveredOrphan = false;
+                if (latestVersion > 0) {
+                    bindingPath = this.preparedBindingPath(detached.bundle_id, latestVersion);
+                    const orphanRef = await this.fileRef(bindingPath);
+                    const orphan = await this.readPreparedBindingRef(plan, orphanRef);
+                    const unbound = await this.isPreparedBindingUnbound(detached.bundle_id, orphanRef);
+                    if (!unbound) {
+                        if (!this.preparedBindingMatchesInput(orphan, detached, verified)) {
+                            throw new HarnessError('APPROVAL_STALE', 'orphaned prepared Article binding differs from retry input');
+                        }
+                        binding = orphan;
+                        recoveredOrphan = true;
+                    }
+                }
+                if (!recoveredOrphan) {
+                    const bindingVersion = latestVersion + 1;
+                    bindingPath = this.preparedBindingPath(detached.bundle_id, bindingVersion);
+                    const body = {
+                        schema_version: 'publication-bundle-prepared-article-binding/v1',
+                        binding_version: bindingVersion,
+                        bundle_id: detached.bundle_id,
+                        bundle_plan_ref: await this.fileRef(this.planPath(detached.bundle_id)),
+                        execution_id: detached.execution_id,
+                        run_id: verified.context.snapshot.run_id,
+                        plan_id: verified.context.snapshot.plan_id,
+                        child_plan_ref: verified.planRef,
+                        child_plan_digest: plan.article_plan.plan_digest,
+                        materialization_plan_ref: verified.materializationPlanRef,
+                        materialization_digest: verified.materializationPlan.materialization_digest,
+                        draft_id: verified.context.snapshot.draft_id,
+                        target_account: plan.article_plan.intent.target_account,
+                        audience: 'everyone',
+                        document_digest: verified.materializationPlan.document_digest,
+                        preview_observation_ref: verified.previewRef,
+                        preview_observed_at: verified.preview.observed_at,
+                        preview_revision: verified.preview.page_revision,
+                        materialization_receipt_ref: verified.receiptRef,
+                        materialization_receipt_digest: verified.receipt.receipt_digest,
+                        asset_digests: plan.article_plan.intent.visuals.map((item) => item.asset.digest),
+                        bound_at: detached.bound_at
+                    };
+                    binding = { ...body, binding_digest: sha256(body) };
+                    await this.store.writeNew(bindingPath, binding);
+                }
+                if (binding === undefined || bindingPath === undefined) {
+                    throw new HarnessError('APPROVAL_STALE', 'prepared Article binding recovery failed');
+                }
+                const bindingRef = await this.fileRef(bindingPath);
+                const nextProjection = this.createPreparedProjection(detached.bundle_id, projection?.revision ?? 0, bindingRef, detached.bound_at);
+                await this.store.replaceAtomic(this.preparedProjectionPath(detached.bundle_id), nextProjection);
+                return { ...binding, binding_ref: bindingRef };
+            });
+        });
+    }
+    async unbindPreparedArticle(bundleId) {
+        await this.store.withLock(this.bundleLockPath(bundleId), async () => {
+            const plan = await this.readPlan(bundleId);
+            if (await this.store.exists(this.approvalPath(bundleId))) {
+                throw new HarnessError('STATE_TRANSITION_INVALID', 'Prepared Article binding cannot be reversed after Bundle approval');
+            }
+            const projection = await this.optionalPreparedProjection(bundleId);
+            if (projection === undefined || projection.active_binding_ref === null)
+                return;
+            await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+            const unbindingPath = this.preparedUnbindingPath(bundleId, projection.revision);
+            const body = {
+                schema_version: 'publication-bundle-prepared-article-unbinding/v1',
+                bundle_id: bundleId,
+                binding_ref: projection.active_binding_ref,
+                unbound_at: this.now().toISOString()
+            };
+            const unbinding = {
+                ...body,
+                unbinding_digest: sha256(body)
+            };
+            if (await this.store.exists(unbindingPath)) {
+                const existing = await this.readJson(unbindingPath);
+                if (!isDeepStrictEqual(existing, unbinding)) {
+                    throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding record changed');
+                }
+            }
+            else {
+                await this.store.writeNew(unbindingPath, unbinding);
+            }
+            await this.store.replaceAtomic(this.preparedProjectionPath(bundleId), this.createPreparedProjection(bundleId, projection.revision, null, unbinding.unbound_at));
+        });
+        return this.status(bundleId);
+    }
+    async articlePublishConfirmation(bundleId) {
+        const plan = await this.readPlan(bundleId);
+        const approval = await this.readApproval(plan);
+        if (approval.schema_version !== 'publication-bundle-approval/v2') {
+            throw new HarnessError('STATE_TRANSITION_INVALID', 'legacy Bundle Approval has no prepared Article confirmation');
+        }
+        const binding = await this.readPreparedBindingRef(plan, approval.prepared_article_binding_ref);
+        this.assertPreparedApproval(plan, approval, binding, this.now());
+        return this.readDerivedArticleConfirmation(plan, approval, binding);
     }
     async articleAuthorization(bundleId) {
         const plan = await this.readPlan(bundleId);
@@ -129,8 +260,10 @@ export class PublicationBundleService {
         });
         const approval = await this.optionalApproval(plan);
         const now = this.now();
-        const gate = runPublicationBundlePublishGate(plan, approval, now);
-        if (!gate.passed || approval === undefined) {
+        const gate = approval?.schema_version === 'publication-bundle-approval/v1'
+            ? runPublicationBundlePublishGate(plan, approval, now)
+            : { passed: false, findings: [] };
+        if (!gate.passed || approval?.schema_version !== 'publication-bundle-approval/v1') {
             throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Publication Bundle Publish Gate blocked Article authorization', gate.findings);
         }
         const path = this.articleAuthorizationPath(bundleId);
@@ -162,6 +295,9 @@ export class PublicationBundleService {
     async bindArticleExecution(input) {
         const plan = await this.readPlan(input.bundle_id);
         const approval = await this.readApproval(plan);
+        if (approval.schema_version !== 'publication-bundle-approval/v1') {
+            throw new HarnessError('STATE_TRANSITION_INVALID', 'prepared Article executions use the Bundle-derived Publish confirmation');
+        }
         assertPublicationBundleApproval(plan, approval, this.now());
         const authorization = await this.readArticleAuthorization(plan, approval, true);
         const inspected = await this.inspector.inspectArticle(input.execution_id);
@@ -207,17 +343,39 @@ export class PublicationBundleService {
     }
     async attachArticleReceipt(input) {
         const plan = await this.readPlan(input.bundle_id);
-        const binding = await this.readArticleExecutionBinding(input.bundle_id);
-        const inspected = await this.inspector.inspectArticle(binding.execution_id);
+        let executionId;
+        let installedPlanRef;
+        let executionBindingRef;
+        let snapshot;
+        if (await this.store.exists(this.articleExecutionBindingPath(input.bundle_id))) {
+            const binding = await this.readArticleExecutionBinding(input.bundle_id);
+            const inspected = await this.inspector.inspectArticle(binding.execution_id);
+            executionId = binding.execution_id;
+            installedPlanRef = binding.installed_plan_ref;
+            executionBindingRef = await this.fileRef(this.articleExecutionBindingPath(input.bundle_id));
+            snapshot = inspected.snapshot;
+        }
+        else {
+            const projection = await this.readPreparedProjection(input.bundle_id);
+            if (projection.active_binding_ref === null) {
+                throw new HarnessError('APPROVAL_STALE', 'Article Receipt lacks an active execution binding');
+            }
+            const binding = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+            const context = await this.readJson(`${this.articleAdapterPrefix(binding.execution_id)}/adapter-context.json`);
+            executionId = binding.execution_id;
+            installedPlanRef = binding.child_plan_ref;
+            executionBindingRef = projection.active_binding_ref;
+            snapshot = context.snapshot;
+        }
         const artifact = await this.store.readContainedArtifact(input.receipt_path);
         if (artifact.digest !== input.receipt_digest ||
-            inspected.snapshot.latest_receipt_path !== artifact.relative_path) {
+            snapshot.latest_receipt_path !== artifact.relative_path) {
             throw new HarnessError('APPROVAL_STALE', 'Article Receipt file binding is stale');
         }
         const receipt = validateContract('x-article-publish-receipt', this.parseJson(artifact.content, input.receipt_path));
         const { receipt_digest: receiptDigest, ...receiptBody } = receipt;
         if (receiptDigest !== sha256(receiptBody) ||
-            receipt.execution_id !== binding.execution_id ||
+            receipt.execution_id !== executionId ||
             receipt.plan_id !== plan.article_plan.plan_id ||
             receipt.plan_digest !== plan.article_plan.plan_digest ||
             receipt.source_evidence.article_package_digest !==
@@ -230,7 +388,7 @@ export class PublicationBundleService {
         let canonicalUrl = null;
         let limitations = [];
         if (receipt.status === 'published' || receipt.status === 'published_media_unverified') {
-            if (inspected.snapshot.state !== 'finalized' ||
+            if (snapshot.state !== 'finalized' ||
                 !receipt.public_evidence.author_match || !receipt.public_evidence.content_match ||
                 !receipt.public_evidence.links_match ||
                 (receipt.status === 'published' && receipt.public_evidence.media_match !== true) ||
@@ -248,7 +406,7 @@ export class PublicationBundleService {
             }
         }
         else if (receipt.status !== 'verification_conflict' ||
-            inspected.snapshot.state !== 'verification_conflict') {
+            snapshot.state !== 'verification_conflict') {
             throw new HarnessError('ARTICLE_PUBLICATION_CONFLICT', 'Article terminal Receipt status differs from its execution snapshot');
         }
         else {
@@ -262,13 +420,12 @@ export class PublicationBundleService {
             }
             return this.status(input.bundle_id);
         }
-        const executionBindingRef = await this.fileRef(this.articleExecutionBindingPath(input.bundle_id));
         const body = {
             schema_version: 'publication-bundle-receipt-binding/v1',
             bundle_id: input.bundle_id,
             child_kind: 'x_article',
             execution_binding_ref: executionBindingRef,
-            child_plan_ref: binding.installed_plan_ref,
+            child_plan_ref: installedPlanRef,
             child_plan_digest: plan.article_plan.plan_digest,
             child_receipt_ref: { path: artifact.relative_path, digest: artifact.digest },
             child_receipt_digest: receipt.receipt_digest,
@@ -283,10 +440,7 @@ export class PublicationBundleService {
     async materializeSingle(bundleId) {
         const plan = await this.readPlan(bundleId);
         const approval = await this.readApproval(plan);
-        const gate = runPublicationBundlePublishGate(plan, approval, this.now());
-        if (!gate.passed) {
-            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle Approval cannot materialize Single', gate.findings);
-        }
+        await this.assertApprovalForChildAction(plan, approval, this.now());
         const receiptBinding = await this.readArticleReceiptBinding(bundleId);
         if (!['published', 'published_media_unverified'].includes(receiptBinding.parsed_status) ||
             receiptBinding.canonical_public_url === null) {
@@ -355,10 +509,7 @@ export class PublicationBundleService {
         const plan = await this.readPlan(bundleId);
         const approval = await this.readApproval(plan);
         const now = this.now();
-        const gate = runPublicationBundlePublishGate(plan, approval, now);
-        if (!gate.passed) {
-            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle Approval cannot authorize Single', gate.findings);
-        }
+        await this.assertApprovalForChildAction(plan, approval, now);
         const receiptBinding = await this.readArticleReceiptBinding(bundleId);
         const materialized = await this.readMaterializedSingle(plan, receiptBinding);
         const path = this.singleAuthorizationPath(bundleId);
@@ -394,7 +545,7 @@ export class PublicationBundleService {
     async bindSingleExecution(input) {
         const plan = await this.readPlan(input.bundle_id);
         const approval = await this.readApproval(plan);
-        assertPublicationBundleApproval(plan, approval, this.now());
+        await this.assertApprovalForChildAction(plan, approval, this.now());
         const materialized = await this.readMaterializedSingle(plan, await this.readArticleReceiptBinding(input.bundle_id));
         const authorization = await this.readSingleAuthorization(plan, approval, materialized, true);
         const inspected = await this.inspector.inspectSingle(materialized.child_plan.run_id, input.execution_id);
@@ -485,13 +636,45 @@ export class PublicationBundleService {
         const approval = await this.store.exists(this.approvalPath(bundleId))
             ? await this.readApproval(plan)
             : null;
+        const preparedProjection = await this.optionalPreparedProjection(bundleId);
+        let preparedBinding = null;
+        if (preparedProjection !== undefined) {
+            updatedAt = preparedProjection.updated_at;
+            if (preparedProjection.active_binding_ref === null) {
+                phase = 'article_materializing';
+            }
+            else {
+                preparedBinding = await this.readPreparedBindingRef(plan, preparedProjection.active_binding_ref);
+                articleExecutionBindingRef = preparedProjection.active_binding_ref;
+                updatedAt = preparedBinding.bound_at;
+                phase = 'article_preview_ready';
+            }
+        }
         if (approval !== null) {
-            phase = 'approved';
+            phase = approval.schema_version === 'publication-bundle-approval/v2'
+                ? 'confirmation_pending'
+                : 'approved';
             updatedAt = approval.approved_at;
         }
+        if (approval?.schema_version === 'publication-bundle-approval/v2') {
+            if (preparedBinding === null) {
+                throw new HarnessError('APPROVAL_STALE', 'Bundle V2 Approval lacks active prepared binding');
+            }
+            await this.readDerivedArticleConfirmation(plan, approval, preparedBinding);
+            const context = await this.readJson(`${this.articleAdapterPrefix(preparedBinding.execution_id)}/adapter-context.json`);
+            if (context.snapshot.state === 'publish_armed') {
+                phase = 'article_authorized';
+                updatedAt = context.snapshot.updated_at;
+            }
+            else if (context.snapshot.state !== 'confirmation_pending') {
+                phase = this.articleSnapshotPhase(context.snapshot.state);
+                updatedAt = context.snapshot.updated_at;
+            }
+        }
         if (await this.store.exists(this.articleAuthorizationPath(bundleId))) {
-            if (approval === null)
-                throw new HarnessError('APPROVAL_STALE', 'Article Authorization lacks Bundle Approval');
+            if (approval?.schema_version !== 'publication-bundle-approval/v1') {
+                throw new HarnessError('APPROVAL_STALE', 'Article Authorization lacks legacy Bundle Approval');
+            }
             await this.readArticleAuthorization(plan, approval, false);
             phase = 'article_authorized';
         }
@@ -577,6 +760,468 @@ export class PublicationBundleService {
         });
         await this.store.replaceAtomic(this.statusPath(bundleId), status);
         return this.readBundleStatus(bundleId);
+    }
+    async approvePreparedArticle(input) {
+        const detached = structuredClone(input);
+        return this.store.withLock(this.bundleLockPath(detached.bundle_id), async () => {
+            const plan = await this.readPlan(detached.bundle_id);
+            const projection = await this.readPreparedProjection(detached.bundle_id);
+            if (projection.active_binding_ref === null) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle confirmation requires an active prepared Article binding');
+            }
+            const binding = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+            await this.store.withLock(this.articleAdapterLockPath(binding.execution_id), async () => {
+                await this.verifyPreparedArticle(plan, {
+                    bundle_id: detached.bundle_id,
+                    execution_id: binding.execution_id,
+                    preview_revision: binding.preview_revision,
+                    materialization_receipt_ref: binding.materialization_receipt_ref,
+                    bound_at: binding.bound_at
+                });
+            });
+            if (detached.confirmed_bundle_digest !== plan.bundle_digest
+                || detached.confirmed_preview_revision !== binding.preview_revision
+                || detached.approved_by.trim().length === 0) {
+                throw new HarnessError('APPROVAL_STALE', 'Bundle confirmation does not match the active verified Article Preview');
+            }
+            const path = this.approvalPath(detached.bundle_id);
+            if (await this.store.exists(path)) {
+                const existing = await this.readApproval(plan);
+                if (existing.schema_version !== 'publication-bundle-approval/v2'
+                    || existing.bundle_digest !== detached.confirmed_bundle_digest
+                    || existing.confirmed_preview_revision !== detached.confirmed_preview_revision
+                    || existing.approved_by !== detached.approved_by
+                    || !exact(existing.prepared_article_binding_ref, projection.active_binding_ref)) {
+                    throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is immutable');
+                }
+                await this.persistDerivedArticleConfirmation(plan, existing, binding);
+                return existing;
+            }
+            const approvedAt = this.now().toISOString();
+            const body = {
+                schema_version: 'publication-bundle-approval/v2',
+                approval_id: this.approvalId(),
+                bundle_id: plan.bundle_id,
+                bundle_digest: plan.bundle_digest,
+                target_account: binding.target_account,
+                scope: 'publish_bundle_once',
+                confirmed_preview_revision: binding.preview_revision,
+                prepared_article_binding_ref: projection.active_binding_ref,
+                approved_by: detached.approved_by,
+                approved_at: approvedAt,
+                expires_at: new Date(Date.parse(approvedAt) + plan.authorization_ttl_ms).toISOString()
+            };
+            const approval = validateContract('publication-bundle-approval-v2', { ...body, approval_digest: sha256(body) });
+            this.assertPreparedApproval(plan, approval, binding);
+            await this.store.writeNew(path, approval);
+            await this.persistDerivedArticleConfirmation(plan, approval, binding);
+            return (await this.readApproval(plan));
+        });
+    }
+    async verifyPreparedArticle(plan, input) {
+        const prefix = this.articleAdapterPrefix(input.execution_id);
+        const [planArtifact, materializationArtifact, checkpointArtifact, contextArtifact] = await Promise.all([
+            this.store.readContainedArtifact(`${prefix}/plan.json`),
+            this.store.readContainedArtifact(`${prefix}/materialization-plan.json`),
+            this.store.readContainedArtifact(`${prefix}/materialization-checkpoint.json`),
+            this.store.readContainedArtifact(`${prefix}/adapter-context.json`)
+        ]);
+        const childPlan = this.parseJson(planArtifact.content, 'prepared Article Plan');
+        assertXArticlePublicationPlan(childPlan);
+        const materializationPlan = validateContract('x-article-materialization-plan', this.parseJson(materializationArtifact.content, 'prepared materialization Plan'));
+        const checkpoint = validateContract('x-article-materialization-checkpoint', this.parseJson(checkpointArtifact.content, 'prepared materialization checkpoint'));
+        const rawContext = this.parseJson(contextArtifact.content, 'prepared Article context');
+        if (typeof rawContext !== 'object' || rawContext === null || Array.isArray(rawContext)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article context is malformed');
+        }
+        const rawSnapshot = Reflect.get(rawContext, 'snapshot');
+        if (typeof rawSnapshot !== 'object' || rawSnapshot === null || Array.isArray(rawSnapshot)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article snapshot is malformed');
+        }
+        const context = rawContext;
+        const canonicalMaterialization = createXArticleMaterializationPlan({
+            execution_id: input.execution_id,
+            publication_plan: plan.article_plan,
+            import_template: createXArticleImportTemplate(plan.article_plan.intent.document),
+            strategy: materializationPlan.strategy
+        });
+        if (input.bundle_id !== plan.bundle_id
+            || !exact(childPlan, plan.article_plan)
+            || !exact(materializationPlan, canonicalMaterialization)
+            || context.schema_version !== '1.0'
+            || context.execution_mode !== 'materialization_v3_2'
+            || context.approval !== null
+            || !exact(context.plan, childPlan)
+            || !exact(context.materialization_plan, materializationPlan)
+            || context.snapshot.execution_id !== input.execution_id
+            || context.snapshot.run_id !== plan.article_plan.run_id
+            || context.snapshot.plan_id !== plan.article_plan.plan_id
+            || context.snapshot.state !== 'confirmation_pending'
+            || context.snapshot.draft_id === null
+            || context.snapshot.publish_command_count !== 0
+            || context.pending_command !== null
+            || context.pending_issue !== null
+            || context.submit_delivered
+            || checkpoint.execution_id !== input.execution_id
+            || checkpoint.materialization_digest !== materializationPlan.materialization_digest
+            || checkpoint.draft_id !== context.snapshot.draft_id
+            || checkpoint.phase !== 'preview_verified'
+            || checkpoint.publish_confirmation !== 'absent'
+            || materializationPlan.publication_plan_digest !== plan.article_plan.plan_digest) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article does not match the Bundle child Plan at confirmation_pending');
+        }
+        if (await this.store.exists(`${prefix}/publish-confirmation.json`)
+            || await this.store.exists(`${prefix}/publish-confirmation-consumption.json`)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article already has Publish confirmation or consumption evidence');
+        }
+        const commandEntries = await this.store.list(`${prefix}/commands`);
+        let commandCount = 0;
+        for (const entry of commandEntries) {
+            if (entry.kind !== 'directory') {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article command history is malformed');
+            }
+            const command = validateContract('x-article-browser-command', await this.readJson(`${entry.relative_path}/command.json`));
+            commandCount += 1;
+            const commandFiles = await this.store.list(entry.relative_path);
+            if (commandFiles.some((file) => file.kind !== 'file' || !['command.json', 'claim.json'].includes(file.name))) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article command history is malformed');
+            }
+            if (command.execution_id !== input.execution_id
+                || command.run_id !== plan.article_plan.run_id
+                || command.payload_digest !== sha256(command.payload)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article command history is foreign');
+            }
+            if (await this.store.exists(`${entry.relative_path}/claim.json`)) {
+                const claim = await this.readJson(`${entry.relative_path}/claim.json`);
+                if (claim.schema_version !== '1.0'
+                    || claim.execution_id !== input.execution_id
+                    || claim.command_id !== command.command_id
+                    || claim.claimed !== true
+                    || !Number.isFinite(Date.parse(claim.claimed_at))) {
+                    throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article command claim is stale');
+                }
+            }
+            if (command.kind === 'publish_article_once') {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article already issued a Publish command');
+            }
+        }
+        const observationEntries = await this.store.list(`${prefix}/observations`);
+        if (observationEntries.some((entry) => entry.kind !== 'file' || !entry.name.endsWith('.json'))) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article observation history is malformed');
+        }
+        for (const entry of observationEntries) {
+            const observation = validateContract('x-article-browser-observation', await this.readJson(entry.relative_path));
+            const observationBody = Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision'));
+            if (observation.execution_id !== input.execution_id
+                || observation.page_revision !== computeXArticlePageRevision(observationBody)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article observation history is stale');
+            }
+        }
+        const receiptArtifact = await this.store.readContainedArtifact(input.materialization_receipt_ref.path);
+        if (receiptArtifact.relative_path !== `${prefix}/materialization-receipt.json`
+            || receiptArtifact.digest !== input.materialization_receipt_ref.digest) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization Preview receipt ref is stale');
+        }
+        const receipt = validateContract('x-article-materialization-receipt', this.parseJson(receiptArtifact.content, 'materialization Preview receipt'));
+        const previewId = context.latest_preview_observation_id;
+        if (previewId === null || context.snapshot.latest_observation_id !== previewId) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article lacks the latest verified Preview');
+        }
+        const previewArtifact = await this.store.readContainedArtifact(`${prefix}/observations/${previewId}.json`);
+        const preview = validateContract('x-article-browser-observation', this.parseJson(previewArtifact.content, 'prepared Article Preview'));
+        const previewBody = Object.fromEntries(Object.entries(preview).filter(([key]) => key !== 'page_revision'));
+        const start = await this.readJson(`${prefix}/materialization-start.json`);
+        if (typeof start !== 'object' || start === null || !Number.isFinite(Date.parse(start.started_at))) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization start evidence is malformed');
+        }
+        const recreatedStart = createXArticleMaterializationStartEvidence({
+            plan: materializationPlan,
+            started_at: start.started_at
+        });
+        const progress = await this.readPreparedProgress(input.execution_id);
+        const recreatedReceipt = createXArticleMaterializationReceipt({
+            plan: materializationPlan,
+            checkpoint,
+            progress,
+            body_block_count: receipt.body_block_count,
+            command_count: receipt.command_count,
+            observation_count: receipt.observation_count,
+            automation_started_at: start.started_at,
+            preview_verified_at: checkpoint.updated_at,
+            human_wait_seconds: receipt.human_wait_seconds,
+            preview_revision: preview.page_revision,
+            issued_at: receipt.issued_at
+        });
+        if (!isDeepStrictEqual(start, recreatedStart)
+            || !isDeepStrictEqual(receipt, recreatedReceipt)
+            || receipt.supersedes_receipt_digest !== null
+            || receipt.execution_id !== input.execution_id
+            || receipt.draft_id !== context.snapshot.draft_id
+            || receipt.materialization_digest !== materializationPlan.materialization_digest
+            || receipt.preview_revision !== input.preview_revision
+            || input.preview_revision !== preview.page_revision
+            || !Number.isFinite(Date.parse(input.bound_at))
+            || !Number.isFinite(Date.parse(preview.observed_at))
+            || Date.parse(input.bound_at) < Date.parse(preview.observed_at)
+            || preview.page_revision !== computeXArticlePageRevision(previewBody)
+            || preview.execution_id !== input.execution_id
+            || preview.account_handle !== plan.article_plan.intent.target_account
+            || preview.page_kind !== 'article_preview'
+            || context.preview_revision !== preview.page_revision
+            || context.latest_observation === null
+            || !isDeepStrictEqual(context.latest_observation, preview)
+            || receipt.command_count !== commandCount
+            || receipt.observation_count !== observationEntries.length) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article Preview, receipt, checkpoint, or activity evidence is stale');
+        }
+        return {
+            context,
+            materializationPlan,
+            checkpoint,
+            receipt,
+            planRef: { path: planArtifact.relative_path, digest: planArtifact.digest },
+            materializationPlanRef: {
+                path: materializationArtifact.relative_path,
+                digest: materializationArtifact.digest
+            },
+            previewRef: { path: previewArtifact.relative_path, digest: previewArtifact.digest },
+            receiptRef: { path: receiptArtifact.relative_path, digest: receiptArtifact.digest },
+            preview
+        };
+    }
+    async readPreparedProgress(executionId) {
+        const path = `${this.articleAdapterPrefix(executionId)}/materialization-progress.jsonl`;
+        if (!(await this.store.exists(path)))
+            return [];
+        const content = await this.store.readText(path);
+        if (!content.endsWith('\n')) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization progress is truncated');
+        }
+        const lines = content.slice(0, -1).split('\n');
+        if (lines.some((line) => line.length === 0)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization progress contains a blank record');
+        }
+        return lines.map((line) => {
+            let value;
+            try {
+                value = JSON.parse(line);
+            }
+            catch (error) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization progress is invalid', error);
+            }
+            const progress = validateContract('x-article-materialization-progress', value);
+            if (progress.execution_id !== executionId) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'materialization progress is foreign');
+            }
+            return progress;
+        });
+    }
+    preparedBindingMatchesInput(binding, input, verified) {
+        return binding.bundle_id === input.bundle_id
+            && binding.execution_id === input.execution_id
+            && binding.preview_revision === input.preview_revision
+            && binding.bound_at === input.bound_at
+            && exact(binding.materialization_receipt_ref, input.materialization_receipt_ref)
+            && exact(binding.child_plan_ref, verified.planRef)
+            && exact(binding.materialization_plan_ref, verified.materializationPlanRef)
+            && exact(binding.preview_observation_ref, verified.previewRef)
+            && binding.materialization_receipt_digest === verified.receipt.receipt_digest;
+    }
+    createPreparedProjection(bundleId, currentRevision, activeBindingRef, updatedAt) {
+        const body = {
+            schema_version: 'publication-bundle-prepared-article-projection/v1',
+            bundle_id: bundleId,
+            revision: currentRevision + 1,
+            active_binding_ref: activeBindingRef,
+            updated_at: updatedAt
+        };
+        return { ...body, projection_digest: sha256(body) };
+    }
+    async optionalPreparedProjection(bundleId) {
+        return await this.store.exists(this.preparedProjectionPath(bundleId))
+            ? this.readPreparedProjection(bundleId)
+            : undefined;
+    }
+    async readPreparedProjection(bundleId) {
+        const projection = await this.readJson(this.preparedProjectionPath(bundleId));
+        const { projection_digest: digest, ...body } = projection;
+        if (digest !== sha256(body)
+            || projection.schema_version !== 'publication-bundle-prepared-article-projection/v1'
+            || projection.bundle_id !== bundleId
+            || !Number.isInteger(projection.revision)
+            || projection.revision < 1) {
+            throw new HarnessError('APPROVAL_STALE', 'prepared Article active projection is stale');
+        }
+        if (projection.active_binding_ref !== null) {
+            const artifact = await this.store.readContainedArtifact(projection.active_binding_ref.path);
+            if (artifact.digest !== projection.active_binding_ref.digest) {
+                throw new HarnessError('APPROVAL_STALE', 'prepared Article active binding ref is stale');
+            }
+        }
+        return projection;
+    }
+    async readPreparedBindingRef(plan, ref) {
+        const artifact = await this.store.readContainedArtifact(ref.path);
+        const value = this.parseJson(artifact.content, 'prepared Article binding');
+        const { binding_digest: digest, ...body } = value;
+        const expectedPath = this.preparedBindingPath(plan.bundle_id, value.binding_version);
+        const [planRef, childPlanRef, materializationPlanRef, previewRef, receiptRef] = await Promise.all([
+            this.fileRef(this.planPath(plan.bundle_id)),
+            this.fileRef(`${this.articleAdapterPrefix(value.execution_id)}/plan.json`),
+            this.fileRef(`${this.articleAdapterPrefix(value.execution_id)}/materialization-plan.json`),
+            this.fileRef(value.preview_observation_ref.path),
+            this.fileRef(value.materialization_receipt_ref.path)
+        ]);
+        if (artifact.digest !== ref.digest
+            || artifact.relative_path !== expectedPath
+            || value.schema_version !== 'publication-bundle-prepared-article-binding/v1'
+            || value.bundle_id !== plan.bundle_id
+            || digest !== sha256(body)
+            || !exact(value.bundle_plan_ref, planRef)
+            || !exact(value.child_plan_ref, childPlanRef)
+            || !exact(value.materialization_plan_ref, materializationPlanRef)
+            || !exact(value.preview_observation_ref, previewRef)
+            || !exact(value.materialization_receipt_ref, receiptRef)
+            || value.child_plan_digest !== plan.article_plan.plan_digest
+            || value.target_account !== plan.article_plan.intent.target_account
+            || value.audience !== 'everyone'
+            || !exact(value.asset_digests, plan.article_plan.intent.visuals.map((item) => item.asset.digest))) {
+            throw new HarnessError('APPROVAL_STALE', 'prepared Article binding is stale');
+        }
+        return value;
+    }
+    async isPreparedBindingUnbound(bundleId, bindingRef) {
+        const entries = await this.store.list(`runs/${bundleId}/publication-bundle/prepared-article-unbindings`);
+        for (const entry of entries) {
+            if (entry.kind !== 'file' || !/^\d{6}\.json$/.test(entry.name)) {
+                throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding history is malformed');
+            }
+            const value = await this.readJson(entry.relative_path);
+            const { unbinding_digest: digest, ...body } = value;
+            if (value.schema_version !== 'publication-bundle-prepared-article-unbinding/v1'
+                || value.bundle_id !== bundleId
+                || digest !== sha256(body)) {
+                throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding record is stale');
+            }
+            if (exact(value.binding_ref, bindingRef))
+                return true;
+        }
+        return false;
+    }
+    async ensurePreparedExecutionOwner(plan, executionId) {
+        const path = this.preparedExecutionOwnerPath(executionId);
+        const body = {
+            schema_version: 'publication-bundle-prepared-execution-owner/v1',
+            execution_id: executionId,
+            bundle_id: plan.bundle_id,
+            bundle_plan_ref: await this.fileRef(this.planPath(plan.bundle_id)),
+            child_plan_digest: plan.article_plan.plan_digest
+        };
+        const owner = {
+            ...body,
+            owner_digest: sha256(body)
+        };
+        if (await this.store.exists(path)) {
+            const existing = await this.readJson(path);
+            const { owner_digest: digest, ...existingBody } = existing;
+            if (digest !== sha256(existingBody)
+                || !isDeepStrictEqual(existing, owner)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'prepared Article execution already belongs to a different Publication Bundle');
+            }
+            return;
+        }
+        await this.store.writeNew(path, owner);
+    }
+    assertPreparedApproval(plan, approval, binding, now) {
+        validateContract('publication-bundle-approval-v2', approval);
+        const { approval_digest: digest, ...body } = approval;
+        if (approval.bundle_id !== plan.bundle_id
+            || approval.bundle_digest !== plan.bundle_digest
+            || approval.target_account !== binding.target_account
+            || approval.scope !== 'publish_bundle_once'
+            || approval.confirmed_preview_revision !== binding.preview_revision
+            || approval.prepared_article_binding_ref.path !== this.preparedBindingPath(plan.bundle_id, binding.binding_version)
+            || approval.approved_by.trim().length === 0
+            || Date.parse(approval.expires_at) - Date.parse(approval.approved_at)
+                !== plan.authorization_ttl_ms
+            || digest !== sha256(body)) {
+            throw new HarnessError('APPROVAL_STALE', 'Publication Bundle V2 Approval is stale');
+        }
+        if (now !== undefined && Date.parse(approval.expires_at) <= now.getTime()) {
+            throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is expired');
+        }
+    }
+    async persistDerivedArticleConfirmation(plan, approval, binding) {
+        this.assertPreparedApproval(plan, approval, binding);
+        const confirmation = createXArticlePublishConfirmation({
+            confirmation_id: `bundle_confirmation_${plan.bundle_id}`,
+            execution_id: binding.execution_id,
+            draft_id: binding.draft_id,
+            target_account: binding.target_account,
+            audience: 'everyone',
+            plan_digest: binding.child_plan_digest,
+            document_digest: binding.document_digest,
+            preview_revision: binding.preview_revision,
+            asset_digests: binding.asset_digests,
+            confirmed_by: approval.approved_by,
+            confirmed_at: approval.approved_at
+        });
+        verifyXArticlePublishConfirmation(confirmation, {
+            execution_id: binding.execution_id,
+            draft_id: binding.draft_id,
+            target_account: binding.target_account,
+            audience: 'everyone',
+            plan_digest: binding.child_plan_digest,
+            document_digest: binding.document_digest,
+            preview_revision: binding.preview_revision,
+            asset_digests: binding.asset_digests,
+            confirmed_at_not_before: binding.preview_observed_at,
+            confirmed_at_not_after: approval.approved_at
+        });
+        const path = this.articlePublishConfirmationPath(plan.bundle_id);
+        if (await this.store.exists(path)) {
+            const existing = await this.readJson(path);
+            if (!isDeepStrictEqual(existing, confirmation)) {
+                throw new HarnessError('APPROVAL_STALE', 'derived Article confirmation is immutable');
+            }
+        }
+        else {
+            await this.store.writeNew(path, confirmation);
+        }
+        return confirmation;
+    }
+    async readDerivedArticleConfirmation(plan, approval, binding) {
+        const confirmation = await this.readContract(this.articlePublishConfirmationPath(plan.bundle_id), 'x-article-publish-confirmation');
+        verifyXArticlePublishConfirmation(confirmation, {
+            execution_id: binding.execution_id,
+            draft_id: binding.draft_id,
+            target_account: binding.target_account,
+            audience: 'everyone',
+            plan_digest: binding.child_plan_digest,
+            document_digest: binding.document_digest,
+            preview_revision: binding.preview_revision,
+            asset_digests: binding.asset_digests,
+            confirmed_at_not_before: binding.preview_observed_at,
+            confirmed_at_not_after: approval.approved_at
+        });
+        return confirmation;
+    }
+    async assertApprovalForChildAction(plan, approval, now) {
+        if (approval.schema_version === 'publication-bundle-approval/v1') {
+            const gate = runPublicationBundlePublishGate(plan, approval, now);
+            if (!gate.passed) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle Approval is not active', gate.findings);
+            }
+            return;
+        }
+        const projection = await this.readPreparedProjection(plan.bundle_id);
+        if (projection.active_binding_ref === null
+            || !exact(projection.active_binding_ref, approval.prepared_article_binding_ref)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle V2 Approval no longer matches the active prepared Article binding');
+        }
+        const binding = await this.readPreparedBindingRef(plan, approval.prepared_article_binding_ref);
+        this.assertPreparedApproval(plan, approval, binding, now);
+        await this.readDerivedArticleConfirmation(plan, approval, binding);
     }
     async verifySources(input) {
         const cycle = await this.readContract(input.cycle_ref.path, 'weekly-research-cycle');
@@ -687,9 +1332,19 @@ export class PublicationBundleService {
         return value;
     }
     async readApproval(plan) {
-        const value = await this.readContract(this.approvalPath(plan.bundle_id), 'publication-bundle-approval');
-        assertPublicationBundleApproval(plan, value);
-        return value;
+        const value = await this.readJson(this.approvalPath(plan.bundle_id));
+        if (value.schema_version === 'publication-bundle-approval/v1') {
+            validateContract('publication-bundle-approval', value);
+            assertPublicationBundleApproval(plan, value);
+            return value;
+        }
+        if (value.schema_version === 'publication-bundle-approval/v2') {
+            validateContract('publication-bundle-approval-v2', value);
+            const binding = await this.readPreparedBindingRef(plan, value.prepared_article_binding_ref);
+            this.assertPreparedApproval(plan, value, binding);
+            return value;
+        }
+        throw new HarnessError('CONTRACT_INVALID', 'unknown Publication Bundle Approval version');
     }
     async optionalApproval(plan) {
         return await this.store.exists(this.approvalPath(plan.bundle_id))
@@ -739,29 +1394,50 @@ export class PublicationBundleService {
         }
         const value = await this.readContract(this.articleReceiptBindingPath(bundleId), 'publication-bundle-receipt-binding');
         const { binding_digest: digest, ...body } = value;
-        const executionBinding = await this.readArticleExecutionBinding(bundleId);
-        const [executionBindingRef, receiptRef, receipt] = await Promise.all([
-            this.fileRef(this.articleExecutionBindingPath(bundleId)),
+        const plan = await this.readPlan(bundleId);
+        let executionId;
+        let installedPlanRef;
+        let planDigest;
+        let executionBindingRef;
+        if (await this.store.exists(this.articleExecutionBindingPath(bundleId))) {
+            const executionBinding = await this.readArticleExecutionBinding(bundleId);
+            executionId = executionBinding.execution_id;
+            installedPlanRef = executionBinding.installed_plan_ref;
+            planDigest = executionBinding.plan_digest;
+            executionBindingRef = await this.fileRef(this.articleExecutionBindingPath(bundleId));
+        }
+        else {
+            const projection = await this.readPreparedProjection(bundleId);
+            if (projection.active_binding_ref === null) {
+                throw new HarnessError('APPROVAL_STALE', 'Article Receipt Binding lost its execution binding');
+            }
+            const prepared = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+            executionId = prepared.execution_id;
+            installedPlanRef = prepared.child_plan_ref;
+            planDigest = prepared.child_plan_digest;
+            executionBindingRef = projection.active_binding_ref;
+        }
+        const [currentExecutionBindingRef, receiptRef, receipt] = await Promise.all([
+            Promise.resolve(executionBindingRef),
             this.fileRef(value.child_receipt_ref.path),
             this.readContract(value.child_receipt_ref.path, 'x-article-publish-receipt')
         ]);
         const { receipt_digest: receiptDigest, ...receiptBody } = receipt;
         if (digest !== sha256(body) || value.bundle_id !== bundleId ||
             value.child_kind !== 'x_article' ||
-            !exact(value.execution_binding_ref, executionBindingRef) ||
-            !exact(value.child_plan_ref, executionBinding.installed_plan_ref) ||
-            value.child_plan_digest !== executionBinding.plan_digest ||
+            !exact(value.execution_binding_ref, currentExecutionBindingRef) ||
+            !exact(value.child_plan_ref, installedPlanRef) ||
+            value.child_plan_digest !== planDigest ||
             !exact(value.child_receipt_ref, receiptRef) ||
             receiptDigest !== sha256(receiptBody) ||
             value.child_receipt_digest !== receiptDigest ||
-            receipt.execution_id !== executionBinding.execution_id ||
-            receipt.plan_digest !== executionBinding.plan_digest ||
+            receipt.execution_id !== executionId ||
+            receipt.plan_digest !== planDigest ||
             (value.canonical_public_url !== null &&
                 value.canonical_public_url !== receipt.public_evidence.canonical_url)) {
             throw new HarnessError('APPROVAL_STALE', 'Article Receipt Binding is stale');
         }
         if (value.canonical_public_url !== null) {
-            const plan = await this.readPlan(bundleId);
             assertApprovedXArticleUrl(value.canonical_public_url, plan.article_plan.intent.target_account);
         }
         return value;
@@ -1130,6 +1806,41 @@ export class PublicationBundleService {
     }
     approvalPath(bundleId) {
         return `runs/${bundleId}/publication-bundle/approval.json`;
+    }
+    bundleLockPath(bundleId) {
+        return `runs/${bundleId}/publication-bundle/control-plane.lock`;
+    }
+    articleAdapterPrefix(executionId) {
+        if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(executionId)) {
+            throw new HarnessError('WORKSPACE_PATH_INVALID', 'unsafe prepared Article execution id');
+        }
+        return `runs/${executionId}/x-article/browser`;
+    }
+    articleAdapterLockPath(executionId) {
+        this.articleAdapterPrefix(executionId);
+        return `runs/${executionId}/x-article/adapter-execution.lock`;
+    }
+    preparedExecutionOwnerPath(executionId) {
+        this.articleAdapterPrefix(executionId);
+        return `program/publication-bundle-prepared-executions/${executionId}.json`;
+    }
+    preparedBindingsDirectory(bundleId) {
+        return `runs/${bundleId}/publication-bundle/prepared-article-bindings`;
+    }
+    preparedBindingPath(bundleId, version) {
+        if (!Number.isInteger(version) || version < 1) {
+            throw new HarnessError('CONTRACT_INVALID', 'invalid prepared Article binding version');
+        }
+        return `${this.preparedBindingsDirectory(bundleId)}/${String(version).padStart(6, '0')}.json`;
+    }
+    preparedProjectionPath(bundleId) {
+        return `runs/${bundleId}/publication-bundle/prepared-article-active.json`;
+    }
+    preparedUnbindingPath(bundleId, projectionRevision) {
+        return `runs/${bundleId}/publication-bundle/prepared-article-unbindings/${String(projectionRevision).padStart(6, '0')}.json`;
+    }
+    articlePublishConfirmationPath(bundleId) {
+        return `runs/${bundleId}/publication-bundle/article-publish-confirmation.json`;
     }
     articleAuthorizationPath(bundleId) {
         return `runs/${bundleId}/publication-bundle/article-authorization.json`;

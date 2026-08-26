@@ -76,6 +76,7 @@ export const CONTRACT_NAMES = [
     'weekly-cycle-status',
     'publication-bundle-plan',
     'publication-bundle-approval',
+    'publication-bundle-approval-v2',
     'publication-bundle-status',
     'publication-bundle-execution-binding',
     'publication-bundle-receipt-binding',
