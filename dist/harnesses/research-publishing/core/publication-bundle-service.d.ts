@@ -38,6 +38,8 @@ export declare class PublicationBundleService {
     private readPreparedProjection;
     private readPreparedBindingRef;
     private isPreparedBindingUnbound;
+    private optionalPreparedProjectionUnbinding;
+    private readPreparedUnbinding;
     private ensurePreparedExecutionOwner;
     private assertPreparedApproval;
     private persistDerivedArticleConfirmation;

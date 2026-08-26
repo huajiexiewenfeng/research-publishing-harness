@@ -336,7 +336,33 @@ export class PublicationBundleService {
       return this.store.withLock(this.articleAdapterLockPath(detached.execution_id), async () => {
         const verified = await this.verifyPreparedArticle(plan, detached);
         await this.ensurePreparedExecutionOwner(plan, detached.execution_id);
-        const projection = await this.optionalPreparedProjection(detached.bundle_id);
+        let projection = await this.optionalPreparedProjection(detached.bundle_id);
+        if (projection?.active_binding_ref !== null && projection !== undefined) {
+          const interruptedUnbinding = await this.optionalPreparedProjectionUnbinding(
+            detached.bundle_id,
+            projection
+          );
+          if (interruptedUnbinding !== undefined) {
+            projection = this.createPreparedProjection(
+              detached.bundle_id,
+              projection.revision,
+              null,
+              interruptedUnbinding.unbound_at
+            );
+            await this.store.replaceAtomic(
+              this.preparedProjectionPath(detached.bundle_id),
+              projection
+            );
+          } else if (await this.isPreparedBindingUnbound(
+            detached.bundle_id,
+            projection.active_binding_ref
+          )) {
+            throw new HarnessError(
+              'APPROVAL_STALE',
+              'prepared Article active binding was already unbound'
+            );
+          }
+        }
         if (projection?.active_binding_ref !== null && projection !== undefined) {
           const active = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
           if (!this.preparedBindingMatchesInput(active, detached, verified)) {
@@ -431,22 +457,15 @@ export class PublicationBundleService {
       if (projection === undefined || projection.active_binding_ref === null) return;
       await this.readPreparedBindingRef(plan, projection.active_binding_ref);
       const unbindingPath = this.preparedUnbindingPath(bundleId, projection.revision);
-      const body = {
-        schema_version: 'publication-bundle-prepared-article-unbinding/v1' as const,
-        bundle_id: bundleId,
-        binding_ref: projection.active_binding_ref,
-        unbound_at: this.now().toISOString()
-      };
-      const unbinding: PreparedArticleUnbindingV1 = {
-        ...body,
-        unbinding_digest: sha256(body)
-      };
-      if (await this.store.exists(unbindingPath)) {
-        const existing = await this.readJson<PreparedArticleUnbindingV1>(unbindingPath);
-        if (!isDeepStrictEqual(existing, unbinding)) {
-          throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding record changed');
-        }
-      } else {
+      let unbinding = await this.optionalPreparedProjectionUnbinding(bundleId, projection);
+      if (unbinding === undefined) {
+        const body = {
+          schema_version: 'publication-bundle-prepared-article-unbinding/v1' as const,
+          bundle_id: bundleId,
+          binding_ref: projection.active_binding_ref,
+          unbound_at: this.now().toISOString()
+        };
+        unbinding = { ...body, unbinding_digest: sha256(body) };
         await this.store.writeNew(unbindingPath, unbinding);
       }
       await this.store.replaceAtomic(
@@ -1162,7 +1181,7 @@ export class PublicationBundleService {
         );
       }
       const binding = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
-      await this.store.withLock(this.articleAdapterLockPath(binding.execution_id), async () => {
+      return this.store.withLock(this.articleAdapterLockPath(binding.execution_id), async () => {
         await this.verifyPreparedArticle(plan, {
           bundle_id: detached.bundle_id,
           execution_id: binding.execution_id,
@@ -1170,56 +1189,56 @@ export class PublicationBundleService {
           materialization_receipt_ref: binding.materialization_receipt_ref,
           bound_at: binding.bound_at
         });
-      });
-      if (
-        detached.confirmed_bundle_digest !== plan.bundle_digest
-        || detached.confirmed_preview_revision !== binding.preview_revision
-        || detached.approved_by.trim().length === 0
-      ) {
-        throw new HarnessError(
-          'APPROVAL_STALE',
-          'Bundle confirmation does not match the active verified Article Preview'
-        );
-      }
-      const path = this.approvalPath(detached.bundle_id);
-      if (await this.store.exists(path)) {
-        const existing = await this.readApproval(plan);
         if (
-          existing.schema_version !== 'publication-bundle-approval/v2'
-          || existing.bundle_digest !== detached.confirmed_bundle_digest
-          || existing.confirmed_preview_revision !== detached.confirmed_preview_revision
-          || existing.approved_by !== detached.approved_by
-          || !exact(existing.prepared_article_binding_ref, projection.active_binding_ref)
+          detached.confirmed_bundle_digest !== plan.bundle_digest
+          || detached.confirmed_preview_revision !== binding.preview_revision
+          || detached.approved_by.trim().length === 0
         ) {
-          throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is immutable');
+          throw new HarnessError(
+            'APPROVAL_STALE',
+            'Bundle confirmation does not match the active verified Article Preview'
+          );
         }
-        await this.persistDerivedArticleConfirmation(plan, existing, binding);
-        return existing;
-      }
-      const approvedAt = this.now().toISOString();
-      const body = {
-        schema_version: 'publication-bundle-approval/v2' as const,
-        approval_id: this.approvalId(),
-        bundle_id: plan.bundle_id,
-        bundle_digest: plan.bundle_digest,
-        target_account: binding.target_account,
-        scope: 'publish_bundle_once' as const,
-        confirmed_preview_revision: binding.preview_revision,
-        prepared_article_binding_ref: projection.active_binding_ref,
-        approved_by: detached.approved_by,
-        approved_at: approvedAt,
-        expires_at: new Date(
-          Date.parse(approvedAt) + plan.authorization_ttl_ms
-        ).toISOString()
-      };
-      const approval = validateContract<PublicationBundleApprovalV2>(
-        'publication-bundle-approval-v2',
-        { ...body, approval_digest: sha256(body) }
-      );
-      this.assertPreparedApproval(plan, approval, binding);
-      await this.store.writeNew(path, approval);
-      await this.persistDerivedArticleConfirmation(plan, approval, binding);
-      return (await this.readApproval(plan)) as PublicationBundleApprovalV2;
+        const path = this.approvalPath(detached.bundle_id);
+        if (await this.store.exists(path)) {
+          const existing = await this.readApproval(plan);
+          if (
+            existing.schema_version !== 'publication-bundle-approval/v2'
+            || existing.bundle_digest !== detached.confirmed_bundle_digest
+            || existing.confirmed_preview_revision !== detached.confirmed_preview_revision
+            || existing.approved_by !== detached.approved_by
+            || !exact(existing.prepared_article_binding_ref, projection.active_binding_ref)
+          ) {
+            throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is immutable');
+          }
+          await this.persistDerivedArticleConfirmation(plan, existing, binding);
+          return existing;
+        }
+        const approvedAt = this.now().toISOString();
+        const body = {
+          schema_version: 'publication-bundle-approval/v2' as const,
+          approval_id: this.approvalId(),
+          bundle_id: plan.bundle_id,
+          bundle_digest: plan.bundle_digest,
+          target_account: binding.target_account,
+          scope: 'publish_bundle_once' as const,
+          confirmed_preview_revision: binding.preview_revision,
+          prepared_article_binding_ref: projection.active_binding_ref,
+          approved_by: detached.approved_by,
+          approved_at: approvedAt,
+          expires_at: new Date(
+            Date.parse(approvedAt) + plan.authorization_ttl_ms
+          ).toISOString()
+        };
+        const approval = validateContract<PublicationBundleApprovalV2>(
+          'publication-bundle-approval-v2',
+          { ...body, approval_digest: sha256(body) }
+        );
+        this.assertPreparedApproval(plan, approval, binding);
+        await this.store.writeNew(path, approval);
+        await this.persistDerivedArticleConfirmation(plan, approval, binding);
+        return (await this.readApproval(plan)) as PublicationBundleApprovalV2;
+      });
     });
   }
 
@@ -1610,18 +1629,52 @@ export class PublicationBundleService {
       if (entry.kind !== 'file' || !/^\d{6}\.json$/.test(entry.name)) {
         throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding history is malformed');
       }
-      const value = await this.readJson<PreparedArticleUnbindingV1>(entry.relative_path);
-      const { unbinding_digest: digest, ...body } = value;
-      if (
-        value.schema_version !== 'publication-bundle-prepared-article-unbinding/v1'
-        || value.bundle_id !== bundleId
-        || digest !== sha256(body)
-      ) {
-        throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding record is stale');
-      }
+      const value = await this.readPreparedUnbinding(bundleId, entry.relative_path);
       if (exact(value.binding_ref, bindingRef)) return true;
     }
     return false;
+  }
+
+  private async optionalPreparedProjectionUnbinding(
+    bundleId: string,
+    projection: PreparedArticleBindingProjectionV1
+  ): Promise<PreparedArticleUnbindingV1 | undefined> {
+    if (projection.active_binding_ref === null) return undefined;
+    const path = this.preparedUnbindingPath(bundleId, projection.revision);
+    if (!(await this.store.exists(path))) return undefined;
+    const unbinding = await this.readPreparedUnbinding(bundleId, path);
+    if (!exact(unbinding.binding_ref, projection.active_binding_ref)) {
+      throw new HarnessError(
+        'APPROVAL_STALE',
+        'prepared Article unbinding does not match the active projection'
+      );
+    }
+    return unbinding;
+  }
+
+  private async readPreparedUnbinding(
+    bundleId: string,
+    path: string
+  ): Promise<PreparedArticleUnbindingV1> {
+    const artifact = await this.store.readContainedArtifact(path);
+    const value = this.parseJson<PreparedArticleUnbindingV1>(
+      artifact.content,
+      'prepared Article unbinding'
+    );
+    const { unbinding_digest: digest, ...body } = value;
+    const canonicalBytes = `${JSON.stringify(value, null, 2)}\n`;
+    const parsedTime = Date.parse(value.unbound_at);
+    if (
+      value.schema_version !== 'publication-bundle-prepared-article-unbinding/v1'
+      || value.bundle_id !== bundleId
+      || digest !== sha256(body)
+      || artifact.content.toString('utf8') !== canonicalBytes
+      || !Number.isFinite(parsedTime)
+      || new Date(parsedTime).toISOString() !== value.unbound_at
+    ) {
+      throw new HarnessError('APPROVAL_STALE', 'prepared Article unbinding record is stale');
+    }
+    return value;
   }
 
   private async ensurePreparedExecutionOwner(

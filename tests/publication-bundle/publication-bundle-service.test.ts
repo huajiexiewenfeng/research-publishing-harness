@@ -192,4 +192,170 @@ describe('PublicationBundleService prepared Article binding', () => {
     await expect(fixture.service.bindPreparedArticle(input))
       .rejects.toMatchObject({ code: 'STATE_TRANSITION_INVALID' });
   });
+
+  it('recovers an interrupted unbind with its authoritative persisted time', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const input = {
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    } as const;
+    await fixture.service.bindPreparedArticle(input);
+    const replaceAtomic = fixture.store.replaceAtomic.bind(fixture.store);
+    let failProjectionClear = true;
+    fixture.store.replaceAtomic = async (path, value) => {
+      if (path.endsWith('/prepared-article-active.json') && failProjectionClear) {
+        failProjectionClear = false;
+        throw new Error('injected unbind projection crash');
+      }
+      return replaceAtomic(path, value);
+    };
+
+    await expect(fixture.service.unbindPreparedArticle(fixture.plan.bundle_id))
+      .rejects.toThrow('injected unbind projection crash');
+    const unbindingPath = `runs/${fixture.plan.bundle_id}/publication-bundle/`
+      + 'prepared-article-unbindings/000001.json';
+    const persisted = await fixture.store.readJson(unbindingPath);
+    const retryService = new PublicationBundleService(fixture.store, fixture.weeks, {
+      now: () => new Date('2026-08-26T00:11:00.000Z'),
+      approvalId: () => 'bundle_approval_prepared_retry'
+    });
+
+    await expect(retryService.unbindPreparedArticle(fixture.plan.bundle_id))
+      .resolves.toMatchObject({ phase: 'article_materializing' });
+    await expect(fixture.store.readJson(unbindingPath)).resolves.toEqual(persisted);
+    await expect(retryService.unbindPreparedArticle(fixture.plan.bundle_id))
+      .resolves.toMatchObject({ phase: 'article_materializing' });
+    await expect(fixture.store.readJson(
+      `runs/${fixture.plan.bundle_id}/publication-bundle/prepared-article-active.json`
+    )).resolves.toMatchObject({
+      revision: 2,
+      active_binding_ref: null,
+      updated_at: (persisted as { unbound_at: string }).unbound_at
+    });
+  });
+
+  it('never returns an active binding already revoked by an interrupted unbind', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const input = {
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    } as const;
+    const first = await fixture.service.bindPreparedArticle(input);
+    const replaceAtomic = fixture.store.replaceAtomic.bind(fixture.store);
+    let failProjectionClear = true;
+    fixture.store.replaceAtomic = async (path, value) => {
+      if (path.endsWith('/prepared-article-active.json') && failProjectionClear) {
+        failProjectionClear = false;
+        throw new Error('injected unbind projection crash');
+      }
+      return replaceAtomic(path, value);
+    };
+    await expect(fixture.service.unbindPreparedArticle(fixture.plan.bundle_id))
+      .rejects.toThrow('injected unbind projection crash');
+
+    const rebound = await fixture.service.bindPreparedArticle(input);
+    expect(rebound.binding_version).toBe(2);
+    expect(rebound.binding_ref).not.toEqual(first.binding_ref);
+    expect(rebound.binding_digest).not.toBe(first.binding_digest);
+    await expect(fixture.store.exists(first.binding_ref.path)).resolves.toBe(true);
+  });
+
+  it.each([
+    ['Bundle approval', '/publication-bundle/approval.json'],
+    ['derived confirmation', '/publication-bundle/article-publish-confirmation.json']
+  ])('holds the child lock through %s persistence', async (_boundary, boundaryPath) => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const prepared = await fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    });
+    const writeNew = fixture.store.writeNew.bind(fixture.store);
+    let enteredResolve!: () => void;
+    let releaseResolve!: () => void;
+    const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+    const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+    let pause = true;
+    fixture.store.writeNew = async (path, value) => {
+      if (path.endsWith(boundaryPath) && pause) {
+        pause = false;
+        enteredResolve();
+        await release;
+      }
+      return writeNew(path, value);
+    };
+    const approving = fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      confirmed_preview_revision: prepared.preview_revision,
+      approved_by: 'human:Glen56121'
+    });
+    await entered;
+    try {
+      await expect(fixture.adapter.cancelBeforePublish(fixture.execution.execution_id))
+        .rejects.toMatchObject({ code: 'EXECUTION_BUSY' });
+    } finally {
+      releaseResolve();
+    }
+    await expect(approving).resolves.toMatchObject({
+      schema_version: 'publication-bundle-approval/v2'
+    });
+    await expect(fixture.service.articlePublishConfirmation(fixture.plan.bundle_id))
+      .resolves.toMatchObject({ execution_id: fixture.execution.execution_id });
+  });
+
+  it('creates no approval authority when child cancellation wins the lock', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const prepared = await fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    });
+    const withLock = fixture.store.withLock.bind(fixture.store);
+    let enteredResolve!: () => void;
+    let releaseResolve!: () => void;
+    const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+    const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+    let pauseChild = true;
+    fixture.store.withLock = (path, operation) => withLock(path, async () => {
+      if (path.endsWith('/x-article/adapter-execution.lock') && pauseChild) {
+        pauseChild = false;
+        enteredResolve();
+        await release;
+      }
+      return operation();
+    });
+    const cancelling = fixture.adapter.cancelBeforePublish(fixture.execution.execution_id);
+    await entered;
+    await expect(fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      confirmed_preview_revision: prepared.preview_revision,
+      approved_by: 'human:Glen56121'
+    })).rejects.toMatchObject({ code: 'EXECUTION_BUSY' });
+    releaseResolve();
+    await expect(cancelling).resolves.toMatchObject({ state: 'cancelled_before_publish' });
+    await expect(fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      confirmed_preview_revision: prepared.preview_revision,
+      approved_by: 'human:Glen56121'
+    })).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    await expect(fixture.store.exists(
+      `runs/${fixture.plan.bundle_id}/publication-bundle/approval.json`
+    )).resolves.toBe(false);
+    await expect(fixture.store.exists(
+      `runs/${fixture.plan.bundle_id}/publication-bundle/article-publish-confirmation.json`
+    )).resolves.toBe(false);
+  });
 });
