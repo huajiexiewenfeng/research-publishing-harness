@@ -156,7 +156,14 @@ describe('nextArticleEditorDecision', () => {
       }
     });
     expect(nextArticleEditorDecision(
-      { plan: coverPlan, draft_id: '2090731994279755776' }, titleAndCover, contract
+      {
+        plan: coverPlan,
+        draft_id: '2090731994279755776',
+        import_strategy: 'incremental_blocks',
+        bulk_import_issued: false
+      },
+      titleAndCover,
+      contract
     )).toMatchObject({
       kind: 'command',
       input: { purpose: 'insert_article_block_1', payload: { kind: 'insert_article_block', block_ordinal: 1 } }
