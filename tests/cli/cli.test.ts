@@ -637,13 +637,18 @@ describe('research-publish CLI', () => {
   });
 
   it('packages the executable X Article V3.2 Browser Host protocol', async () => {
-    const [manifestText, browserReference, materializationReference] = await Promise.all([
+    const [
+      manifestText, browserReference, materializationReference,
+      articleReference, bundleReference
+    ] = await Promise.all([
       readFile(resolve('registry/manifests/research-publishing.json'), 'utf8'),
       readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8'),
       readFile(
         resolve('skills/x-publishing-copilot/references/x-article-materialization-v3-2.md'),
         'utf8'
-      )
+      ),
+      readFile(resolve('skills/x-publishing-copilot/references/x-article-browser-flow.md'), 'utf8'),
+      readFile(resolve('skills/x-publishing-copilot/references/publication-bundle-flow.md'), 'utf8')
     ]);
     const manifest = JSON.parse(manifestText) as {
       interfaces: { x_article_browser: { capabilities: Record<string, string> } };
@@ -661,6 +666,22 @@ describe('research-publish CLI', () => {
     expect(materializationReference).toContain('confirm-publish');
     expect(materializationReference).toContain('never switch to `block_materialization/v1`');
     expect(materializationReference).not.toMatch(/^x-article browser progress\b/m);
+    expect(articleReference).toContain(
+      '[the Publication Bundle flow](publication-bundle-flow.md)'
+    );
+    expect(articleReference).toContain(
+      'A content or Draft approval alone is not publication authority'
+    );
+    expect(articleReference).toContain('control-plane-verified publication approval');
+    expect(articleReference).toContain('When that approval is Bundle-derived');
+    expect(articleReference).toContain('do not ask for a second publication confirmation');
+    expect(articleReference).toContain('The Browser Host never interprets approval authority');
+    expect(articleReference).not.toContain(
+      'content approval does not replace action-time approval'
+    );
+    expect(bundleReference).toContain(
+      'do not ask for a second publication confirmation'
+    );
   });
 
   it('captures a Candidate only below the selected workspace', async () => {

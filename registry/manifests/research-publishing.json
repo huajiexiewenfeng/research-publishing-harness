@@ -1260,8 +1260,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/SKILL.md",
-      "sha256": "4b80340f2bdab2c333b730144d5fef180fa62f8a8486181a8e8f6d31df77d1da",
-      "bytes": 5738
+      "sha256": "3c52998c5e1749f98bfec38b8ef59f3533be3561e797f6199e96a070390c1e57",
+      "bytes": 6146
     },
     {
       "path": "skills/x-publishing-copilot/agents/openai.yaml",
@@ -1285,8 +1285,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-browser-flow.md",
-      "sha256": "16c2172b2928c08e62125a5240cd2409b279ab23c9d5902ddd24353a0eb61d8c",
-      "bytes": 2703
+      "sha256": "9e9798c95f4aa0e4c7ae02c192de5fe52ab804a2ce8a57dcb15a610ca2f6f72f",
+      "bytes": 3539
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-materialization-v3-2.md",

@@ -18,4 +18,10 @@ Prepared V3.2 Draft work is bounded reversible preparation; it does not authoriz
 
 ## Legacy preapproved compatibility
 
-Only an execution explicitly locked as `legacy_preapproved` may use the older `x-article plan` → `x-article approve` → `x-article browser start` → `x-article browser next` → `x-article browser claim` → `x-article browser report` flow. Its content approval does not replace action-time approval before real asset upload or the final Publish claim. Never enter this flow from a prepared V3.2 execution, and never use it as recovery from V3.2.
+A content or Draft approval alone is not publication authority. Only an execution explicitly locked as `legacy_preapproved` and carrying a control-plane-verified publication approval may use the older `x-article plan` → `x-article approve` → `x-article browser start` → `x-article browser next` → `x-article browser claim` → `x-article browser report` flow.
+
+For a non-Bundle legacy execution, use the existing `XArticleApprovalV1` contract. It binds the immutable Plan and approval digests, run, target account, `browser` adapter, `everyone` audience, `publish_once` scope, and expiry. The adapter validates that approval at execution start and again at the final Publish boundary; the Host does not invent or request another confirmation route.
+
+When that approval is Bundle-derived, follow [the Publication Bundle flow](publication-bundle-flow.md): the exact child authorization derived from the one Bundle confirmation is the single action-time approval and publication authority; do not ask for a second publication confirmation.
+
+The Browser Host never interprets approval authority. It follows only adapter state and issued commands; no issued command means no Chrome action. Never enter this flow from a prepared V3.2 execution, and never use it as recovery from V3.2.
