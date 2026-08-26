@@ -18,7 +18,7 @@
   },
   "$defs": {
     "state": {
-      "enum": ["created", "preflight", "account_verified", "draft_create_armed", "draft_created", "draft_identity_unknown", "content_filling", "content_partially_verified", "content_verified", "preview_verified", "publish_armed", "publish_attempted", "outcome_resolving", "public_verifying", "finalized", "pre_publish_failed", "cancelled_before_publish", "published_unverified", "outcome_unknown", "verification_conflict", "failed_after_publish"]
+      "enum": ["created", "preflight", "account_verified", "draft_create_armed", "draft_created", "draft_identity_unknown", "content_filling", "content_partially_verified", "content_verified", "materialization_reconciling", "materialization_blocked", "confirmation_pending", "preview_verified", "publish_armed", "publish_attempted", "outcome_resolving", "public_verifying", "finalized", "pre_publish_failed", "cancelled_before_publish", "published_unverified", "outcome_unknown", "verification_conflict", "failed_after_publish"]
     }
   }
 }

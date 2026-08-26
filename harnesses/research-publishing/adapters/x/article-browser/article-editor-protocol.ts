@@ -2,7 +2,11 @@ import { sha256 } from '../../../core/digest.js';
 import type { ErrorCode } from '../../../core/errors.js';
 import type { XArticlePublicationPlanV1 } from '../../../core/x-article-publication-plan.js';
 import type {
+  XArticleMaterializationPlanV1
+} from '../../../core/x-article-materialization.js';
+import type {
   XArticleBrowserObservation,
+  XArticleDraftReconciliationV1,
   XArticleEditorObservation,
   XArticleVisualObservation
 } from './article-browser-protocol.js';
@@ -28,6 +32,70 @@ export type XArticleEditorDecision =
   | { readonly kind: 'command'; readonly input: IssueXArticleBrowserCommandInput }
   | { readonly kind: 'complete' }
   | { readonly kind: 'blocked'; readonly code: ErrorCode; readonly message: string };
+
+export interface XArticleMaterializationEditorContext {
+  readonly plan: XArticlePublicationPlanV1;
+  readonly materialization_plan: XArticleMaterializationPlanV1;
+  readonly draft_id: string;
+}
+
+export function nextMaterializationEditorDecision(
+  context: XArticleMaterializationEditorContext,
+  observation: XArticleBrowserObservation,
+  reconciliation: XArticleDraftReconciliationV1,
+  contract: XArticlePageContract
+): XArticleEditorDecision {
+  if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+    return blocked('ARTICLE_MATERIALIZATION_DRIFT', 'X Article Draft cannot be reconciled safely');
+  }
+  if (reconciliation.kind === 'empty') {
+    return command(context, observation, 'import_article_document', 'import_article_document', {
+      kind: 'import_article_document',
+      target_ref: contract.detectControl(observation, 'body').ref,
+      package_root: context.plan.intent.article_package.root,
+      package_digest: context.plan.intent.article_package.digest,
+      template: createXArticleImportTemplate(context.plan.intent.document)
+    });
+  }
+  if (reconciliation.kind === 'recoverable_partial') {
+    if (reconciliation.next_action === 'reconcile_final') {
+      return command(context, observation, 'reconcile_article_import_completion', 'observe_article_page', {
+        kind: 'observe_article_page', scope: 'editor'
+      }, 'read');
+    }
+    const anchor = context.materialization_plan.visual_anchors.find(
+      (candidate) => candidate.anchor_id === reconciliation.next_anchor_id
+    );
+    const templateAnchor = createXArticleImportTemplate(context.plan.intent.document).anchors.find(
+      (candidate) => candidate.anchor_id === reconciliation.next_anchor_id
+    );
+    const binding = anchor === undefined ? undefined : context.plan.intent.visuals.find((candidate) =>
+      candidate.placement.kind === 'block'
+      && candidate.placement.block_ordinal === anchor.block_ordinal
+      && candidate.asset.asset_id === anchor.asset_id
+    );
+    if (anchor === undefined || templateAnchor === undefined || binding === undefined) {
+      return blocked('ARTICLE_ASSET_MISMATCH', 'reconciled X Article anchor has no locked visual binding');
+    }
+    return command(
+      context,
+      observation,
+      `replace_article_visual_anchor_${anchor.block_ordinal}`,
+      'replace_article_visual_anchor',
+      {
+        kind: 'replace_article_visual_anchor',
+        target_ref: contract.detectControl(observation, 'body').ref,
+        anchor: templateAnchor,
+        package_root: context.plan.intent.article_package.root,
+        package_digest: context.plan.intent.article_package.digest,
+        asset: binding.asset
+      }
+    );
+  }
+  return command(context, observation, 'open_article_preview', 'open_article_preview', {
+    kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
+  });
+}
 
 type XArticleCommandBinding = IssueXArticleBrowserCommandInput extends infer Input
   ? Input extends IssueXArticleBrowserCommandInput
@@ -331,7 +399,7 @@ function verifyBulkVisuals(
 }
 
 function command(
-  context: XArticleEditorContext,
+  context: Pick<XArticleEditorContext, 'plan' | 'draft_id'>,
   observation: XArticleBrowserObservation,
   purpose: string,
   ...[kind, payload, sideEffect = 'write']: XArticleCommandArguments

@@ -1,5 +1,45 @@
 import { sha256 } from '../../../core/digest.js';
 import { createXArticleImportTemplate } from './article-import-template.js';
+export function nextMaterializationEditorDecision(context, observation, reconciliation, contract) {
+    if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+        return blocked('ARTICLE_MATERIALIZATION_DRIFT', 'X Article Draft cannot be reconciled safely');
+    }
+    if (reconciliation.kind === 'empty') {
+        return command(context, observation, 'import_article_document', 'import_article_document', {
+            kind: 'import_article_document',
+            target_ref: contract.detectControl(observation, 'body').ref,
+            package_root: context.plan.intent.article_package.root,
+            package_digest: context.plan.intent.article_package.digest,
+            template: createXArticleImportTemplate(context.plan.intent.document)
+        });
+    }
+    if (reconciliation.kind === 'recoverable_partial') {
+        if (reconciliation.next_action === 'reconcile_final') {
+            return command(context, observation, 'reconcile_article_import_completion', 'observe_article_page', {
+                kind: 'observe_article_page', scope: 'editor'
+            }, 'read');
+        }
+        const anchor = context.materialization_plan.visual_anchors.find((candidate) => candidate.anchor_id === reconciliation.next_anchor_id);
+        const templateAnchor = createXArticleImportTemplate(context.plan.intent.document).anchors.find((candidate) => candidate.anchor_id === reconciliation.next_anchor_id);
+        const binding = anchor === undefined ? undefined : context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'block'
+            && candidate.placement.block_ordinal === anchor.block_ordinal
+            && candidate.asset.asset_id === anchor.asset_id);
+        if (anchor === undefined || templateAnchor === undefined || binding === undefined) {
+            return blocked('ARTICLE_ASSET_MISMATCH', 'reconciled X Article anchor has no locked visual binding');
+        }
+        return command(context, observation, `replace_article_visual_anchor_${anchor.block_ordinal}`, 'replace_article_visual_anchor', {
+            kind: 'replace_article_visual_anchor',
+            target_ref: contract.detectControl(observation, 'body').ref,
+            anchor: templateAnchor,
+            package_root: context.plan.intent.article_package.root,
+            package_digest: context.plan.intent.article_package.digest,
+            asset: binding.asset
+        });
+    }
+    return command(context, observation, 'open_article_preview', 'open_article_preview', {
+        kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
+    });
+}
 export function nextArticleEditorDecision(context, observation, contract) {
     try {
         const page = contract.detectPage(observation);

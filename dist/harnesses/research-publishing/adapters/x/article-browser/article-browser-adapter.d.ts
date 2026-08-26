@@ -3,7 +3,7 @@ import { type XArticleExecutionSnapshotV1 } from '../../../core/x-article-execut
 import { type XArticleApprovalV1 } from '../../../core/x-article-approval.js';
 import { type XArticlePublicationPlanV1 } from '../../../core/x-article-publication-plan.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
-import type { XArticleBrowserObservation } from './article-browser-protocol.js';
+import { type XArticleBrowserObservation } from './article-browser-protocol.js';
 import { type XArticleBrowserCommandKind, type XArticleBrowserCommandV1, type XArticleCommandClaimV1 } from './article-command-broker.js';
 import type { XArticlePageContract } from './article-page-contract.js';
 export interface XArticleBrowserCapabilityManifestV1 {
@@ -37,7 +37,9 @@ export declare class XArticleBrowserAdapter {
     private readonly now;
     private readonly terminalNotifier;
     private readonly broker;
+    private readonly materializationStore;
     constructor(store: WorkspaceStore, contract: XArticlePageContract, options?: XArticleBrowserAdapterOptions);
+    prepare(plan: XArticlePublicationPlanV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     start(plan: XArticlePublicationPlanV1, approval: XArticleApprovalV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     next(executionId: string): Promise<{
         readonly snapshot: XArticleExecutionSnapshotV1;
@@ -52,14 +54,23 @@ export declare class XArticleBrowserAdapter {
     cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     private nextPublicVerification;
     private nextEditorCommand;
+    private nextMaterializationCommand;
+    private reconcileReportedEditor;
+    private reconcilePreparedPreview;
+    private issueEditorObservation;
+    private isMaterializationEffect;
     private issue;
     private clearPending;
     private transition;
     private verifyCapabilities;
+    private verifyPreparedCapabilities;
+    private initialSnapshot;
+    private requireApproval;
     private requireObservation;
     private readContext;
     private writeContext;
     private prefix;
+    private commandPath;
     private assertId;
 }
 export {};

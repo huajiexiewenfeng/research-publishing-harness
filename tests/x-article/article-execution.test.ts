@@ -17,6 +17,22 @@ describe('X Article execution state machine', () => {
       .toThrowError(expect.objectContaining({ code: 'STATE_TRANSITION_INVALID' }));
   });
 
+  it('drives prepared materialization through reconciliation to confirmation', () => {
+    expect(transitionXArticleExecution('draft_created', 'materialization_reconciling'))
+      .toBe('materialization_reconciling');
+    expect(transitionXArticleExecution('materialization_reconciling', 'confirmation_pending'))
+      .toBe('confirmation_pending');
+    expect(transitionXArticleExecution('pre_publish_failed', 'materialization_reconciling'))
+      .toBe('materialization_reconciling');
+  });
+
+  it('fails closed when materialization cannot be reconciled', () => {
+    expect(transitionXArticleExecution('materialization_reconciling', 'materialization_blocked'))
+      .toBe('materialization_blocked');
+    expect(() => transitionXArticleExecution('materialization_blocked', 'content_filling'))
+      .toThrowError(expect.objectContaining({ code: 'STATE_TRANSITION_INVALID' }));
+  });
+
   it('creates a versioned append-only transition event', () => {
     expect(createXArticleExecutionEvent({
       eventId: 'event_1', executionId: 'execution_1', sequence: 3,

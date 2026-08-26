@@ -11,6 +11,9 @@ export type XArticleExecutionState =
   | 'content_filling'
   | 'content_partially_verified'
   | 'content_verified'
+  | 'materialization_reconciling'
+  | 'materialization_blocked'
+  | 'confirmation_pending'
   | 'preview_verified'
   | 'publish_armed'
   | 'publish_attempted'
@@ -29,11 +32,14 @@ const TRANSITIONS: Readonly<Record<XArticleExecutionState, readonly XArticleExec
   preflight: ['account_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   account_verified: ['draft_create_armed', 'draft_created', 'pre_publish_failed', 'cancelled_before_publish'],
   draft_create_armed: ['draft_created', 'draft_identity_unknown', 'pre_publish_failed'],
-  draft_created: ['content_filling', 'content_verified', 'pre_publish_failed', 'cancelled_before_publish'],
+  draft_created: ['content_filling', 'content_verified', 'materialization_reconciling', 'pre_publish_failed', 'cancelled_before_publish'],
   draft_identity_unknown: ['draft_created', 'cancelled_before_publish'],
   content_filling: ['content_partially_verified', 'content_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   content_partially_verified: ['content_filling', 'content_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   content_verified: ['preview_verified', 'pre_publish_failed', 'cancelled_before_publish'],
+  materialization_reconciling: ['confirmation_pending', 'materialization_blocked', 'pre_publish_failed', 'cancelled_before_publish'],
+  materialization_blocked: ['cancelled_before_publish'],
+  confirmation_pending: ['publish_armed', 'pre_publish_failed', 'cancelled_before_publish'],
   preview_verified: ['publish_armed', 'pre_publish_failed', 'cancelled_before_publish'],
   publish_armed: ['publish_attempted', 'pre_publish_failed', 'cancelled_before_publish'],
   publish_attempted: ['outcome_resolving'],
@@ -41,7 +47,7 @@ const TRANSITIONS: Readonly<Record<XArticleExecutionState, readonly XArticleExec
   public_verifying: ['finalized', 'published_unverified', 'outcome_unknown', 'verification_conflict'],
   published_unverified: ['public_verifying'],
   outcome_unknown: ['public_verifying'],
-  pre_publish_failed: ['preflight', 'content_filling', 'cancelled_before_publish'],
+  pre_publish_failed: ['preflight', 'content_filling', 'materialization_reconciling', 'materialization_blocked', 'cancelled_before_publish'],
   finalized: [],
   cancelled_before_publish: [],
   verification_conflict: [],
