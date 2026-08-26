@@ -100,6 +100,13 @@ interface ProjectedReportIdentity {
   readonly report_digest: string;
 }
 
+interface ReportProjectionComplete {
+  readonly schema_version: '1.0';
+  readonly execution_id: string;
+  readonly command_id: string;
+  readonly report_digest: string;
+}
+
 interface XArticleBrowserAdapterOptions {
   readonly executionId?: () => string;
   readonly eventId?: () => string;
@@ -426,14 +433,39 @@ export class XArticleBrowserAdapter {
     let context = await this.readContext(input.command.execution_id);
     const reportDigest = sha256(input);
     const reportPath = `${this.prefix(input.command.execution_id)}/reports/${input.command.command_id}.json`;
-    if (context.pending_command?.command_id !== input.command.command_id) {
-      if (context.last_projected_report?.command_id === input.command.command_id) {
-        if (context.last_projected_report.report_digest !== reportDigest) {
-          throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report changed');
-        }
-        await this.ensureExactArtifact(reportPath, input);
-        return context.snapshot;
+    const projectionPath = this.reportProjectionPath(input.command);
+    if (await this.store.exists(projectionPath)) {
+      const projection = await this.store.readJson<ReportProjectionComplete>(projectionPath);
+      if (
+        projection.execution_id !== input.command.execution_id
+        || projection.command_id !== input.command.command_id
+        || projection.report_digest !== reportDigest
+      ) {
+        throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report projection changed');
       }
+      const persistedReport = await this.store.readJson<XArticleBrowserReportInput>(reportPath);
+      if (sha256(persistedReport) !== reportDigest) {
+        throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
+      }
+      if (
+        context.pending_command?.command_id === input.command.command_id
+        || context.pending_issue?.command_id === input.command.command_id
+      ) {
+        context = await this.finalizeProjectedReport(
+          context,
+          input.command.command_id,
+          reportDigest
+        );
+      }
+      return context.snapshot;
+    }
+    if (
+      context.pending_command === null
+      && context.pending_issue?.command_id === input.command.command_id
+    ) {
+      context = await this.recoverBrokerPersistedCommand(context, input.command);
+    }
+    if (context.pending_command?.command_id !== input.command.command_id) {
       throw new HarnessError('COMMAND_REPLAY_REJECTED', 'reported X Article command is not pending');
     }
     if (sha256(context.pending_command) !== sha256(input.command)) {
@@ -659,13 +691,13 @@ export class XArticleBrowserAdapter {
             'X Article editor resume has no durable reconciliation observation'
           );
         }
-        const reconciliation = reconcileXArticleDraft({
+    const reconciliation = reconcileXArticleDraft({
           plan: materializationPlan,
           checkpoint,
           document: context.plan.intent.document,
           observation: durableEditor
         });
-        if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+    if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
           context = await this.blockMaterialization(context, checkpoint, reconciliation);
           throw new HarnessError(
             'ARTICLE_MATERIALIZATION_DRIFT',
@@ -772,6 +804,10 @@ export class XArticleBrowserAdapter {
   }
 
   async cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1> {
+    return this.withExecutionLock(executionId, () => this.cancelBeforePublishLocked(executionId));
+  }
+
+  private async cancelBeforePublishLocked(executionId: string): Promise<XArticleExecutionSnapshotV1> {
     let context = await this.readContext(executionId);
     if (context.snapshot.publish_command_count > 0 || context.snapshot.state === 'publish_attempted') {
       throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article execution cannot be cancelled after Publish');
@@ -883,7 +919,7 @@ export class XArticleBrowserAdapter {
     }
     const persistedPlan = await this.readBoundMaterializationPlan(context);
     const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-    const reconciliation = reconcileXArticleDraft({
+        const reconciliation = reconcileXArticleDraft({
       plan: persistedPlan,
       checkpoint,
       document: context.plan.intent.document,
@@ -912,7 +948,10 @@ export class XArticleBrowserAdapter {
         }
       });
     }
-    if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+        if (
+          (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
+          && !this.isOnlyMissingCover(reconciliation)
+        ) {
       context = await this.blockMaterialization(context, checkpoint, reconciliation);
       return { snapshot: context.snapshot, command: null };
     }
@@ -1040,6 +1079,33 @@ export class XArticleBrowserAdapter {
         durableEditor = null;
       }
     }
+    let durableEditorCoherent = false;
+    if (durableEditor !== null) {
+      try {
+        const durableBody = Object.fromEntries(
+          Object.entries(durableEditor).filter(([key]) => key !== 'page_revision')
+        );
+        const durablePage = this.contract.detectPage(durableEditor);
+        this.contract.detectEditor(durableEditor);
+        const reconciliationCheckpoint = checkpoint.phase === 'preview_verified'
+          ? { ...checkpoint, phase: 'draft_reconciled' as const }
+          : checkpoint;
+        const reconciliation = reconcileXArticleDraft({
+          plan: materializationPlan,
+          checkpoint: reconciliationCheckpoint,
+          document: context.plan.intent.document,
+          observation: durableEditor
+        });
+        durableEditorCoherent = durableEditor.page_revision === computeXArticlePageRevision(durableBody)
+          && durableEditor.execution_id === context.snapshot.execution_id
+          && durableEditor.account_handle === context.plan.intent.target_account
+          && durablePage.kind === 'article_editor'
+          && durablePage.draft_id === context.snapshot.draft_id
+          && (reconciliation.kind === 'exact' || reconciliation.kind === 'semantically_equivalent');
+      } catch {
+        durableEditorCoherent = false;
+      }
+    }
     const expected = context.plan.intent.document;
     const actual = preview === null ? null : {
       schema_version: '1.0' as const,
@@ -1106,6 +1172,7 @@ export class XArticleBrowserAdapter {
       || checkpoint.last_editor_revision === null
       || context.editor_revision !== checkpoint.last_editor_revision
       || durableEditor === null
+      || !durableEditorCoherent
       || durableEditor.execution_id !== context.snapshot.execution_id
       || durableEditor.account_handle !== context.plan.intent.target_account
       || durableEditor.page_kind !== 'article_editor'
@@ -1469,6 +1536,15 @@ export class XArticleBrowserAdapter {
     commandId: string,
     reportDigest: string
   ): Promise<AdapterContext> {
+    await this.ensureExactArtifact(this.reportProjectionPath({
+      execution_id: context.snapshot.execution_id,
+      command_id: commandId
+    }), {
+      schema_version: '1.0',
+      execution_id: context.snapshot.execution_id,
+      command_id: commandId,
+      report_digest: reportDigest
+    } satisfies ReportProjectionComplete);
     const next: AdapterContext = {
       ...context,
       pending_command: null,
@@ -1477,6 +1553,46 @@ export class XArticleBrowserAdapter {
     };
     await this.writeContext(next);
     return next;
+  }
+
+  private async recoverBrokerPersistedCommand(
+    context: AdapterContext,
+    reported: XArticleBrowserCommandV1
+  ): Promise<AdapterContext> {
+    const intent = context.pending_issue;
+    if (
+      intent === null
+      || intent.command_id !== reported.command_id
+      || intent.input_digest !== sha256(intent.input)
+    ) {
+      throw new HarnessError('COMMAND_REPLAY_REJECTED', 'reported X Article command has no durable issue intent');
+    }
+    const command = await this.store.readJson<XArticleBrowserCommandV1>(this.commandPath(reported));
+    if (
+      sha256(command) !== sha256(reported)
+      || command.command_id !== intent.command_id
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'broker-persisted X Article command changed');
+    }
+    const stableCommandInput = Object.fromEntries(
+      Object.entries(command).filter(([key]) =>
+        !['schema_version', 'command_id', 'payload_digest', 'issued_at'].includes(key)
+      )
+    );
+    if (sha256(stableCommandInput) !== intent.input_digest) {
+      throw new HarnessError('CONTRACT_INVALID', 'broker command is not bound to durable issue intent');
+    }
+    const repaired: AdapterContext = {
+      ...context,
+      pending_command: command,
+      snapshot: {
+        ...context.snapshot,
+        latest_command_id: command.command_id,
+        updated_at: command.issued_at
+      }
+    };
+    await this.writeContext(repaired);
+    return repaired;
   }
 
   private verifyPreparedCapabilities(
@@ -1567,6 +1683,18 @@ export class XArticleBrowserAdapter {
   private withExecutionLock<T>(executionId: string, operation: () => Promise<T>): Promise<T> {
     this.assertId(executionId);
     return this.store.withLock(`runs/${executionId}/x-article/adapter-execution.lock`, operation);
+  }
+
+  private commandPath(command: Pick<XArticleBrowserCommandV1, 'execution_id' | 'command_id'>): string {
+    this.assertId(command.command_id);
+    return `${this.prefix(command.execution_id)}/commands/${command.command_id}/command.json`;
+  }
+
+  private reportProjectionPath(
+    command: Pick<XArticleBrowserCommandV1, 'execution_id' | 'command_id'>
+  ): string {
+    this.assertId(command.command_id);
+    return `${this.prefix(command.execution_id)}/report-projections/${command.command_id}.json`;
   }
 
   private assertId(id: string): void {

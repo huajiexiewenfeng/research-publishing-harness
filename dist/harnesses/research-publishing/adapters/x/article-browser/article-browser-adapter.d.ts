@@ -57,6 +57,7 @@ export declare class XArticleBrowserAdapter {
     private resumeEditorLocked;
     refreshApproval(executionId: string, approval: XArticleApprovalV1): Promise<XArticleExecutionSnapshotV1>;
     cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    private cancelBeforePublishLocked;
     private nextPublicVerification;
     private nextEditorCommand;
     private nextMaterializationCommand;
@@ -76,6 +77,7 @@ export declare class XArticleBrowserAdapter {
     private transition;
     private verifyCapabilities;
     private finalizeProjectedReport;
+    private recoverBrokerPersistedCommand;
     private verifyPreparedCapabilities;
     private initialSnapshot;
     private requireApproval;
@@ -85,6 +87,8 @@ export declare class XArticleBrowserAdapter {
     private prefix;
     private ensureExactArtifact;
     private withExecutionLock;
+    private commandPath;
+    private reportProjectionPath;
     private assertId;
 }
 export {};
