@@ -64,6 +64,29 @@ export interface XArticleStageProgressV1 {
     readonly observed_effect: 'none' | 'partial' | 'complete' | 'unknown';
     readonly recorded_at: string;
 }
+export interface XArticleMaterializationReceiptV1 {
+    readonly schema_version: 'x-article-materialization-receipt/v1';
+    readonly execution_id: string;
+    readonly draft_id: string;
+    readonly materialization_digest: `sha256:${string}`;
+    readonly strategy: XArticleMaterializationStrategy;
+    readonly body_block_count: number;
+    readonly inline_image_count: number;
+    readonly stage_seconds: Readonly<Record<string, number>>;
+    readonly automation_seconds: number;
+    readonly human_wait_seconds: number;
+    readonly command_count: number;
+    readonly command_ceiling: number;
+    readonly observation_count: number;
+    readonly observation_ceiling: number;
+    readonly retry_count: number;
+    readonly recovery_count: number;
+    readonly within_budget: boolean;
+    readonly preview_revision: `sha256:${string}`;
+    readonly supersedes_receipt_digest: `sha256:${string}` | null;
+    readonly issued_at: string;
+    readonly receipt_digest: `sha256:${string}`;
+}
 export interface CreateXArticleMaterializationPlanInput {
     readonly execution_id: string;
     readonly publication_plan: XArticlePublicationPlanV1;
@@ -75,6 +98,27 @@ export interface CreateInitialXArticleMaterializationCheckpointInput {
     readonly updated_at: string;
 }
 export type CreateXArticleStageProgressInput = Omit<XArticleStageProgressV1, 'schema_version'>;
+export interface CreateXArticleMaterializationReceiptInput {
+    readonly plan: XArticleMaterializationPlanV1;
+    readonly checkpoint: XArticleMaterializationCheckpointV1;
+    readonly progress: readonly XArticleStageProgressV1[];
+    readonly body_block_count: number;
+    readonly command_count: number;
+    readonly observation_count: number;
+    readonly automation_started_at: string;
+    readonly preview_verified_at: string;
+    readonly human_wait_seconds: number;
+    readonly preview_revision: `sha256:${string}`;
+    readonly supersedes_receipt_digest: `sha256:${string}` | null;
+    readonly issued_at: string;
+}
+export interface CreateSupersedingXArticleMaterializationReceiptInput {
+    readonly preview_receipt: XArticleMaterializationReceiptV1;
+    readonly human_wait_seconds: number;
+    readonly issued_at: string;
+}
 export declare function createXArticleMaterializationPlan(input: CreateXArticleMaterializationPlanInput): XArticleMaterializationPlanV1;
 export declare function createInitialXArticleMaterializationCheckpoint(input: CreateInitialXArticleMaterializationCheckpointInput): XArticleMaterializationCheckpointV1;
 export declare function createXArticleStageProgress(input: CreateXArticleStageProgressInput): XArticleStageProgressV1;
+export declare function createXArticleMaterializationReceipt(input: CreateXArticleMaterializationReceiptInput): XArticleMaterializationReceiptV1;
+export declare function createSupersedingXArticleMaterializationReceipt(input: CreateSupersedingXArticleMaterializationReceiptInput): XArticleMaterializationReceiptV1;

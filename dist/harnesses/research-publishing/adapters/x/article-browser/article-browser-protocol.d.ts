@@ -94,3 +94,4 @@ export interface XArticleBrowserObservation {
 }
 export type XArticleBrowserObservationInput = Omit<XArticleBrowserObservation, 'page_revision'>;
 export declare function computeXArticlePageRevision(input: object): `sha256:${string}`;
+export declare function computeXArticleElapsedSeconds(startedAt: string, endedAt: string): number;

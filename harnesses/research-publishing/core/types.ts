@@ -48,6 +48,7 @@ export const CONTRACT_NAMES = [
   'x-article-materialization-plan',
   'x-article-materialization-checkpoint',
   'x-article-materialization-progress',
+  'x-article-materialization-receipt',
   'x-article-publish-confirmation',
   'x-article-approval',
   'x-article-browser-observation',

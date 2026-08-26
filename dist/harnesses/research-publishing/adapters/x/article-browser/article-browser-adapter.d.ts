@@ -70,6 +70,10 @@ export declare class XArticleBrowserAdapter {
     private reconcileReportedEditor;
     private reconcilePreparedPreview;
     private issueEditorObservation;
+    private recordMaterializationProgress;
+    private durableMaterializationActivity;
+    private persistPreviewMaterializationReceipt;
+    private persistPublicMaterializationReceipt;
     private isMaterializationEffect;
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
@@ -98,6 +102,8 @@ export declare class XArticleBrowserAdapter {
     private writeContext;
     private prefix;
     private publishConfirmationPath;
+    private previewMaterializationReceiptPath;
+    private publicMaterializationReceiptPath;
     private publishConfirmationConsumptionPath;
     private ensureExactArtifact;
     private withExecutionLock;

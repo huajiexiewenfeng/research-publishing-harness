@@ -12,6 +12,8 @@ import {
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
+import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import { createXArticlePublishConfirmation } from '../../harnesses/research-publishing/core/x-article-publish-confirmation.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
@@ -151,6 +153,105 @@ async function advancePreparedToImport(
   return adapter.next(executionId);
 }
 
+async function advancePreparedToPreviewCommand(
+  adapter: XArticleBrowserAdapter,
+  executionId: string
+) {
+  let next = await advancePreparedToImport(adapter, executionId);
+  const template = createXArticleImportTemplate(plan.intent.document);
+  await reportSuccess(adapter, executionId, next.command, editorObservation(
+    executionId,
+    next.command!.command_id,
+    {
+      draft_id: '2090731994279755776', title: plan.intent.document.title,
+      blocks: plan.intent.document.blocks, visuals: [], has_unknown_content: false,
+      autosave_state: 'saved', import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: []
+      }
+    }
+  ));
+  next = await adapter.next(executionId);
+  await reportSuccess(adapter, executionId, next.command, editorObservation(
+    executionId,
+    next.command!.command_id,
+    {
+      draft_id: '2090731994279755776', title: plan.intent.document.title,
+      blocks: plan.intent.document.blocks, visuals: [], import_state: null,
+      has_unknown_content: false, autosave_state: 'saved'
+    }
+  ));
+  next = await adapter.next(executionId);
+  const preview = observed(executionId, next.command!.command_id, {
+    canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776/preview',
+    page_kind: 'article_preview',
+    controls: [{ ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+    preview: {
+      draft_id: '2090731994279755776', title: plan.intent.document.title,
+      blocks: plan.intent.document.blocks, visuals: []
+    }
+  });
+  return { command: next.command!, preview };
+}
+
+async function advancePreparedToPreview(
+  adapter: XArticleBrowserAdapter,
+  executionId: string
+) {
+  const pending = await advancePreparedToPreviewCommand(adapter, executionId);
+  await reportSuccess(adapter, executionId, pending.command, pending.preview);
+  return pending.preview;
+}
+
+async function advancePreparedToPublicObservation(
+  adapter: XArticleBrowserAdapter,
+  executionId: string,
+  preview: XArticleBrowserObservation
+) {
+  await adapter.confirmPublish(executionId, createXArticlePublishConfirmation({
+    confirmation_id: `confirmation_${executionId}`,
+    execution_id: executionId,
+    draft_id: '2090731994279755776',
+    target_account: plan.intent.target_account,
+    audience: 'everyone',
+    plan_digest: plan.plan_digest as `sha256:${string}`,
+    document_digest: sha256(plan.intent.document),
+    preview_revision: preview.page_revision,
+    asset_digests: [],
+    confirmed_by: 'human:Glen56121',
+    confirmed_at: '2026-08-21T09:01:00.000Z'
+  }));
+  let next = await adapter.next(executionId);
+  await reportSuccess(adapter, executionId, next.command, observed(executionId, next.command!.command_id, {
+    canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776/preview',
+    page_kind: 'publish_review',
+    controls: [{ ref: 'publish_final', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+    publish_review: {
+      draft_id: '2090731994279755776', audience: 'everyone', final_publish_ref: 'publish_final'
+    }
+  }));
+  next = await adapter.next(executionId);
+  await adapter.claim(next.command!);
+  await adapter.report({
+    command: next.command!,
+    status: 'success',
+    observation: observed(executionId, next.command!.command_id, {
+      canonical_url: 'https://x.com/Glen56121/article/2090731994279755777',
+      page_kind: 'public_article', controls: [],
+      public_article: {
+        article_id: '2090731994279755777',
+        canonical_url: 'https://x.com/Glen56121/article/2090731994279755777',
+        author_handle: '@Glen56121',
+        title: plan.intent.document.title,
+        blocks: plan.intent.document.blocks,
+        visuals: [],
+        published_at: '2026-08-21T09:01:00.000Z'
+      }
+    })
+  });
+}
+
 async function coordinatedConcurrentNext(
   adapter: XArticleBrowserAdapter,
   executionId: string,
@@ -183,6 +284,135 @@ async function coordinatedConcurrentNext(
 }
 
 describe('XArticleBrowserAdapter', () => {
+  it('persists a deterministic Preview receipt from durable commands, observations, and progress', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_receipt_1',
+      eventId: (() => { let n = 0; return () => `event_receipt_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_receipt_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`
+    )).resolves.toMatchObject({
+      schema_version: 'x-article-materialization-receipt/v1',
+      execution_id: execution.execution_id,
+      draft_id: '2090731994279755776',
+      body_block_count: 1,
+      inline_image_count: 0,
+      command_count: 5,
+      observation_count: 5,
+      human_wait_seconds: 0,
+      within_budget: true,
+      preview_revision: preview.page_revision,
+      supersedes_receipt_digest: null,
+      receipt_digest: expect.stringMatching(/^sha256:/)
+    });
+    const progress = await store.readText(
+      `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`
+    );
+    expect(progress.trim().split('\n')).toHaveLength(5);
+    expect(progress).toContain('"observed_effect":"complete"');
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
+      state: 'confirmation_pending', publish_command_count: 0
+    });
+  });
+
+  it('repairs an exact Preview receipt after a crash and rejects a mismatched prior receipt', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-crash-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_receipt_crash_1',
+      eventId: (() => { let n = 0; return () => `event_receipt_crash_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_receipt_crash_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    await adapter.claim(pending.command);
+    const writeNew = store.writeNew.bind(store);
+    let failOnce = true;
+    store.writeNew = async (path, value) => {
+      if (failOnce && path.endsWith('/materialization-receipt.json')) {
+        failOnce = false;
+        throw new Error('injected Preview receipt crash');
+      }
+      return writeNew(path, value);
+    };
+
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+    const receiptPath = `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`;
+    await store.writeNew(receiptPath, { corrupt: true });
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+    await store.removeFile(receiptPath);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).resolves.toMatchObject({ state: 'confirmation_pending' });
+    const receipt = await store.readJson<Record<string, unknown>>(receiptPath);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).resolves.toMatchObject({ state: 'confirmation_pending' });
+    await expect(store.readJson(receiptPath)).resolves.toEqual(receipt);
+  });
+
+  it('keeps Preview evidence immutable and writes a digest-linked public supersession', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-public-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_receipt_public_1',
+      eventId: (() => { let n = 0; return () => `event_receipt_public_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_receipt_public_${++n}`; })(),
+      attemptId: () => 'attempt_receipt_public_1',
+      receiptId: () => 'publication_receipt_public_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+    const previewPath = `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`;
+    const previewReceipt = await store.readJson<Record<string, unknown>>(previewPath);
+    await advancePreparedToPublicObservation(adapter, execution.execution_id, preview);
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'finalized', publish_command_count: 1 }, command: null
+    });
+    await expect(store.readJson(previewPath)).resolves.toEqual(previewReceipt);
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt-public.json`
+    )).resolves.toMatchObject({
+      supersedes_receipt_digest: previewReceipt.receipt_digest,
+      human_wait_seconds: 0,
+      receipt_digest: expect.stringMatching(/^sha256:/)
+    });
+  });
+
+  it('fails public verification closed when the immutable Preview receipt is missing', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-missing-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_receipt_missing_1',
+      eventId: (() => { let n = 0; return () => `event_receipt_missing_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_receipt_missing_${++n}`; })(),
+      attemptId: () => 'attempt_receipt_missing_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+    await advancePreparedToPublicObservation(adapter, execution.execution_id, preview);
+    await store.removeFile(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`
+    );
+
+    await expect(adapter.next(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt-public.json`
+    )).resolves.toBe(false);
+  });
+
   it('rejects prepared materialization when bulk import is unavailable', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-no-bulk-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract());

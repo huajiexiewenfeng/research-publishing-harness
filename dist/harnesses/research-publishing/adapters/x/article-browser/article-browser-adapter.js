@@ -2,14 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
+import { validateContract } from '../../../core/schema-validator.js';
 import { notifyTerminalSafely } from '../../../core/research-terminal-hooks.js';
 import { createXArticleExecutionEvent, transitionXArticleExecution } from '../../../core/x-article-execution.js';
 import { verifyXArticleApproval } from '../../../core/x-article-approval.js';
 import { verifyXArticlePublishConfirmation } from '../../../core/x-article-publish-confirmation.js';
 import { assertXArticlePublicationPlan } from '../../../core/x-article-publication-plan.js';
-import { createInitialXArticleMaterializationCheckpoint, createXArticleMaterializationPlan } from '../../../core/x-article-materialization.js';
+import { createInitialXArticleMaterializationCheckpoint, createSupersedingXArticleMaterializationReceipt, createXArticleMaterializationReceipt, createXArticleMaterializationPlan, createXArticleStageProgress } from '../../../core/x-article-materialization.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
-import { computeXArticlePageRevision } from './article-browser-protocol.js';
+import { computeXArticleElapsedSeconds, computeXArticlePageRevision } from './article-browser-protocol.js';
 import { reconcileXArticleDraft } from './article-draft-reconciler.js';
 import { verifyPublicXArticle } from './article-public-verifier.js';
 import { createXArticleReceipt } from './article-receipt.js';
@@ -67,7 +68,8 @@ export class XArticleBrowserAdapter {
             latest_observation: null, editor_revision: null, preview_revision: null,
             latest_editor_observation_id: null, latest_preview_observation_id: null,
             pending_command: null, pending_issue: null, last_projected_report: null,
-            submit_delivered: false, needs_editor_observation: false
+            submit_delivered: false, needs_editor_observation: false,
+            automation_started_at: snapshot.updated_at
         };
         const materializationPlanPath = `${this.prefix(executionId)}/materialization-plan.json`;
         const checkpointPath = `${this.prefix(executionId)}/materialization-checkpoint.json`;
@@ -115,7 +117,8 @@ export class XArticleBrowserAdapter {
             latest_observation: null, editor_revision: null, preview_revision: null,
             latest_editor_observation_id: null, latest_preview_observation_id: null,
             pending_command: null, pending_issue: null, last_projected_report: null,
-            submit_delivered: false, needs_editor_observation: false
+            submit_delivered: false, needs_editor_observation: false,
+            automation_started_at: snapshot.updated_at
         };
         await this.store.writeNewDirectory(this.prefix(executionId), {
             'plan.json': plan, 'approval.json': approval, 'capabilities.json': capabilities,
@@ -388,6 +391,9 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('CONTRACT_INVALID', 'reported X Article command envelope changed');
         }
         await this.ensureExactArtifact(reportPath, input);
+        if (context.execution_mode === 'materialization_v3_2') {
+            await this.recordMaterializationProgress(context, input);
+        }
         if (this.isPreparedReportActive(context)
             && (input.observation === null && input.status === 'success')) {
             const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
@@ -747,6 +753,9 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('ARTICLE_OUTCOME_UNKNOWN', 'X Article verification lacks editor or Preview evidence');
         }
         const verification = verifyPublicXArticle(context.plan, article, this.now());
+        if (context.execution_mode === 'materialization_v3_2') {
+            await this.persistPublicMaterializationReceipt(context);
+        }
         const status = verification.kind === 'full_match'
             ? 'published'
             : verification.kind === 'media_unverified'
@@ -955,12 +964,14 @@ export class XArticleBrowserAdapter {
             });
         }
         if (checkpoint.phase !== 'preview_verified') {
-            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => ({
+            const previewVerifiedAt = this.now().toISOString();
+            checkpoint = await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => ({
                 ...current,
                 phase: 'preview_verified',
-                updated_at: observation.observed_at
+                updated_at: previewVerifiedAt
             }));
         }
+        await this.persistPreviewMaterializationReceipt(context, checkpoint, observation);
         if (context.snapshot.state === 'confirmation_pending')
             return context;
         return this.transition(context, 'confirmation_pending', 'article_materialization_confirmation_pending');
@@ -976,6 +987,167 @@ export class XArticleBrowserAdapter {
             allowed_origin: 'https://x.com', side_effect: 'read',
             payload: { kind: 'observe_article_page', scope: 'editor' }
         });
+    }
+    async recordMaterializationProgress(context, input) {
+        const stage = `${input.command.purpose}#${input.command.command_id}`;
+        const existing = await this.materializationStore.readProgress(context.snapshot.execution_id);
+        const prior = existing.find((event) => event.stage === stage);
+        if (prior !== undefined) {
+            if (prior.execution_id !== input.command.execution_id) {
+                throw new HarnessError('CONTRACT_INVALID', 'persisted materialization progress identity changed');
+            }
+            return;
+        }
+        const recordedAt = this.now().toISOString();
+        const payload = input.command.payload;
+        const assetId = payload.kind === 'replace_article_visual_anchor'
+            ? payload.asset.asset_id
+            : payload.kind === 'upload_article_cover'
+                ? payload.asset.asset_id
+                : null;
+        const observedEffect = input.status === 'success'
+            ? input.observation === null ? 'unknown' : 'complete'
+            : input.status === 'uncertain'
+                ? 'unknown'
+                : 'none';
+        const waitingFor = observedEffect === 'unknown' || input.status === 'transient_failure'
+            ? 'browser_effect_reconciliation'
+            : null;
+        await this.materializationStore.appendProgress(createXArticleStageProgress({
+            execution_id: input.command.execution_id,
+            stage,
+            asset_id: assetId,
+            elapsed_seconds: computeXArticleElapsedSeconds(input.command.issued_at, recordedAt),
+            waiting_for: waitingFor,
+            retry_count: input.status === 'transient_failure' ? 1 : 0,
+            observed_effect: observedEffect,
+            recorded_at: recordedAt
+        }));
+    }
+    async durableMaterializationActivity(executionId, recoveryRecordedAt) {
+        const commandEntries = await this.store.list(`${this.prefix(executionId)}/commands`);
+        const commandIds = new Set();
+        const commands = [];
+        for (const entry of commandEntries) {
+            if (entry.kind !== 'directory') {
+                throw new HarnessError('CONTRACT_INVALID', 'materialization command ledger contains a non-directory');
+            }
+            this.assertId(entry.name);
+            const command = validateContract('x-article-browser-command', await this.store.readJson(`${entry.relative_path}/command.json`));
+            if (command.execution_id !== executionId
+                || command.command_id !== entry.name
+                || command.payload_digest !== sha256(command.payload)) {
+                throw new HarnessError('CONTRACT_INVALID', 'materialization command ledger identity changed');
+            }
+            commandIds.add(command.command_id);
+            commands.push(command);
+        }
+        const observationEntries = await this.store.list(`${this.prefix(executionId)}/observations`);
+        for (const entry of observationEntries) {
+            if (entry.kind !== 'file' || !entry.name.endsWith('.json')) {
+                throw new HarnessError('CONTRACT_INVALID', 'materialization observation ledger contains an invalid entry');
+            }
+            const observation = validateContract('x-article-browser-observation', await this.store.readJson(entry.relative_path));
+            const body = Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision'));
+            if (observation.execution_id !== executionId
+                || `${observation.observation_id}.json` !== entry.name
+                || !commandIds.has(observation.command_id)
+                || observation.page_revision !== computeXArticlePageRevision(body)) {
+                throw new HarnessError('CONTRACT_INVALID', 'materialization observation ledger identity changed');
+            }
+        }
+        let progress = await this.materializationStore.readProgress(executionId);
+        const progressedCommandIds = new Set(progress.map((event) => event.stage.slice(event.stage.lastIndexOf('#') + 1)));
+        for (const command of commands
+            .filter((candidate) => !progressedCommandIds.has(candidate.command_id))
+            .sort((left, right) => left.issued_at.localeCompare(right.issued_at)
+            || left.command_id.localeCompare(right.command_id))) {
+            const payload = command.payload;
+            const assetId = payload.kind === 'replace_article_visual_anchor'
+                ? payload.asset.asset_id
+                : payload.kind === 'upload_article_cover'
+                    ? payload.asset.asset_id
+                    : null;
+            await this.materializationStore.appendProgress(createXArticleStageProgress({
+                execution_id: executionId,
+                stage: `durable_command_recovery#${command.command_id}`,
+                asset_id: assetId,
+                elapsed_seconds: 0,
+                waiting_for: 'durable_command_recovery',
+                retry_count: 0,
+                observed_effect: 'unknown',
+                recorded_at: recoveryRecordedAt
+            }));
+        }
+        progress = await this.materializationStore.readProgress(executionId);
+        if (progress.length !== commandIds.size
+            || progress.some((event) => {
+                const separator = event.stage.lastIndexOf('#');
+                return separator < 1 || !commandIds.has(event.stage.slice(separator + 1));
+            })) {
+            throw new HarnessError('CONTRACT_INVALID', 'materialization progress ledger is incomplete or foreign');
+        }
+        return {
+            commandCount: commandIds.size,
+            observationCount: observationEntries.length,
+            progress
+        };
+    }
+    async persistPreviewMaterializationReceipt(context, checkpoint, preview) {
+        const plan = await this.readBoundMaterializationPlan(context);
+        const activity = await this.durableMaterializationActivity(context.snapshot.execution_id, checkpoint.updated_at);
+        const receipt = createXArticleMaterializationReceipt({
+            plan,
+            checkpoint,
+            progress: activity.progress,
+            body_block_count: context.plan.intent.document.blocks.length,
+            command_count: activity.commandCount,
+            observation_count: activity.observationCount,
+            automation_started_at: context.automation_started_at,
+            preview_verified_at: checkpoint.updated_at,
+            human_wait_seconds: 0,
+            preview_revision: preview.page_revision,
+            supersedes_receipt_digest: null,
+            issued_at: checkpoint.updated_at
+        });
+        const path = this.previewMaterializationReceiptPath(context.snapshot.execution_id);
+        try {
+            await this.ensureExactArtifact(path, receipt);
+        }
+        catch (error) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'Preview materialization receipt is missing, corrupt, or mismatched on repair', error);
+        }
+        return receipt;
+    }
+    async persistPublicMaterializationReceipt(context) {
+        let previewReceipt;
+        try {
+            previewReceipt = await this.store.readJson(this.previewMaterializationReceiptPath(context.snapshot.execution_id));
+        }
+        catch (error) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'public verification requires the immutable Preview materialization receipt', error);
+        }
+        const { confirmation } = await this.verifyStoredPublishConfirmation(context, ['consumed']);
+        const latestCommandId = context.latest_observation?.command_id;
+        const progress = await this.materializationStore.readProgress(context.snapshot.execution_id);
+        const publicProgress = latestCommandId === undefined
+            ? undefined
+            : progress.find((event) => event.stage.endsWith(`#${latestCommandId}`));
+        if (publicProgress === undefined) {
+            throw new HarnessError('CONTRACT_INVALID', 'public receipt lacks durable verification progress');
+        }
+        const receipt = createSupersedingXArticleMaterializationReceipt({
+            preview_receipt: previewReceipt,
+            human_wait_seconds: computeXArticleElapsedSeconds(previewReceipt.issued_at, confirmation.confirmed_at),
+            issued_at: publicProgress.recorded_at
+        });
+        try {
+            await this.ensureExactArtifact(this.publicMaterializationReceiptPath(context.snapshot.execution_id), receipt);
+        }
+        catch (error) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'public materialization receipt is corrupt or mismatched on repair', error);
+        }
+        return receipt;
     }
     isMaterializationEffect(command) {
         return command.kind === 'import_article_document'
@@ -1624,6 +1796,12 @@ export class XArticleBrowserAdapter {
     }
     publishConfirmationPath(executionId) {
         return `${this.prefix(executionId)}/publish-confirmation.json`;
+    }
+    previewMaterializationReceiptPath(executionId) {
+        return `${this.prefix(executionId)}/materialization-receipt.json`;
+    }
+    publicMaterializationReceiptPath(executionId) {
+        return `${this.prefix(executionId)}/materialization-receipt-public.json`;
     }
     publishConfirmationConsumptionPath(executionId) {
         return `${this.prefix(executionId)}/publish-confirmation-consumption.json`;

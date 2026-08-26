@@ -11,8 +11,13 @@ import type {
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import {
   createInitialXArticleMaterializationCheckpoint,
+  createSupersedingXArticleMaterializationReceipt,
+  createXArticleMaterializationReceipt,
   createXArticleMaterializationPlan,
-  createXArticleStageProgress
+  createXArticleStageProgress,
+  type XArticleMaterializationCheckpointV1,
+  type XArticleMaterializationPlanV1,
+  type XArticleStageProgressV1
 } from '../../harnesses/research-publishing/core/x-article-materialization.js';
 import {
   createXArticlePublicationPlan
@@ -270,5 +275,233 @@ describe('X Article materialization contracts', () => {
       ...materializationPlan(),
       ...override
     })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+});
+
+function materializationPlanWithVisualCount(count: number): XArticleMaterializationPlanV1 {
+  const original = materializationPlan();
+  const visualAnchors = Array.from({ length: count }, (_value, index) => ({
+    anchor_id: `anchor_${index + 1}`,
+    asset_id: `asset_${index + 1}`,
+    block_ordinal: index + 1,
+    asset_digest: digest(((index + 1) % 10).toString()),
+    alt_text: `Visual ${index + 1}`,
+    context_digest: digest(((index + 2) % 10).toString())
+  }));
+  const body = {
+    ...original,
+    visual_anchors: visualAnchors,
+    expected_command_ceiling: 12 + count,
+    expected_observation_ceiling: 9 + count
+  };
+  return validateContract<XArticleMaterializationPlanV1>('x-article-materialization-plan', {
+    ...body,
+    materialization_digest: sha256(Object.fromEntries(
+      Object.entries(body).filter(([key]) => key !== 'materialization_digest')
+    ))
+  });
+}
+
+function previewCheckpoint(
+  plan: XArticleMaterializationPlanV1,
+  override: Partial<XArticleMaterializationCheckpointV1> = {}
+): XArticleMaterializationCheckpointV1 {
+  return {
+    schema_version: 'x-article-materialization-checkpoint/v1',
+    execution_id: plan.execution_id,
+    draft_id: 'draft_v32',
+    materialization_digest: plan.materialization_digest,
+    revision: 7,
+    phase: 'preview_verified',
+    body: { status: 'verified', observed_digest: plan.import_template_digest },
+    media: plan.visual_anchors.map((anchor) => ({
+      anchor_id: anchor.anchor_id,
+      asset_id: anchor.asset_id,
+      block_ordinal: anchor.block_ordinal,
+      asset_digest: anchor.asset_digest,
+      status: 'completed',
+      observed_media_ref: `media_${anchor.asset_id}`,
+      observed_context_digest: anchor.context_digest
+    })),
+    last_editor_revision: digest('d'),
+    publish_confirmation: 'absent',
+    updated_at: '2026-08-26T00:03:47.000Z',
+    ...override
+  };
+}
+
+function receiptProgress(
+  plan: XArticleMaterializationPlanV1,
+  override: Partial<XArticleStageProgressV1> = {}
+): XArticleStageProgressV1[] {
+  return [createXArticleStageProgress({
+    execution_id: plan.execution_id,
+    stage: 'body_import',
+    asset_id: null,
+    elapsed_seconds: 107,
+    waiting_for: null,
+    retry_count: 1,
+    observed_effect: 'complete',
+    recorded_at: '2026-08-26T00:01:47.000Z',
+    ...override
+  })];
+}
+
+function createReceiptFor(
+  plan: XArticleMaterializationPlanV1,
+  override: Partial<Parameters<typeof createXArticleMaterializationReceipt>[0]> = {}
+) {
+  return createXArticleMaterializationReceipt({
+    plan,
+    checkpoint: previewCheckpoint(plan),
+    progress: receiptProgress(plan),
+    body_block_count: 6,
+    command_count: Math.min(11, plan.expected_command_ceiling),
+    observation_count: Math.min(9, plan.expected_observation_ceiling),
+    automation_started_at: '2026-08-26T00:00:00.000Z',
+    preview_verified_at: '2026-08-26T00:03:47.000Z',
+    human_wait_seconds: 900,
+    preview_revision: digest('e'),
+    supersedes_receipt_digest: null,
+    issued_at: '2026-08-26T00:03:47.000Z',
+    ...override
+  });
+}
+
+describe('X Article materialization performance receipts', () => {
+  it('creates a deterministic schema-valid receipt with separate automation and human wait', () => {
+    const plan = materializationPlan();
+    const receipt = createReceiptFor(plan);
+
+    expect(receipt).toMatchObject({
+      schema_version: 'x-article-materialization-receipt/v1',
+      execution_id: plan.execution_id,
+      draft_id: 'draft_v32',
+      materialization_digest: plan.materialization_digest,
+      strategy: plan.strategy,
+      body_block_count: 6,
+      inline_image_count: 3,
+      stage_seconds: { body_import: 107 },
+      automation_seconds: 227,
+      human_wait_seconds: 900,
+      command_count: 11,
+      command_ceiling: 15,
+      observation_count: 9,
+      observation_ceiling: 12,
+      retry_count: 1,
+      recovery_count: 0,
+      within_budget: true,
+      preview_revision: digest('e'),
+      supersedes_receipt_digest: null,
+      issued_at: '2026-08-26T00:03:47.000Z'
+    });
+    expect(receipt.receipt_digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(validateContract('x-article-materialization-receipt', receipt)).toEqual(receipt);
+    expect(createReceiptFor(plan)).toEqual(receipt);
+  });
+
+  it.each([0, 3, 10])('computes the exact 180 + 60*N budget for %i inline visuals', (count) => {
+    const plan = materializationPlanWithVisualCount(count);
+    const budget = 180 + (60 * count);
+    const startedAt = Date.parse('2026-08-26T00:00:00.000Z');
+    const atBoundary = createReceiptFor(plan, {
+      checkpoint: previewCheckpoint(plan), progress: receiptProgress(plan),
+      preview_verified_at: new Date(startedAt + (budget * 1000)).toISOString(),
+      issued_at: new Date(startedAt + (budget * 1000)).toISOString()
+    });
+    const overBudget = createReceiptFor(plan, {
+      checkpoint: previewCheckpoint(plan), progress: receiptProgress(plan),
+      preview_verified_at: new Date(startedAt + ((budget + 1) * 1000)).toISOString(),
+      issued_at: new Date(startedAt + ((budget + 1) * 1000)).toISOString()
+    });
+
+    expect(atBoundary.automation_seconds).toBe(budget);
+    expect(atBoundary.within_budget).toBe(true);
+    expect(overBudget.within_budget).toBe(false);
+  });
+
+  it('rejects a silent slow stage but permits the boundary and an explicit waiting reason', () => {
+    const plan = materializationPlan();
+    expect(() => createReceiptFor(plan, { progress: receiptProgress(plan, {
+      elapsed_seconds: 21, waiting_for: null, observed_effect: 'unknown'
+    }) })).toThrowError(expect.objectContaining({ code: 'ARTICLE_MATERIALIZATION_NO_PROGRESS' }));
+    expect(() => createReceiptFor(plan, { progress: receiptProgress(plan, {
+      elapsed_seconds: 20, waiting_for: null, observed_effect: 'unknown'
+    }) })).not.toThrow();
+    expect(() => createReceiptFor(plan, { progress: receiptProgress(plan, {
+      elapsed_seconds: 21, waiting_for: 'browser_effect_reconciliation', observed_effect: 'unknown'
+    }) })).not.toThrow();
+  });
+
+  it.each([{ command_count: 16 }, { observation_count: 13 }])(
+    'rejects trusted activity counts above their ceiling: $override',
+    (override) => {
+      expect(() => createReceiptFor(materializationPlan(), override))
+        .toThrowError(expect.objectContaining({ code: 'ARTICLE_MATERIALIZATION_TIMEOUT' }));
+    }
+  );
+
+  it.each([
+    { human_wait_seconds: -1 }, { human_wait_seconds: Number.NaN },
+    { body_block_count: -1 }, { command_count: 1.5 },
+    { automation_started_at: 'not-a-time' },
+    { automation_started_at: '2026-08-26T00:03:48.000Z' }
+  ])('rejects invalid numeric or reversed timing evidence: $override', (override) => {
+    expect(() => createReceiptFor(materializationPlan(), override))
+      .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it('rejects disordered, foreign, or unknown-asset progress evidence', () => {
+    const plan = materializationPlan();
+    const first = receiptProgress(plan)[0]!;
+    const later = createXArticleStageProgress({
+      ...first,
+      stage: 'inline_visual',
+      asset_id: plan.visual_anchors[0]!.asset_id,
+      recorded_at: '2026-08-26T00:02:00.000Z'
+    });
+    const cases = [
+      [later, first],
+      [{ ...first, execution_id: 'foreign_execution' }],
+      [{ ...first, asset_id: 'unknown_asset' }]
+    ];
+    for (const progress of cases) {
+      expect(() => createReceiptFor(plan, { progress: progress as XArticleStageProgressV1[] }))
+        .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+    }
+  });
+
+  it.each([
+    { phase: 'draft_reconciled' },
+    { draft_id: null },
+    { body: { status: 'issued', observed_digest: null } },
+    { materialization_digest: digest('0') },
+    { media: [] },
+    { last_editor_revision: null }
+  ])('rejects incomplete or mismatched Preview checkpoint evidence: $override', (override) => {
+    const plan = materializationPlan();
+    expect(() => createReceiptFor(plan, {
+      checkpoint: previewCheckpoint(plan, override as never)
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_CHECKPOINT_CONFLICT' }));
+  });
+
+  it('rejects malformed Preview revision and creates immutable digest-linked supersession', () => {
+    const preview = createReceiptFor(materializationPlan());
+    expect(() => createReceiptFor(materializationPlan(), {
+      preview_revision: 'sha256:nope' as never
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+
+    const publicReceipt = createSupersedingXArticleMaterializationReceipt({
+      preview_receipt: preview,
+      human_wait_seconds: 120,
+      issued_at: '2026-08-26T00:06:00.000Z'
+    });
+    expect(publicReceipt).toMatchObject({
+      human_wait_seconds: 120,
+      supersedes_receipt_digest: preview.receipt_digest
+    });
+    expect(publicReceipt.receipt_digest).not.toBe(preview.receipt_digest);
+    expect(preview.supersedes_receipt_digest).toBeNull();
+    expect(validateContract('x-article-materialization-receipt', publicReceipt)).toEqual(publicReceipt);
   });
 });
