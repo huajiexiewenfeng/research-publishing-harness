@@ -732,6 +732,68 @@ describe('X Article Publish confirmation adapter gate', () => {
     await expect(adapter.next(executionId)).resolves.toMatchObject({ command: null });
   });
 
+  it.each([
+    ['consumption artifact write', 'armed'],
+    ['checkpoint consumption update', 'consumed']
+  ] as const)(
+    'recovers exactly one final claim after a crash following %s',
+    async (boundary, expectedCheckpointState) => {
+      const executionId = `execution_preclaim_${expectedCheckpointState}`;
+      const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+      await adapter.confirmPublish(executionId, confirmationFor(executionId, preview.page_revision));
+      const command = await advanceToFinalCommand(adapter, executionId, store);
+      const claimPath = `runs/${executionId}/x-article/browser/commands/${command.command_id}/claim.json`;
+      let failOnce = true;
+      if (boundary === 'consumption artifact write') {
+        const replaceAtomic = store.replaceAtomic.bind(store);
+        store.replaceAtomic = async (path, value) => {
+          const candidate = value as { publish_confirmation?: string };
+          if (
+            failOnce
+            && path.endsWith('/materialization-checkpoint.json')
+            && candidate.publish_confirmation === 'consumed'
+          ) {
+            failOnce = false;
+            throw new Error('injected crash after consumption artifact write');
+          }
+          return replaceAtomic(path, value);
+        };
+      } else {
+        const writeNew = store.writeNew.bind(store);
+        store.writeNew = async (path, value) => {
+          if (failOnce && path === claimPath) {
+            failOnce = false;
+            throw new Error('injected crash after checkpoint consumption update');
+          }
+          return writeNew(path, value);
+        };
+      }
+
+      await expect(adapter.claim(command)).rejects.toThrow(`injected crash after ${boundary}`);
+      await expect(adapter.status(executionId)).resolves.toMatchObject({
+        state: 'publish_armed', publish_command_count: 0
+      });
+      await expect(store.readJson(
+        `runs/${executionId}/x-article/browser/materialization-checkpoint.json`
+      )).resolves.toMatchObject({ publish_confirmation: expectedCheckpointState });
+      expect(await store.exists(
+        `runs/${executionId}/x-article/browser/publish-confirmation-consumption.json`
+      )).toBe(true);
+      expect(await store.exists(claimPath)).toBe(false);
+
+      await expect(adapter.claim(command)).resolves.toMatchObject({
+        execution_id: executionId, command_id: command.command_id, claimed: true
+      });
+      await expect(adapter.claim(command)).rejects.toMatchObject({ code: 'COMMAND_REPLAY_REJECTED' });
+      await expect(adapter.status(executionId)).resolves.toMatchObject({
+        state: 'publish_attempted', publish_command_count: 1
+      });
+      expect((await store.list(
+        `runs/${executionId}/x-article/browser/commands/${command.command_id}`
+      )).filter((entry) => entry.name === 'claim.json')).toHaveLength(1);
+    }
+  );
+
   it('recovers a broker-persisted final claim without authorizing a second submit', async () => {
     const { store, adapter, executionId, preview } = await preparedConfirmationFixture(
       'execution_claim_recovery'

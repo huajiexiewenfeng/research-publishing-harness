@@ -1537,14 +1537,19 @@ export class XArticleBrowserAdapter {
             if (verified.evidence.checkpoint.publish_confirmation === 'armed') {
                 await this.consumePublishCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint, consumption.consumed_at);
             }
-            await this.broker.readExistingClaim(command);
-            if (context.snapshot.state === 'publish_armed') {
-                context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
-                    publish_command_count: 1,
-                    submit_delivered: true
-                });
+            if (context.snapshot.state === 'publish_attempted') {
+                await this.broker.readExistingClaim(command);
+                throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command was already consumed');
             }
-            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command was already consumed');
+            const recovered = await this.broker.claimOrRead(command);
+            await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
+                publish_command_count: 1,
+                submit_delivered: true
+            });
+            if (!recovered.created) {
+                throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command may already have been delivered');
+            }
+            return recovered.claim;
         }
         const consumption = {
             ...consumptionBody,
@@ -1553,7 +1558,7 @@ export class XArticleBrowserAdapter {
         await this.store.writeNew(consumptionPath, consumption);
         await this.consumePublishCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint, consumption.consumed_at);
         const claim = await this.broker.claim(command);
-        context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
+        await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
             publish_command_count: 1,
             submit_delivered: true
         });
