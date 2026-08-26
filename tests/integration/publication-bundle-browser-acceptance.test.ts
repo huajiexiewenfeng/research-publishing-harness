@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { XArticleBrowserCommandV1 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import {
   installArticleReceipt,
   installSingleReceipt,
@@ -15,6 +16,20 @@ class FakeBrowserHost {
   submit(kind: 'publish_article_once' | 'submit_once'): void {
     this.submitKinds.push(kind);
   }
+}
+
+async function articleCommandKinds(
+  fixture: Awaited<ReturnType<typeof createPreparedPublicationBundleFixture>>
+): Promise<readonly XArticleBrowserCommandV1['kind'][]> {
+  const entries = await fixture.store.list(
+    `runs/${fixture.execution.execution_id}/x-article/browser/commands`
+  );
+  const commands = await Promise.all(entries
+    .filter((entry) => entry.kind === 'directory')
+    .map((entry) => fixture.store.readJson<XArticleBrowserCommandV1>(
+      `${entry.relative_path}/command.json`
+    )));
+  return commands.map((command) => command.kind);
 }
 
 describe('Publication Bundle Browser acceptance', () => {
@@ -33,9 +48,14 @@ describe('Publication Bundle Browser acceptance', () => {
       confirmed_preview_revision: binding.preview_revision,
       approved_by: 'human:Glen56121'
     });
+    expect(await articleCommandKinds(fixture)).not.toContain('publish_article_once');
     const confirmation = await fixture.service.articlePublishConfirmation(fixture.plan.bundle_id);
     await expect(fixture.adapter.confirmPublish(fixture.execution.execution_id, confirmation))
       .resolves.toMatchObject({ state: 'publish_armed', publish_command_count: 0 });
+    expect(await articleCommandKinds(fixture)).not.toContain('publish_article_once');
+    await expect(fixture.store.exists(
+      `runs/${fixture.execution.execution_id}/x-article/browser/materialization-receipt-public.json`
+    )).resolves.toBe(false);
     const approvalPath = `runs/${fixture.plan.bundle_id}/publication-bundle/approval.json`;
     const approvalBytes = await fixture.store.readBytes(approvalPath);
     const receipt = await installArticleReceipt(

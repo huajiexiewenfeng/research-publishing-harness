@@ -68,9 +68,9 @@ The optional Query supplies bounded, reviewable context before a new package is 
 
 - Create an offline Manual copy package and record a human-supplied publication URL, post IDs, and publication time; the Manual Adapter does not access X.
 - Use a bounded Browser Host Bridge for an explicitly selected, already logged-in Chrome session, with account, draft, composer, fresh Submit-barrier, and public verification checks. Real browser actions require that explicit session selection and are never part of CI acceptance.
-- Run the X Article browser flow through its exact audit, one `publish_once` confirmation, action-time upload/publish gates, and read-only verification recovery.
-- For compatible Chrome Hosts, import one digest-bound structured X Article document and then replace its ordered temporary visual anchors; Hosts without both bulk capabilities retain the incremental `insert_article_block` strategy from the start.
-- Never paste raw Markdown, reimport during recovery, switch strategies after bulk import starts, or enter Preview while an anchor remains unresolved.
+- Run the default X Article control flow as `prepare → materialize → verified Preview → confirm-publish`; no Publish command exists before the exact Preview-bound confirmation is attached.
+- A compatible Chrome Host imports one digest-bound structured X Article document and then replaces its ordered temporary visual anchors. V3.2 requires both bulk capabilities and fails closed when either is absent; `block_materialization/v1` is an explicitly locked compatibility mode, never a silent fallback.
+- Recovery observes the saved Editor and durable checkpoint before continuing. It never pastes raw Markdown, reimports observed content, overwrites unknown Human edits, changes strategy, or enters Preview while an anchor remains unresolved.
 
 ### Verification and recovery
 
@@ -109,6 +109,8 @@ node dist/harnesses/research-publishing/cli/index.js doctor \
 
 `pnpm check` is offline verification: it runs lint, type checking, tests, build, and Article/X/Visual/X Article/Memory acceptance without an account, credentials, real-browser publication, network publication, or user Wiki write. The `doctor` command inspects a local publishing workspace after the CLI is built.
 
+The stable X Article V3.2 control routes are `x-article browser prepare`, `resume-editor`, `materialization-status`, and `confirm-publish`. Automated tests use temporary workspaces and fake Hosts; real Chrome performance remains a separate Browser Host verification activity.
+
 ## Choose a starting point
 
 - [Quickstart](docs/guides/quickstart.md) — install, run acceptance, and walk through the Article, X, Browser, Visual, and Memory flows.
@@ -141,6 +143,7 @@ node dist/harnesses/research-publishing/cli/index.js doctor \
 | V2.3 | Evidence flywheel and Catalog-first Query |
 | V3 | New-publication X Article workflow |
 | V3.1 | Digest-bound X Article document import and visual-anchor recovery |
+| V3.2 | Resumable bulk materialization, Preview-bound one-time Publish confirmation, and performance receipts |
 
 The stages explain where the current capabilities came from; the workflow groups above are the recommended way to use the repository.
 

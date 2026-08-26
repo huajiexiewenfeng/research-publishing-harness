@@ -124,22 +124,25 @@ For a safe synthetic preview, run `x browser start`, inspect the returned read-o
 
 If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
 
-## 9. V3 X Article publishing
+## 9. V3.2 X Article publishing
 
 Keep long-form content as an X Article; do not split it into a Thread merely because the Post branch has older automation.
 
+The default path separates reversible Draft preparation from the irreversible Publish command:
+
 ```text
 x-article plan
-→ exact Article Audit block
-→ one publish_once confirmation
-→ x-article approve
-→ x-article browser start
-→ x-article browser next → claim → one Chrome action → report
+→ x-article browser prepare --plan <path> --capabilities <path>
+→ next → claim → fake/offline or explicitly selected Chrome Host action → report
+→ verified Preview and immutable materialization receipt
+→ one exact Preview-bound confirmation
+→ x-article browser confirm-publish --execution <id> --confirmation <path>
+→ next → claim the one publish_article_once command → report
 ```
 
-Use action-time Human approval before a real file upload and before claiming the final public Publish command. `cancel-before-publish` is valid only before that barrier. After Publish is issued, use `resume-verification`; never issue a second Publish.
+All commands also require `--workspace <path> --output json`. Inspect progress without mutation with `x-article browser materialization-status --execution <id>`. After a recoverable Editor interruption, use `x-article browser resume-editor --execution <id>`; recovery observes the actual saved Draft and checkpoint before deciding what remains.
 
-For a Host advertising both `import_article_document` and `replace_article_visual_anchor`, the V3.1 bulk path is:
+For a Host advertising `import_article_document`, `replace_article_visual_anchor`, structured rich-text paste, inline Alt read/write, Preview observation, and the matching release set, the V3.2 bulk path is:
 
 ```text
 Harness import command
@@ -147,12 +150,14 @@ Harness import command
 → Harness verifies template digest and ordered anchors
 → Host replaces each approved visual anchor
 → Harness verifies the final Article Document
-→ Preview → action-time confirmation → publish_once
+→ Preview receipt → action-time confirmation → publish_once
 ```
 
-The observed X editor has no `.md` file-upload path. The Host performs the import as one controlled, claimed structured-document action; it does not paste raw or unplanned Markdown. Temporary anchors reserve approved inline-image positions and are replaced separately at their approved block ordinals, never appended to the end. Unresolved anchors cannot reach Preview. After bulk import begins, the Host must not switch to incremental insertion. Crash recovery re-observes the exact persisted import state and resumes the next anchor replacement; it never reimports or changes strategy. The existing action-time `publish_once` confirmation is unchanged.
+The observed X editor has no `.md` file-upload path. The Host performs the import as one controlled, claimed structured-document action; it does not paste raw or unplanned Markdown. Temporary anchors reserve approved inline-image positions and are replaced separately at their approved block ordinals, never appended to the end. Unresolved anchors cannot reach Preview. After materialization begins, the Host must not switch strategy. Crash recovery re-observes the exact persisted import state, preserves unknown Human content, and resumes the next safe anchor transaction; it never reimports observed content.
 
-A Host that lacks either bulk capability uses the existing incremental `insert_article_block` protocol from the start.
+V3.2 `prepare` fails with `ARTICLE_BULK_IMPORT_REQUIRED` when the complete bulk capability set is absent. The legacy `block_materialization/v1` path is explicit compatibility only: it must be selected before execution, has a different locked Plan digest, and cannot be chosen as a runtime fallback.
+
+Automated acceptance never opens a public browser session or publishes. It models Draft, checkpoint, confirmation, and at-most-once Publish boundaries in a temporary workspace; live Chrome performance is validated only by the companion Browser Host plan.
 
 ## 10. V2.1 visual handoff
 

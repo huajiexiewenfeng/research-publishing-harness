@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import {
   computeXArticlePageRevision,
   type XArticleBrowserObservation
@@ -12,8 +13,15 @@ import {
 import type { XArticleBrowserCommandV1 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { XArticleService } from '../../harnesses/research-publishing/branches/x-article-harness/x-article-service.js';
+import type { XArticleBlockV1 } from '../../harnesses/research-publishing/branches/x-article-harness/article-document.js';
 import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
+import { createXArticlePublishConfirmation } from '../../harnesses/research-publishing/core/x-article-publish-confirmation.js';
+import {
+  createXArticlePublicationPlan,
+  type XArticlePublicationPlanV1,
+  type XArticleVisualBindingV1
+} from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import {
   bulkArticleMarkdown,
@@ -45,7 +53,626 @@ async function succeed(
   });
 }
 
+const materializationCapabilities = {
+  executor: 'codex-chrome', executor_version: 'offline-control-plane-fixture', browser_family: 'chrome',
+  capabilities: [
+    'observe_article_page', 'create_article_draft', 'import_article_document',
+    'replace_article_visual_anchor', 'upload_article_cover', 'open_article_preview',
+    'open_publish_review', 'publish_article_once'
+  ],
+  observed_at: '2026-08-26T00:00:00.000Z'
+} as const;
+
+const crashPoints = [
+  'after_draft_create',
+  'after_metadata',
+  'import_effect_before_checkpoint',
+  'before_media_1',
+  'media_effect_before_anchor_cleanup',
+  'media_complete_before_checkpoint',
+  'after_preview',
+  'after_confirmation_before_publish',
+  'publish_effect_unknown'
+] as const;
+
+type CrashPoint = (typeof crashPoints)[number];
+
+function createMaterializationFixturePlan(
+  imageCount: number,
+  suffix: string,
+  includeCover = false
+): XArticlePublicationPlanV1 {
+  const blocks: XArticleBlockV1[] = [{
+    kind: 'paragraph',
+    runs: [{ text: 'Human-reviewed control-plane introduction.', marks: [], link: null }]
+  }];
+  const visuals: XArticleVisualBindingV1[] = [];
+  let coverAssetId: string | null = null;
+  if (includeCover) {
+    const asset = {
+      asset_id: `asset_cover_${suffix}`,
+      relative_path: `assets/cover-${suffix}.png`,
+      digest: sha256({ suffix, kind: 'cover' }),
+      mime_type: 'image/png' as const,
+      alt_text: 'Human-reviewed control-plane cover.',
+      claim_refs: ['claim_control_plane']
+    };
+    coverAssetId = asset.asset_id;
+    visuals.push({ asset, placement: { kind: 'cover' } });
+  }
+  for (let index = 0; index < imageCount; index += 1) {
+    const asset = {
+      asset_id: `asset_inline_${suffix}_${index + 1}`,
+      relative_path: `assets/inline-${suffix}-${index + 1}.png`,
+      digest: sha256({ suffix, index, kind: 'inline' }),
+      mime_type: 'image/png' as const,
+      alt_text: `Human-reviewed diagram ${index + 1}.`,
+      claim_refs: [`claim_${index + 1}`]
+    };
+    blocks.push({ kind: 'image', asset_id: asset.asset_id, alt_text: asset.alt_text });
+    visuals.push({ asset, placement: { kind: 'block', block_ordinal: blocks.length } });
+    blocks.push({
+      kind: 'paragraph',
+      runs: [{ text: `Human-reviewed explanation ${index + 1}.`, marks: [], link: null }]
+    });
+  }
+  return createXArticlePublicationPlan({
+    planId: `plan_${suffix}`,
+    runId: `run_${suffix}`,
+    targetAccount: '@Glen56121',
+    articlePackage: {
+      root: `articles/control-plane/${suffix}`,
+      digest: sha256({ suffix, imageCount, includeCover })
+    },
+    document: {
+      schema_version: '1.0',
+      title: `Control plane ${suffix}`,
+      cover_asset_id: coverAssetId,
+      blocks
+    },
+    visuals,
+    plannedAt: '2026-08-26T00:00:00.000Z',
+    provenance: { fixture: 'offline-control-plane' }
+  });
+}
+
+class OfflineMaterializationHost {
+  readonly network = 'unused';
+  readonly draftId = '2092246293603373056';
+  readonly completedAssetEffects: string[] = [];
+  readonly commandEffects: string[] = [];
+  bodyImportEffects = 0;
+  bodyOverwriteAttempts = 0;
+  coverEffects = 0;
+  publishEffects = 0;
+  localAnchorCleanupRecoveries = 0;
+  private title = '';
+  private blocks: readonly XArticleBlockV1[] = [];
+  private visuals: NonNullable<XArticleBrowserObservation['editor']>['visuals'] = [];
+  private importState: NonNullable<XArticleBrowserObservation['editor']>['import_state'] = null;
+
+  constructor(private readonly plan: XArticlePublicationPlanV1) {}
+
+  private observed(
+    command: XArticleBrowserCommandV1,
+    value: Record<string, unknown>
+  ): XArticleBrowserObservation {
+    return observation(command.execution_id, command.command_id, {
+      observed_at: '2026-08-26T00:01:00.000Z',
+      ...value
+    });
+  }
+
+  private editor(command: XArticleBrowserCommandV1): XArticleBrowserObservation {
+    return this.observed(command, {
+      canonical_url: `https://x.com/compose/articles/edit/${this.draftId}`,
+      page_kind: 'article_editor',
+      controls: [
+        { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+        { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+        { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
+        { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }
+      ],
+      editor: {
+        draft_id: this.draftId,
+        title: this.title,
+        blocks: this.blocks,
+        visuals: this.visuals,
+        import_state: this.importState,
+        has_unknown_content: false,
+        autosave_state: 'saved'
+      }
+    });
+  }
+
+  private completeAnchor(command: XArticleBrowserCommandV1): void {
+    if (command.payload.kind !== 'replace_article_visual_anchor') {
+      throw new Error('expected visual-anchor command');
+    }
+    const anchor = command.payload.anchor;
+    const unresolved = this.importState?.unresolved_anchors.filter(
+      (candidate) => candidate.anchor_id !== anchor.anchor_id
+    ) ?? [];
+    if (!this.completedAssetEffects.includes(command.payload.asset.asset_id)) {
+      this.completedAssetEffects.push(command.payload.asset.asset_id);
+      this.visuals = [...this.visuals, {
+        ref: `visual_${anchor.asset_id}`,
+        asset_id: command.payload.asset.asset_id,
+        kind: 'inline',
+        block_ordinal: anchor.block_ordinal,
+        alt_text: command.payload.asset.alt_text,
+        status: 'uploaded',
+        owned_by_execution: true
+      }];
+    }
+    const unresolvedOrdinals = new Set(unresolved.map((candidate) => candidate.block_ordinal));
+    this.blocks = this.plan.intent.document.blocks.filter((block, index) =>
+      block.kind !== 'image' || !unresolvedOrdinals.has(index + 1)
+    );
+    this.importState = unresolved.length === 0
+      ? null
+      : { ...this.importState!, unresolved_anchors: unresolved };
+  }
+
+  recoverAnchorCleanup(command: XArticleBrowserCommandV1): XArticleBrowserObservation {
+    this.localAnchorCleanupRecoveries += 1;
+    this.completeAnchor(command);
+    return this.editor(command);
+  }
+
+  apply(
+    command: XArticleBrowserCommandV1,
+    options: { readonly leaveAnchorAfterMediaEffect?: boolean } = {}
+  ): XArticleBrowserObservation | null {
+    this.commandEffects.push(command.kind);
+    if (command.payload.kind === 'observe_article_page') {
+      if (command.payload.scope === 'index') {
+        return this.observed(command, {
+          canonical_url: 'https://x.com/compose/articles',
+          page_kind: 'articles_index',
+          controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+        });
+      }
+      if (command.payload.scope === 'editor') {
+        if (this.importState?.unresolved_anchors.length === 0) this.importState = null;
+        return this.editor(command);
+      }
+      throw new Error('offline Host refuses public network observation');
+    }
+    if (command.payload.kind === 'create_article_draft') return this.editor(command);
+    if (command.payload.kind === 'import_article_document') {
+      if (this.bodyImportEffects > 0 || this.blocks.length > 0) this.bodyOverwriteAttempts += 1;
+      if (this.bodyImportEffects === 0) {
+        this.bodyImportEffects += 1;
+        this.title = this.plan.intent.document.title;
+        this.blocks = this.plan.intent.document.blocks.filter((block) => block.kind !== 'image');
+        const template = createXArticleImportTemplate(this.plan.intent.document);
+        this.importState = {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        };
+      }
+      return this.editor(command);
+    }
+    if (command.payload.kind === 'upload_article_cover') {
+      if (!this.visuals.some((visual) => visual.kind === 'cover')) {
+        this.coverEffects += 1;
+        this.visuals = [...this.visuals, {
+          ref: 'cover_control_plane',
+          asset_id: command.payload.asset.asset_id,
+          kind: 'cover',
+          block_ordinal: null,
+          alt_text: null,
+          status: 'uploaded',
+          owned_by_execution: true
+        }];
+      }
+      return this.editor(command);
+    }
+    if (command.payload.kind === 'replace_article_visual_anchor') {
+      if (options.leaveAnchorAfterMediaEffect) {
+        if (!this.completedAssetEffects.includes(command.payload.asset.asset_id)) {
+          this.completedAssetEffects.push(command.payload.asset.asset_id);
+          this.visuals = [...this.visuals, {
+            ref: `visual_${command.payload.anchor.asset_id}`,
+            asset_id: command.payload.asset.asset_id,
+            kind: 'inline',
+            block_ordinal: command.payload.anchor.block_ordinal,
+            alt_text: command.payload.asset.alt_text,
+            status: 'uploaded',
+            owned_by_execution: true
+          }];
+        }
+        return this.editor(command);
+      }
+      this.completeAnchor(command);
+      return this.editor(command);
+    }
+    if (command.payload.kind === 'open_article_preview') {
+      return this.observed(command, {
+        canonical_url: `https://x.com/compose/articles/edit/${this.draftId}/preview`,
+        page_kind: 'article_preview',
+        controls: [{ ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+        preview: {
+          draft_id: this.draftId,
+          title: this.title,
+          blocks: this.blocks,
+          visuals: this.visuals
+        }
+      });
+    }
+    if (command.payload.kind === 'open_publish_review') {
+      return this.observed(command, {
+        canonical_url: `https://x.com/compose/articles/edit/${this.draftId}/preview`,
+        page_kind: 'publish_review',
+        controls: [{ ref: 'publish_final', role: 'button', name: 'Publish', test_id: null, disabled: false }],
+        publish_review: {
+          draft_id: this.draftId,
+          audience: 'everyone',
+          final_publish_ref: 'publish_final'
+        }
+      });
+    }
+    if (command.payload.kind === 'publish_article_once') {
+      this.publishEffects += 1;
+      return null;
+    }
+    throw new Error(`offline Host does not implement ${command.kind}`);
+  }
+
+  humanTextDigest(): `sha256:${string}` {
+    return sha256(this.blocks.filter((block) => block.kind !== 'image'));
+  }
+}
+
+interface MaterializationRunResult {
+  readonly state: string;
+  readonly body_import_count: number;
+  readonly body_import_command_count: number;
+  readonly incremental_block_command_count: number;
+  readonly cover_effect_count: number;
+  readonly expected_asset_ids: readonly string[];
+  readonly completed_asset_ids: readonly string[];
+  readonly publish_effect_count: number;
+  readonly publish_command_count: number;
+  readonly command_count: number;
+  readonly observation_count: number;
+  readonly command_ceiling: number;
+  readonly observation_ceiling: number;
+  readonly human_content_overwrite_count: number;
+  readonly human_text_digest_before_recovery: `sha256:${string}`;
+  readonly human_text_digest_after_recovery: `sha256:${string}`;
+  readonly network: 'unused';
+  readonly local_anchor_cleanup_recoveries: number;
+  readonly boundary_checkpoint: Record<string, unknown> | null;
+  readonly boundary_command_id: string | null;
+  readonly boundary_report_persisted: boolean | null;
+}
+
+async function runOfflineMaterialization(
+  imageCount: number,
+  suffix: string,
+  crashPoint: CrashPoint | null = null,
+  includeCover = false
+): Promise<MaterializationRunResult> {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-v32-${suffix}-`)));
+  const plan = createMaterializationFixturePlan(imageCount, suffix, includeCover);
+  const host = new OfflineMaterializationHost(plan);
+  let commandNumber = 0;
+  let eventNumber = 0;
+  const createAdapter = () => new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => `execution_${suffix}`,
+    commandId: () => `command_${suffix}_${++commandNumber}`,
+    eventId: () => `event_${suffix}_${++eventNumber}`,
+    attemptId: () => `attempt_${suffix}`,
+    receiptId: () => `receipt_${suffix}`,
+    now: () => new Date('2026-08-26T00:01:00.000Z')
+  });
+  let adapter = createAdapter();
+  const execution = await adapter.prepare(plan, materializationCapabilities);
+  let crashed = false;
+  let confirmed = false;
+  let boundaryCheckpoint: Record<string, unknown> | null = null;
+  let boundaryCommandId: string | null = null;
+  let boundaryReportPersisted: boolean | null = null;
+  let humanTextDigestBeforeRecovery: `sha256:${string}` | null = null;
+
+  const recordBoundary = async (command: XArticleBrowserCommandV1 | null): Promise<void> => {
+    boundaryCommandId = command?.command_id ?? null;
+    boundaryReportPersisted = command === null
+      ? null
+      : await store.exists(
+          `runs/${execution.execution_id}/x-article/browser/reports/${command.command_id}.json`
+        );
+    boundaryCheckpoint = await store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+    );
+    if (host.bodyImportEffects > 0) humanTextDigestBeforeRecovery = host.humanTextDigest();
+    adapter = createAdapter();
+    crashed = true;
+  };
+
+  for (let step = 0; step < 100; step += 1) {
+    const status = await adapter.status(execution.execution_id);
+    if (status.state === 'confirmation_pending') {
+      if (crashPoint === 'after_preview' && !crashed) {
+        await recordBoundary(null);
+        break;
+      }
+      if (crashPoint === 'after_confirmation_before_publish') {
+        const preview = await store.readJson<XArticleBrowserObservation>(
+          `runs/${execution.execution_id}/x-article/browser/observations/${status.latest_observation_id}.json`
+        );
+        await adapter.confirmPublish(execution.execution_id, createXArticlePublishConfirmation({
+          confirmation_id: `confirmation_${suffix}`,
+          execution_id: execution.execution_id,
+          draft_id: host.draftId,
+          target_account: plan.intent.target_account,
+          audience: 'everyone',
+          plan_digest: plan.plan_digest as `sha256:${string}`,
+          document_digest: sha256(plan.intent.document),
+          preview_revision: preview.page_revision,
+          asset_digests: plan.intent.visuals.map((binding) => binding.asset.digest),
+          confirmed_by: 'human:Glen56121',
+          confirmed_at: '2026-08-26T00:01:00.000Z'
+        }));
+        confirmed = true;
+        await recordBoundary(null);
+        break;
+      }
+      if (crashPoint === 'publish_effect_unknown' && !confirmed) {
+        const preview = await store.readJson<XArticleBrowserObservation>(
+          `runs/${execution.execution_id}/x-article/browser/observations/${status.latest_observation_id}.json`
+        );
+        await adapter.confirmPublish(execution.execution_id, createXArticlePublishConfirmation({
+          confirmation_id: `confirmation_${suffix}`,
+          execution_id: execution.execution_id,
+          draft_id: host.draftId,
+          target_account: plan.intent.target_account,
+          audience: 'everyone',
+          plan_digest: plan.plan_digest as `sha256:${string}`,
+          document_digest: sha256(plan.intent.document),
+          preview_revision: preview.page_revision,
+          asset_digests: plan.intent.visuals.map((binding) => binding.asset.digest),
+          confirmed_by: 'human:Glen56121',
+          confirmed_at: '2026-08-26T00:01:00.000Z'
+        }));
+        confirmed = true;
+        continue;
+      }
+      break;
+    }
+
+    const next = await adapter.next(execution.execution_id);
+    if (next.command === null) break;
+    const command = next.command;
+
+    if (
+      crashPoint === 'before_media_1'
+      && !crashed
+      && command.kind === 'replace_article_visual_anchor'
+    ) {
+      await recordBoundary(command);
+      continue;
+    }
+
+    await adapter.claim(command);
+    if (
+      crashPoint === 'media_effect_before_anchor_cleanup'
+      && !crashed
+      && command.kind === 'replace_article_visual_anchor'
+    ) {
+      host.apply(command, { leaveAnchorAfterMediaEffect: true });
+      await recordBoundary(command);
+      const recovered = host.recoverAnchorCleanup(command);
+      await adapter.report({ command, status: 'success', observation: recovered });
+      continue;
+    }
+
+    const effect = host.apply(command);
+    if (
+      crashPoint === 'after_draft_create'
+      && !crashed
+      && command.kind === 'create_article_draft'
+    ) {
+      await recordBoundary(command);
+      await adapter.report({ command, status: 'success', observation: effect });
+      continue;
+    }
+    if (
+      crashPoint === 'import_effect_before_checkpoint'
+      && !crashed
+      && command.kind === 'import_article_document'
+    ) {
+      await recordBoundary(command);
+      await adapter.report({ command, status: 'success', observation: effect });
+      continue;
+    }
+    if (
+      crashPoint === 'media_complete_before_checkpoint'
+      && !crashed
+      && command.kind === 'replace_article_visual_anchor'
+    ) {
+      await recordBoundary(command);
+      await adapter.report({ command, status: 'success', observation: effect });
+      continue;
+    }
+    if (command.kind === 'publish_article_once' && crashPoint === 'publish_effect_unknown') {
+      await recordBoundary(command);
+      await adapter.report({ command, status: 'uncertain', observation: null });
+      break;
+    }
+    await adapter.report({ command, status: 'success', observation: effect });
+
+    if (
+      crashPoint === 'after_metadata'
+      && !crashed
+      && command.kind === 'create_article_draft'
+    ) {
+      // Prepared V3.2 has no standalone metadata command. This is the truthful Host-local
+      // create/metadata substage boundary after its exact create report is durable.
+      await recordBoundary(command);
+    }
+  }
+
+  if (crashPoint !== null && !crashed) throw new Error(`crash point ${crashPoint} was not reached`);
+  const materializationPlan = await store.readJson<{
+    expected_command_ceiling: number;
+    expected_observation_ceiling: number;
+  }>(`runs/${execution.execution_id}/x-article/browser/materialization-plan.json`);
+  const commandEntries = await store.list(`runs/${execution.execution_id}/x-article/browser/commands`);
+  const commands = await Promise.all(commandEntries
+    .filter((entry) => entry.kind === 'directory')
+    .map((entry) => store.readJson<XArticleBrowserCommandV1>(`${entry.relative_path}/command.json`)));
+  const observationEntries = await store.list(`runs/${execution.execution_id}/x-article/browser/observations`);
+  const progress = (await store.readText(
+    `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`
+  )).trim().split('\n').map((line) => JSON.parse(line) as {
+    readonly asset_id: string | null;
+    readonly observed_effect: string;
+  });
+  const finalStatus = await adapter.status(execution.execution_id);
+  return {
+    state: finalStatus.state,
+    body_import_count: host.bodyImportEffects,
+    body_import_command_count: commands.filter((command) => command.kind === 'import_article_document').length,
+    incremental_block_command_count: commands.filter((command) => command.kind === 'insert_article_block').length,
+    cover_effect_count: host.coverEffects,
+    expected_asset_ids: plan.intent.visuals.map((binding) => binding.asset.asset_id),
+    completed_asset_ids: progress
+      .filter((entry) => entry.asset_id !== null && entry.observed_effect === 'complete')
+      .map((entry) => entry.asset_id as string),
+    publish_effect_count: host.publishEffects,
+    publish_command_count: commands.filter((command) => command.kind === 'publish_article_once').length,
+    command_count: commands.length,
+    observation_count: observationEntries.filter((entry) => entry.kind === 'file').length,
+    command_ceiling: materializationPlan.expected_command_ceiling,
+    observation_ceiling: materializationPlan.expected_observation_ceiling,
+    human_content_overwrite_count: host.bodyOverwriteAttempts,
+    human_text_digest_before_recovery: humanTextDigestBeforeRecovery ?? host.humanTextDigest(),
+    human_text_digest_after_recovery: host.humanTextDigest(),
+    network: host.network,
+    local_anchor_cleanup_recoveries: host.localAnchorCleanupRecoveries,
+    boundary_checkpoint: boundaryCheckpoint,
+    boundary_command_id: boundaryCommandId,
+    boundary_report_persisted: boundaryReportPersisted
+  };
+}
+
 describe('X Article Browser workflow', () => {
+  it.each(crashPoints)('recovers the %s crash boundary without replaying irreversible effects', async (point) => {
+    const result = await runOfflineMaterialization(3, `crash_${point}`, point);
+    const expectedState = point === 'after_confirmation_before_publish'
+      ? 'publish_armed'
+      : point === 'publish_effect_unknown'
+        ? 'outcome_unknown'
+        : 'confirmation_pending';
+
+    expect(result.state).toBe(expectedState);
+    expect(result.body_import_count).toBe(1);
+    expect(result.body_import_command_count).toBe(1);
+    expect(result.incremental_block_command_count).toBe(0);
+    expect(result.completed_asset_ids).toEqual(result.expected_asset_ids);
+    expect(new Set(result.completed_asset_ids).size).toBe(result.completed_asset_ids.length);
+    expect(result.publish_command_count).toBe(point === 'publish_effect_unknown' ? 1 : 0);
+    expect(result.publish_effect_count).toBe(point === 'publish_effect_unknown' ? 1 : 0);
+    expect(result.human_content_overwrite_count).toBe(0);
+    expect(result.human_text_digest_after_recovery).toBe(result.human_text_digest_before_recovery);
+    expect(result.network).toBe('unused');
+    expect(result.boundary_checkpoint).not.toBeNull();
+    expect(result.local_anchor_cleanup_recoveries).toBe(
+      point === 'media_effect_before_anchor_cleanup' ? 1 : 0
+    );
+
+    if (point === 'import_effect_before_checkpoint') {
+      expect(result.boundary_checkpoint).toMatchObject({ body: { status: 'issued' } });
+      expect(result.boundary_report_persisted).toBe(false);
+    }
+    if (
+      point === 'before_media_1'
+      || point === 'media_effect_before_anchor_cleanup'
+      || point === 'media_complete_before_checkpoint'
+    ) {
+      expect(result.boundary_checkpoint).toMatchObject({ body: { status: 'verified' } });
+      const boundaryMedia = result.boundary_checkpoint?.media as readonly { readonly status: string }[];
+      expect(boundaryMedia[0]).toMatchObject({ status: 'upload_started' });
+      expect(boundaryMedia.slice(1).every((entry) => entry.status === 'pending')).toBe(true);
+      expect(result.boundary_report_persisted).toBe(false);
+    }
+    if (point === 'after_draft_create') {
+      expect(result.boundary_report_persisted).toBe(false);
+    }
+    if (point === 'after_metadata') {
+      expect(result.boundary_report_persisted).toBe(true);
+    }
+    if (point === 'after_preview') {
+      expect(result.boundary_checkpoint).toMatchObject({ phase: 'preview_verified' });
+      expect(result.boundary_command_id).toBeNull();
+    }
+    if (point === 'after_confirmation_before_publish') {
+      expect(result.boundary_checkpoint).toMatchObject({
+        phase: 'human_confirmed',
+        publish_confirmation: 'armed'
+      });
+      expect(result.publish_command_count).toBe(0);
+    }
+    if (point === 'publish_effect_unknown') {
+      expect(result.boundary_checkpoint).toMatchObject({
+        phase: 'publish_submitted',
+        publish_confirmation: 'consumed'
+      });
+      expect(result.publish_command_count).toBe(1);
+      expect(result.publish_effect_count).toBe(1);
+    }
+  });
+
+  it.each([
+    [0, 12, 9, 5, 5],
+    [3, 15, 12, 7, 7],
+    [10, 22, 19, 14, 14]
+  ])(
+    'keeps %i images within the measured command and Observation budgets',
+    async (images, commandCeiling, observationCeiling, measuredCommands, measuredObservations) => {
+      const result = await runOfflineMaterialization(images, `budget_${images}`);
+
+      expect(result.state).toBe('confirmation_pending');
+      expect(result.body_import_count).toBe(1);
+      expect(result.body_import_command_count).toBe(1);
+      expect(result.incremental_block_command_count).toBe(0);
+      expect(result.command_count).toBe(measuredCommands);
+      expect(result.observation_count).toBe(measuredObservations);
+      expect(result.command_ceiling).toBe(commandCeiling);
+      expect(result.observation_ceiling).toBe(observationCeiling);
+      expect(result.command_count).toBeLessThanOrEqual(commandCeiling);
+      expect(result.observation_count).toBeLessThanOrEqual(observationCeiling);
+      expect(result.completed_asset_ids).toEqual(result.expected_asset_ids);
+      expect(new Set(result.completed_asset_ids).size).toBe(images);
+      expect(result.publish_command_count).toBe(0);
+      expect(result.human_content_overwrite_count).toBe(0);
+      expect(result.network).toBe('unused');
+    }
+  );
+
+  it('includes one planned cover progress event in the immutable Preview receipt', async () => {
+    const result = await runOfflineMaterialization(3, 'cover_receipt', null, true);
+
+    expect(result.state).toBe('confirmation_pending');
+    expect(result.body_import_count).toBe(1);
+    expect(result.body_import_command_count).toBe(1);
+    expect(result.incremental_block_command_count).toBe(0);
+    expect(result.cover_effect_count).toBe(1);
+    expect(result.completed_asset_ids).toEqual(result.expected_asset_ids);
+    expect(new Set(result.completed_asset_ids).size).toBe(4);
+    expect(result.command_count).toBe(8);
+    expect(result.observation_count).toBe(8);
+    expect(result.command_count).toBeLessThanOrEqual(result.command_ceiling);
+    expect(result.observation_count).toBeLessThanOrEqual(result.observation_ceiling);
+    expect(result.publish_command_count).toBe(0);
+    expect(result.human_content_overwrite_count).toBe(0);
+    expect(result.network).toBe('unused');
+  });
+
   it('recovers an uncertain Publish read-only and finalizes one immutable Receipt', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-e2e-')));
     const root = 'articles/runtime-boundary/article_e2e';

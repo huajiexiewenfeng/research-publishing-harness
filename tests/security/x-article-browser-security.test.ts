@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
-import type { IssueXArticleBrowserCommandInput } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
+import {
+  computeXArticlePageRevision,
+  type XArticleBrowserObservation
+} from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
+import type {
+  IssueXArticleBrowserCommandInput,
+  XArticleBrowserCommandV1
+} from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
@@ -53,7 +60,106 @@ function importCommand(
   };
 }
 
+function preparedObservation(
+  executionId: string,
+  commandId: string,
+  value: Record<string, unknown>
+): XArticleBrowserObservation {
+  const input = {
+    schema_version: '1.0', observation_id: `obs_${commandId}`, execution_id: executionId,
+    command_id: commandId, origin: 'https://x.com', observed_at: '2026-08-26T00:01:00.000Z',
+    account_handle: '@Glen56121', controls: [], editor: null, preview: null,
+    publish_review: null, public_article: null, ...value
+  } as const;
+  return {
+    ...input,
+    page_revision: computeXArticlePageRevision(input)
+  } as unknown as XArticleBrowserObservation;
+}
+
 describe('X Article Browser security', () => {
+  it('blocks an observed Human draft without importing over it or issuing Publish', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-human-drift-')));
+    const humanPlan = createXArticlePublicationPlan({
+      planId: 'plan_human_drift', runId: 'run_human_drift', targetAccount: '@Glen56121',
+      articlePackage: {
+        root: 'articles/security/human-drift',
+        digest: `sha256:${'c'.repeat(64)}`
+      },
+      document: {
+        schema_version: '1.0', title: 'Approved title', cover_asset_id: null,
+        blocks: [{
+          kind: 'paragraph',
+          runs: [{ text: 'Approved body.', marks: [], link: null }]
+        }]
+      },
+      visuals: [], plannedAt: '2026-08-26T00:00:00.000Z', provenance: {}
+    });
+    let commandNumber = 0;
+    let eventNumber = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_human_drift',
+      commandId: () => `command_human_drift_${++commandNumber}`,
+      eventId: () => `event_human_drift_${++eventNumber}`,
+      now: () => new Date('2026-08-26T00:01:00.000Z')
+    });
+    const execution = await adapter.prepare(humanPlan, {
+      executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
+      capabilities: [
+        'observe_article_page', 'create_article_draft', 'import_article_document',
+        'replace_article_visual_anchor', 'open_article_preview', 'open_publish_review',
+        'publish_article_once'
+      ],
+      observed_at: '2026-08-26T00:00:00.000Z'
+    });
+    let next = await adapter.next(execution.execution_id);
+    await adapter.claim(next.command!);
+    await adapter.report({
+      command: next.command!,
+      status: 'success',
+      observation: preparedObservation(execution.execution_id, next.command!.command_id, {
+        canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+        controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+      })
+    });
+    next = await adapter.next(execution.execution_id);
+    const humanBlocks = [{
+      kind: 'paragraph' as const,
+      runs: [{ text: 'Human draft must survive recovery.', marks: [] as const, link: null }]
+    }];
+    const humanObservation = preparedObservation(execution.execution_id, next.command!.command_id, {
+      canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+      page_kind: 'article_editor',
+      controls: [
+        { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+        { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+        { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
+      ],
+      editor: {
+        draft_id: '2092246293603373056', title: 'Human draft', blocks: humanBlocks, visuals: [],
+        import_state: null, has_unknown_content: true, autosave_state: 'saved'
+      }
+    });
+    await adapter.claim(next.command!);
+    await adapter.report({ command: next.command!, status: 'success', observation: humanObservation });
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_blocked', publish_command_count: 0 },
+      command: null
+    });
+    const entries = await store.list(`runs/${execution.execution_id}/x-article/browser/commands`);
+    const commands = await Promise.all(entries
+      .filter((entry) => entry.kind === 'directory')
+      .map((entry) => store.readJson<XArticleBrowserCommandV1>(`${entry.relative_path}/command.json`)));
+    expect(commands.map((command) => command.kind)).toEqual([
+      'observe_article_page',
+      'create_article_draft'
+    ]);
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/observations/${humanObservation.observation_id}.json`
+    )).resolves.toEqual(humanObservation);
+  });
+
   it('rejects malformed and extensible Publish confirmations at the contract boundary', () => {
     const confirmation = {
       schema_version: 'x-article-publish-confirmation/v1',
