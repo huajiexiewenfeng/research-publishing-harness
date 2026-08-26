@@ -27,6 +27,7 @@ import {
   bulkArticleMarkdown,
   bulkArticleVisualFixtures
 } from '../fixtures/x-article-browser-observations.js';
+import { runXArticleHostAcceptance } from '../../tools/acceptance.js';
 
 function observation(
   executionId: string,
@@ -615,6 +616,113 @@ async function runOfflineMaterialization(
     boundary_report_persisted: boundaryReportPersisted
   };
 }
+
+describe('bounded X Article Browser Host transactions', () => {
+  it('imports 76 blocks once and replaces three anchors without paragraph typing', async () => {
+    const result = await runXArticleHostAcceptance({ body_blocks: 76, inline_images: 3 });
+
+    expect(result.host_transactions).toEqual([
+      'import_article_document',
+      'replace_article_visual_anchor',
+      'replace_article_visual_anchor',
+      'replace_article_visual_anchor'
+    ]);
+    expect(result.claim_count).toBe(4);
+    expect(result.body_import_effects).toBe(1);
+    expect(result.image_upload_effects).toHaveLength(3);
+    expect(new Set(result.image_upload_effects).size).toBe(3);
+    expect(result.paragraph_level_transactions).toBe(0);
+    expect(result.observation_count).toBe(4);
+    expect(result.network).toBe('unused');
+    expect(result.normalized_post_state.blocks).toHaveLength(76);
+    expect(result.normalized_post_state.visuals).toHaveLength(3);
+    expect(result.normalized_post_state).toMatchObject({
+      import_state: null,
+      has_unknown_content: false,
+      autosave_state: 'saved'
+    });
+  });
+
+  it('models the exact bounded waits and emits truthful 20-second progress', async () => {
+    const result = await runXArticleHostAcceptance({ body_blocks: 76, inline_images: 3 });
+
+    expect(result.waits.map(({ waiting_for, timeout_ms, progress_every_ms }) => ({
+      waiting_for, timeout_ms, progress_every_ms
+    }))).toEqual([
+      { waiting_for: 'editor_stability', timeout_ms: 45_000, progress_every_ms: 20_000 },
+      { waiting_for: 'autosave', timeout_ms: 30_000, progress_every_ms: 20_000 },
+      ...Array.from({ length: 3 }, () => [
+        { waiting_for: 'media_readiness', timeout_ms: 60_000, progress_every_ms: 20_000 },
+        { waiting_for: 'autosave', timeout_ms: 30_000, progress_every_ms: 20_000 }
+      ]).flat()
+    ]);
+    expect(result.progress_events.length).toBeGreaterThan(0);
+    expect(result.progress_events.every((event) =>
+      event.elapsed_seconds % 20 === 0
+      && event.waiting_for !== null
+      && event.observed_effect !== 'complete'
+    )).toBe(true);
+    expect(result.progress_events.every((event) =>
+      event.elapsed_seconds <= 20 || event.waiting_for !== null
+    )).toBe(true);
+    expect(result.wall_clock_sleeps).toBe(0);
+  });
+
+  it('corrects X grouping each uploaded image at the opening before success', async () => {
+    const result = await runXArticleHostAcceptance({ body_blocks: 76, inline_images: 3 });
+
+    expect(result.grouped_image_corrections).toBe(3);
+    expect(result.normalized_post_state.visuals.map((visual) => visual.block_ordinal))
+      .toEqual(result.expected_image_ordinals);
+    expect(result.normalized_post_state.visuals.map((visual) => visual.alt_text))
+      .toEqual(result.expected_image_alts);
+    expect(JSON.stringify(result.normalized_post_state)).not.toContain('RPH_VISUAL_ANCHOR:');
+  });
+
+  it.each([
+    ['non_empty_body', 'empty body'],
+    ['unknown_content', 'unknown content'],
+    ['wrong_template_digest', 'template digest'],
+    ['reordered_anchors', 'ordered anchors'],
+    ['duplicate_anchor', 'ordered anchors'],
+    ['missing_anchor', 'ordered anchors'],
+    ['second_import', 'already imported']
+  ] as const)('fails closed for %s', async (fault, message) => {
+    await expect(runXArticleHostAcceptance({
+      body_blocks: 76,
+      inline_images: 3,
+      fault
+    })).rejects.toThrow(message);
+  });
+
+  it.each([
+    ['wrong_asset', 'claimed asset'],
+    ['wrong_ordinal', 'block ordinal'],
+    ['wrong_alt', 'inline Alt'],
+    ['ambiguous_grouping', 'ambiguous grouped media']
+  ] as const)('fails closed for %s', async (fault, message) => {
+    await expect(runXArticleHostAcceptance({
+      body_blocks: 76,
+      inline_images: 3,
+      fault
+    })).rejects.toThrow(message);
+  });
+
+  it('resumes after an interruption without reimporting or duplicating media', async () => {
+    const result = await runXArticleHostAcceptance({
+      body_blocks: 76,
+      inline_images: 3,
+      interrupt_after_transaction: 2
+    });
+
+    expect(result.interruption_count).toBe(1);
+    expect(result.body_import_effects).toBe(1);
+    expect(result.host_transactions.filter((kind) => kind === 'import_article_document')).toHaveLength(1);
+    expect(result.image_upload_effects).toHaveLength(3);
+    expect(new Set(result.image_upload_effects).size).toBe(3);
+    expect(result.normalized_post_state.visuals).toHaveLength(3);
+  });
+});
 
 describe('X Article Browser workflow', () => {
   it.each(crashPoints)('recovers the %s crash boundary without replaying irreversible effects', async (point) => {
