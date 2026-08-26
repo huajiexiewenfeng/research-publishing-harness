@@ -771,8 +771,17 @@ export class PublicationBundleService {
             if (projection.active_binding_ref === null) {
                 throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle confirmation requires an active prepared Article binding');
             }
-            const binding = await this.readPreparedBindingRef(plan, projection.active_binding_ref);
+            const activeBindingRef = projection.active_binding_ref;
+            const binding = await this.readPreparedBindingRef(plan, activeBindingRef);
             return this.store.withLock(this.articleAdapterLockPath(binding.execution_id), async () => {
+                const interruptedUnbinding = await this.optionalPreparedProjectionUnbinding(detached.bundle_id, projection);
+                if (interruptedUnbinding !== undefined) {
+                    await this.store.replaceAtomic(this.preparedProjectionPath(detached.bundle_id), this.createPreparedProjection(detached.bundle_id, projection.revision, null, interruptedUnbinding.unbound_at));
+                    throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle confirmation cannot approve a revoked prepared Article binding');
+                }
+                if (await this.isPreparedBindingUnbound(detached.bundle_id, activeBindingRef)) {
+                    throw new HarnessError('PUBLISH_GATE_BLOCKED', 'Bundle confirmation cannot approve a revoked prepared Article binding');
+                }
                 await this.verifyPreparedArticle(plan, {
                     bundle_id: detached.bundle_id,
                     execution_id: binding.execution_id,
