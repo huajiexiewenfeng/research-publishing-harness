@@ -59,6 +59,18 @@ const manifest = {
       'article-publishing-copilot', 'x-publishing-copilot', 'research-synthesis-copilot'
     ]
   },
+  interfaces: {
+    x_article_browser: {
+      command_contract: 'x-article-browser-command/1.0',
+      observation_contract: 'x-article-browser-observation/1.0',
+      capabilities: {
+        import_article_document:
+          'Import one deterministic Article Document template bound to the approved Article Package and document digests.',
+        replace_article_visual_anchor:
+          'Replace one verified temporary visual anchor with its approved digest-bound inline asset at the planned block ordinal.'
+      }
+    }
+  },
   files
 };
 

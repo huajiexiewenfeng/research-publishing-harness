@@ -54,6 +54,144 @@ async function reportSuccess(
 }
 
 describe('XArticleBrowserAdapter', () => {
+  it('persists bulk import strategy only when both capabilities are advertised', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-capabilities-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_capabilities_1', eventId: () => 'event_capabilities_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const bulkCapabilities = {
+      ...capabilities,
+      capabilities: [
+        ...capabilities.capabilities,
+        'import_article_document',
+        'replace_article_visual_anchor'
+      ]
+    } as const;
+
+    const execution = await adapter.start(plan, approval, bulkCapabilities);
+
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ import_strategy: 'bulk_document' });
+  });
+
+  it.each(['import_article_document', 'replace_article_visual_anchor'] as const)(
+    'rejects a manifest advertising only %s as incompatible',
+    async (capability) => {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-partial-capability-')));
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => 'execution_partial_capability_1', eventId: () => 'event_partial_capability_1',
+        now: () => new Date('2026-08-21T09:01:00.000Z')
+      });
+
+      await expect(adapter.start(plan, approval, {
+        ...capabilities,
+        capabilities: [...capabilities.capabilities, capability]
+      })).rejects.toMatchObject({ code: 'BROWSER_EXECUTOR_INCOMPATIBLE' });
+    }
+  );
+
+  it('persists bulk import issuance and never re-imports a completed zero-block document after resumption', async () => {
+    const zeroBlockPlan = createXArticlePublicationPlan({
+      planId: 'plan_zero_block_1', runId: 'run_zero_block_1', targetAccount: '@Glen56121',
+      articlePackage: { root: 'articles/runtime/article_zero_block_1', digest: `sha256:${'8'.repeat(64)}` },
+      document: {
+        schema_version: '1.0', title: 'Title-only Article', cover_asset_id: null, blocks: []
+      },
+      visuals: [], plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+    });
+    const zeroBlockApproval = approveXArticlePublication(
+      zeroBlockPlan, 'human:Glen56121', 3_600_000,
+      new Date('2026-08-21T09:00:00.000Z'), () => 'approval_zero_block_1'
+    );
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-zero-block-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_zero_block_1',
+      eventId: (() => { let n = 0; return () => `event_zero_block_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_zero_block_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const bulkCapabilities = {
+      ...capabilities,
+      capabilities: [
+        ...capabilities.capabilities,
+        'import_article_document',
+        'replace_article_visual_anchor'
+      ]
+    } as const;
+    const execution = await adapter.start(zeroBlockPlan, zeroBlockApproval, bulkCapabilities);
+    const editorControls = [
+      { ref: 'title', role: 'textbox' as const, name: 'Add a title', test_id: null, disabled: false },
+      { ref: 'body', role: 'textbox' as const, name: '', test_id: 'composer', disabled: false },
+      { ref: 'preview', role: 'link' as const, name: 'Preview', test_id: null, disabled: false },
+      { ref: 'publish', role: 'button' as const, name: 'Publish', test_id: null, disabled: true }
+    ];
+
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+        controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776', page_kind: 'article_editor',
+        controls: editorControls,
+        editor: {
+          draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
+          import_state: null, has_unknown_content: false, autosave_state: 'saved'
+        }
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.payload.kind).toBe('set_article_title');
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776', page_kind: 'article_editor',
+        controls: editorControls,
+        editor: {
+          draft_id: '2090731994279755776', title: zeroBlockPlan.intent.document.title,
+          blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved'
+        }
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.payload.kind).toBe('import_article_document');
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ bulk_import_issued: true });
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776', page_kind: 'article_editor',
+        controls: editorControls,
+        editor: {
+          draft_id: '2090731994279755776', title: zeroBlockPlan.intent.document.title,
+          blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved'
+        }
+      }
+    ));
+
+    const resumed = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    next = await resumed.next(execution.execution_id);
+
+    expect(next.command?.payload.kind).toBe('open_article_preview');
+    expect(next.command?.payload.kind).not.toBe('import_article_document');
+  });
+
   it('cancels only before Publish and does not expose verification recovery from a preflight state', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -93,7 +231,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
       ],
-      editor: { draft_id: '2090731994279755776', title: '', blocks: [], visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: '', blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);
@@ -106,7 +244,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
       ],
-      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: [], visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: [], visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);
@@ -119,7 +257,7 @@ describe('XArticleBrowserAdapter', () => {
         { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
         { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }
       ],
-      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: plan.intent.document.blocks, visuals: [], has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: plan.intent.document.blocks, visuals: [], import_state: null, has_unknown_content: false, autosave_state: 'saved' }
     }));
 
     next = await adapter.next(execution.execution_id);

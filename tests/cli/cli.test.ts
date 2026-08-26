@@ -14,9 +14,14 @@ import { publicationPlanV2_1Fixture } from '../fixtures/publication-plan-v2-1.js
 import { researchPackage } from '../fixtures/research-package.js';
 
 const cli = resolve('dist/harnesses/research-publishing/cli/index.js');
+const sourceCli = resolve('harnesses/research-publishing/cli/index.ts');
 
 function run(args: readonly string[]) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+}
+
+function runSource(args: readonly string[]) {
+  return spawnSync(process.execPath, ['--import', 'tsx', sourceCli, ...args], { encoding: 'utf8' });
 }
 
 describe('research-publish CLI', () => {
@@ -191,7 +196,29 @@ describe('research-publish CLI', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, operation: 'doctor' });
+    const doctor = JSON.parse(result.stdout) as {
+      artifact: { contracts: string[] };
+    };
+    expect(doctor).toMatchObject({ ok: true, operation: 'doctor', state: 'ready' });
+    expect(doctor.artifact.contracts).toEqual(expect.arrayContaining([
+      'x-article-browser-command',
+      'x-article-browser-observation'
+    ]));
+  });
+
+  it('packages both X Article bulk-import capabilities in the manifest and Host reference', async () => {
+    const [manifestText, reference] = await Promise.all([
+      readFile(resolve('registry/manifests/research-publishing.json'), 'utf8'),
+      readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8')
+    ]);
+    const manifest = JSON.parse(manifestText) as {
+      interfaces: { x_article_browser: { capabilities: Record<string, string> } };
+    };
+
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('import_article_document');
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('replace_article_visual_anchor');
+    expect(reference).toContain('import_article_document');
+    expect(reference).toContain('replace_article_visual_anchor');
   });
 
   it('captures a Candidate only below the selected workspace', async () => {
@@ -431,7 +458,7 @@ describe('research-publish CLI', () => {
 
     const planInput = join(parent, 'plan.json');
     await writeFile(planInput, JSON.stringify({ package_ref: packageRef, target_account: '@Glen56121' }));
-    const planned = run([
+    const planned = runSource([
       'x-article', 'plan', '--workspace', workspace, '--input', planInput, '--output', 'json'
     ]);
     expect(planned.status).toBe(0);
@@ -445,7 +472,7 @@ describe('research-publish CLI', () => {
     await writeFile(approveInput, JSON.stringify({
       plan: planResult.artifact, approved_by: 'human', ttl_ms: 600_000
     }));
-    const approved = run([
+    const approved = runSource([
       'x-article', 'approve', '--workspace', workspace, '--input', approveInput, '--output', 'json'
     ]);
     expect(approved.status).toBe(0);
@@ -453,27 +480,36 @@ describe('research-publish CLI', () => {
     expect(approval).toMatchObject({ scope: 'publish_once', target_account: '@Glen56121' });
 
     const startInput = join(parent, 'start.json');
+    const capabilities = [
+      'observe_article_page', 'create_article_draft', 'set_article_title',
+      'import_article_document', 'replace_article_visual_anchor',
+      'insert_article_block', 'open_article_preview', 'open_publish_review',
+      'publish_article_once'
+    ];
     await writeFile(startInput, JSON.stringify({
       execution_id: 'exec_cli_x_article', plan: planResult.artifact, approval,
       capability_manifest: {
         executor: 'codex-chrome', executor_version: '26.818.31338', browser_family: 'chrome',
-        capabilities: [
-          'observe_article_page', 'create_article_draft', 'set_article_title',
-          'insert_article_block', 'open_article_preview', 'open_publish_review',
-          'publish_article_once'
-        ], observed_at: new Date().toISOString()
+        capabilities, observed_at: new Date().toISOString()
       }
     }));
-    const started = run([
+    const started = runSource([
       'x-article', 'browser', 'start', '--workspace', workspace, '--input', startInput, '--output', 'json'
     ]);
     expect(started.status).toBe(0);
     expect(JSON.parse(started.stdout)).toMatchObject({
       operation: 'x-article browser start',
-      artifact: { execution_id: 'exec_cli_x_article' }, state: 'created'
+      artifact: {
+        execution_id: 'exec_cli_x_article',
+        capability_manifest: { capabilities }
+      },
+      state: 'created'
     });
+    await expect(store.readJson(
+      'runs/exec_cli_x_article/x-article/browser/capabilities.json'
+    )).resolves.toMatchObject({ capabilities });
 
-    const status = run([
+    const status = runSource([
       'x-article', 'browser', 'status', '--workspace', workspace,
       '--execution-id', 'exec_cli_x_article', '--output', 'json'
     ]);
@@ -483,7 +519,7 @@ describe('research-publish CLI', () => {
     });
 
     for (const operation of ['resume-verification', 'cancel-before-publish']) {
-      const missing = run([
+      const missing = runSource([
         'x-article', 'browser', operation, '--workspace', workspace,
         '--execution-id', 'missing_execution', '--output', 'json'
       ]);

@@ -1001,8 +1001,9 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         approval: XArticleApprovalV1;
         capability_manifest: XArticleBrowserCapabilityManifestV1;
       };
-      const artifact = await browser.start(value.plan, value.approval, value.capability_manifest);
-      return { ok: true, operation, artifact, state: artifact.state };
+      const snapshot = await browser.start(value.plan, value.approval, value.capability_manifest);
+      const artifact = { ...snapshot, capability_manifest: value.capability_manifest };
+      return { ok: true, operation, artifact, state: snapshot.state };
     }
     if (operation === 'x-article browser next') {
       const artifact = await browser.next(requiredExecutionId(options));

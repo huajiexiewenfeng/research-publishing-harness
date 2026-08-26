@@ -69,6 +69,8 @@ The optional Query supplies bounded, reviewable context before a new package is 
 - Create an offline Manual copy package and record a human-supplied publication URL, post IDs, and publication time; the Manual Adapter does not access X.
 - Use a bounded Browser Host Bridge for an explicitly selected, already logged-in Chrome session, with account, draft, composer, fresh Submit-barrier, and public verification checks. Real browser actions require that explicit session selection and are never part of CI acceptance.
 - Run the X Article browser flow through its exact audit, one `publish_once` confirmation, action-time upload/publish gates, and read-only verification recovery.
+- For compatible Chrome Hosts, import one digest-bound structured X Article document and then replace its ordered temporary visual anchors; Hosts without both bulk capabilities retain the incremental `insert_article_block` strategy from the start.
+- Never paste raw Markdown, reimport during recovery, switch strategies after bulk import starts, or enter Preview while an anchor remains unresolved.
 
 ### Verification and recovery
 
@@ -138,6 +140,7 @@ node dist/harnesses/research-publishing/cli/index.js doctor \
 | V2.2 | Governed Runtime Query/Ingest |
 | V2.3 | Evidence flywheel and Catalog-first Query |
 | V3 | New-publication X Article workflow |
+| V3.1 | Digest-bound X Article document import and visual-anchor recovery |
 
 The stages explain where the current capabilities came from; the workflow groups above are the recommended way to use the repository.
 

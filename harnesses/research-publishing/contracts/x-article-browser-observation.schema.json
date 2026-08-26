@@ -35,14 +35,34 @@
     },
     "editor": {
       "type": "object", "additionalProperties": false,
-      "required": ["draft_id", "title", "blocks", "visuals", "has_unknown_content", "autosave_state"],
+      "required": ["draft_id", "title", "blocks", "visuals", "import_state", "has_unknown_content", "autosave_state"],
       "properties": {
         "draft_id": { "type": "string", "pattern": "^[0-9]+$" },
         "title": { "type": "string" },
         "blocks": { "type": "array", "items": { "type": "object" } },
         "visuals": { "type": "array", "items": { "type": "object" } },
+        "import_state": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/importState" }] },
         "has_unknown_content": { "type": "boolean" },
         "autosave_state": { "enum": ["saving", "saved", "failed"] }
+      }
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["anchor_id", "asset_id", "block_ordinal", "marker"],
+      "properties": {
+        "anchor_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "asset_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "block_ordinal": { "type": "integer", "minimum": 1 },
+        "marker": { "type": "string", "pattern": "^RPH_VISUAL_ANCHOR:[A-Za-z0-9_-]+:[1-9][0-9]*$" }
+      }
+    },
+    "importState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["template_digest", "source_document_digest", "unresolved_anchors"],
+      "properties": {
+        "template_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "source_document_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "unresolved_anchors": { "type": "array", "orderedUniqueAnchorIds": true, "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } }
       }
     }
   }

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -69,5 +70,47 @@ describe('canonicalManifestBytes', () => {
       'docs/guides/memory-loop.md',
       'docs/examples/research-import-manifest.example.json'
     ]));
+  });
+
+  it('generates reproducible X Article interface metadata and current file evidence', async () => {
+    const generator = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', resolve('tools/build-manifest.ts')],
+      { encoding: 'utf8' }
+    );
+
+    expect(generator.status, generator.stderr).toBe(0);
+
+    const manifest = JSON.parse(
+      await readFile(resolve('registry/manifests/research-publishing.json'), 'utf8')
+    ) as {
+      interfaces: {
+        x_article_browser: {
+          command_contract: string;
+          observation_contract: string;
+          capabilities: Record<string, string>;
+        };
+      };
+      files: Array<{ path: string; sha256: string; bytes: number }>;
+    };
+
+    expect(manifest.interfaces.x_article_browser).toEqual({
+      command_contract: 'x-article-browser-command/1.0',
+      observation_contract: 'x-article-browser-observation/1.0',
+      capabilities: {
+        import_article_document:
+          'Import one deterministic Article Document template bound to the approved Article Package and document digests.',
+        replace_article_visual_anchor:
+          'Replace one verified temporary visual anchor with its approved digest-bound inline asset at the planned block ordinal.'
+      }
+    });
+
+    for (const file of manifest.files) {
+      const bytes = canonicalManifestBytes(await readFile(resolve(file.path)));
+      expect(file, file.path).toMatchObject({
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        bytes: bytes.byteLength
+      });
+    }
   });
 });

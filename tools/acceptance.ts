@@ -77,6 +77,9 @@ let publicationFlywheelComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
+let xArticleImportCommands = 0;
+let xArticleAnchorReplacementCommands = 0;
+const xArticleAnchorReplacementOrdinals: number[] = [];
 
 const browserAt = '2026-08-18T16:00:00.000Z';
 const browserManifest: BrowserCapabilityManifest = {
@@ -187,16 +190,39 @@ try {
     targetDepth: 'deep',
     includeOpenQuestions: true
   });
+  const inlineVisualSpecs = [
+    {
+      slotId: 'runtime-boundary-inline', candidateId: 'candidate_runtime_boundary',
+      assetId: 'asset_runtime_boundary', sectionId: 'runtime-boundary',
+      altText: 'Runtime boundary diagram.', claimRefs: ['claim_contract_test']
+    },
+    {
+      slotId: 'research-hypothesis-inline', candidateId: 'candidate_research_hypothesis',
+      assetId: 'asset_research_hypothesis', sectionId: 'research-hypothesis',
+      altText: 'Research hypothesis diagram.', claimRefs: ['claim_runtime_hypothesis']
+    },
+    {
+      slotId: 'planned-work-inline', candidateId: 'candidate_planned_work',
+      assetId: 'asset_planned_work', sectionId: 'planned-work',
+      altText: 'Planned work diagram.', claimRefs: ['claim_trace_planned']
+    }
+  ] as const;
+  const sectionIds = ['runtime-boundary', 'research-hypothesis', 'planned-work'] as const;
   const articleDraft = {
     ...(await fixture<ArticleDraft>('article-draft.json')),
     run_id: articleRun.run_id,
     sections: (await fixture<ArticleDraft>('article-draft.json')).sections.map((section, index) =>
-      index === 0 ? { ...section, section_id: 'runtime-boundary' } : section
+      ({ ...section, section_id: sectionIds[index]! })
     ),
     visual_slots: [{
       slot_id: 'cover', placement: { kind: 'cover' as const }, purpose: 'cover' as const,
       required: true, brief: 'Show one evidence-backed runtime boundary.', claim_refs: ['claim_contract_test']
-    }]
+    }, ...inlineVisualSpecs.map((visual) => ({
+      slot_id: visual.slotId,
+      placement: { kind: 'after_section' as const, section_id: visual.sectionId },
+      purpose: 'explanation' as const, required: true, brief: visual.altText,
+      claim_refs: visual.claimRefs
+    }))]
   };
   await articles.acceptArticleDraft(articleRun.run_id, articleDraft);
   const articleReview = await articles.reviewArticle(articleRun.run_id);
@@ -207,8 +233,22 @@ try {
     sourcePath: visualSource, altText: 'One evidence-backed runtime boundary.',
     claimRefs: ['claim_contract_test'], provenance: { method: 'generated', tool: 'acceptance-synthetic' }
   });
+  const inlineVisualCandidates = [];
+  for (const visual of inlineVisualSpecs) {
+    inlineVisualCandidates.push(await articles.attachVisual(articleRun.run_id, {
+      candidateId: visual.candidateId, assetId: visual.assetId, slotId: visual.slotId,
+      sourcePath: visualSource, altText: visual.altText, claimRefs: visual.claimRefs,
+      provenance: { method: 'generated', tool: 'acceptance-synthetic' }
+    }));
+  }
   await articles.reviewVisual(articleRun.run_id, {
-    selectedCandidates: { cover: visualCandidate.candidate_id }, reviewedBy: 'acceptance-reviewer',
+    selectedCandidates: {
+      cover: visualCandidate.candidate_id,
+      ...Object.fromEntries(inlineVisualCandidates.map((candidate) => [
+        candidate.slot_id, candidate.candidate_id
+      ]))
+    },
+    reviewedBy: 'acceptance-reviewer',
     claimAlignment: true, boundaryAlignment: true, mobileLegibility: true,
     singleMessage: true, privacyReview: true
   });
@@ -218,6 +258,9 @@ try {
     articleReview.passed &&
     canonical.artifacts.includes(`${canonical.root}/visual-manifest.json`) &&
     canonical.artifacts.includes(`${canonical.root}/assets/asset_cover.png`) &&
+    inlineVisualSpecs.every((visual) =>
+      canonical.artifacts.includes(`${canonical.root}/assets/${visual.assetId}.png`)
+    ) &&
     articleHandoff.article_digest === canonical.digest &&
     articleHandoff.visual_asset?.asset_id === 'asset_cover';
 
@@ -246,6 +289,7 @@ try {
     executor: 'codex-chrome', executor_version: 'acceptance-fake-host', browser_family: 'chrome',
     capabilities: [
       'observe_article_page', 'create_article_draft', 'set_article_title',
+      'import_article_document', 'replace_article_visual_anchor',
       'upload_article_cover', 'insert_article_block', 'insert_article_image',
       'set_article_image_alt', 'open_article_preview', 'open_publish_review',
       'publish_article_once'
@@ -253,10 +297,12 @@ try {
   });
   const xArticleDraftId = '2090731994279755776';
   let xArticleTitle = '';
-  const xArticleBlocks: typeof xArticlePlan.intent.document.blocks[number][] = [];
+  let xArticleBlocks: typeof xArticlePlan.intent.document.blocks = [];
   let xArticleVisuals: XArticleBrowserObservation['editor'] extends null
     ? never
     : NonNullable<XArticleBrowserObservation['editor']>['visuals'] = [];
+  let xArticleImportState: NonNullable<XArticleBrowserObservation['editor']>['import_state'] = null;
+  const xArticleCommandKinds: string[] = [];
   const editorControls = [
     { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
     { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
@@ -270,6 +316,7 @@ try {
       throw new Error(`X Article acceptance stalled in ${step.snapshot.state}`);
     }
     const command = step.command;
+    xArticleCommandKinds.push(command.kind);
     if (command.kind === 'observe_article_page' && command.payload.kind === 'observe_article_page') {
       if (command.payload.scope === 'index') {
         await articleReport(xArticleAdapter, command, {
@@ -296,26 +343,69 @@ try {
       await articleReport(xArticleAdapter, command, {
         canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
         controls: editorControls,
-        editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+        editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, import_state: xArticleImportState, has_unknown_content: false, autosave_state: 'saved' }
       });
       continue;
     }
     if (command.kind === 'set_article_title') xArticleTitle = command.payload.kind === 'set_article_title' ? command.payload.title : xArticleTitle;
+    if (command.kind === 'import_article_document' && command.payload.kind === 'import_article_document') {
+      xArticleImportCommands += 1;
+      xArticleImportState = {
+        template_digest: command.payload.template.template_digest,
+        source_document_digest: command.payload.template.source_document_digest,
+        unresolved_anchors: command.payload.template.anchors
+      };
+      xArticleBlocks = xArticlePlan.intent.document.blocks.filter((block) => block.kind !== 'image');
+    }
+    if (
+      command.kind === 'replace_article_visual_anchor' &&
+      command.payload.kind === 'replace_article_visual_anchor'
+    ) {
+      const nextAnchor = xArticleImportState?.unresolved_anchors[0];
+      if (nextAnchor === undefined || nextAnchor.anchor_id !== command.payload.anchor.anchor_id) {
+        throw new Error('X Article acceptance Host received an out-of-order visual anchor replacement');
+      }
+      xArticleAnchorReplacementCommands += 1;
+      xArticleAnchorReplacementOrdinals.push(command.payload.anchor.block_ordinal);
+      const unresolvedAnchors = xArticleImportState!.unresolved_anchors.slice(1);
+      xArticleVisuals = [...xArticleVisuals, {
+        ref: `image_${command.payload.anchor.block_ordinal}`,
+        asset_id: command.payload.asset.asset_id, kind: 'inline',
+        block_ordinal: command.payload.anchor.block_ordinal,
+        alt_text: command.payload.asset.alt_text, status: 'uploaded', owned_by_execution: true
+      }];
+      if (unresolvedAnchors.length === 0) {
+        xArticleImportState = null;
+        xArticleBlocks = xArticlePlan.intent.document.blocks;
+      } else {
+        xArticleImportState = { ...xArticleImportState!, unresolved_anchors: unresolvedAnchors };
+        const unresolvedOrdinals = new Set(unresolvedAnchors.map((anchor) => anchor.block_ordinal));
+        xArticleBlocks = xArticlePlan.intent.document.blocks.filter((block, index) =>
+          block.kind !== 'image' || !unresolvedOrdinals.has(index + 1)
+        );
+      }
+    }
     if (command.kind === 'upload_article_cover' && command.payload.kind === 'upload_article_cover') {
       xArticleVisuals = [{
         ref: 'cover_acceptance', asset_id: command.payload.asset.asset_id, kind: 'cover',
         block_ordinal: null, alt_text: null, status: 'uploaded', owned_by_execution: true
-      }];
+      }, ...xArticleVisuals];
     }
     if (command.kind === 'set_article_image_alt' && command.payload.kind === 'set_article_image_alt') {
       const altText = command.payload.alt_text;
-      xArticleVisuals = xArticleVisuals.map((visual) => ({ ...visual, alt_text: altText }));
+      const visualRef = command.payload.visual_ref;
+      xArticleVisuals = xArticleVisuals.map((visual) =>
+        visual.ref === visualRef ? { ...visual, alt_text: altText } : visual
+      );
     }
     if (command.kind === 'insert_article_block' && command.payload.kind === 'insert_article_block') {
-      xArticleBlocks.push(command.payload.block);
+      xArticleBlocks = [...xArticleBlocks, command.payload.block];
     }
     if (command.kind === 'insert_article_image' && command.payload.kind === 'insert_article_image') {
-      xArticleBlocks.push(xArticlePlan.intent.document.blocks[command.payload.block_ordinal - 1]!);
+      xArticleBlocks = [
+        ...xArticleBlocks,
+        xArticlePlan.intent.document.blocks[command.payload.block_ordinal - 1]!
+      ];
       xArticleVisuals = [...xArticleVisuals, {
         ref: `image_${command.payload.block_ordinal}`, asset_id: command.payload.asset.asset_id,
         kind: 'inline', block_ordinal: command.payload.block_ordinal, alt_text: command.payload.asset.alt_text,
@@ -348,7 +438,7 @@ try {
     await articleReport(xArticleAdapter, command, {
       canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
       controls: editorControls,
-      editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, import_state: xArticleImportState, has_unknown_content: false, autosave_state: 'saved' }
     });
   }
   const xArticleStatus = await xArticleAdapter.status(xArticleExecution.execution_id);
@@ -357,6 +447,18 @@ try {
     xArticleStatus.state === 'finalized' &&
     xArticleStatus.publish_command_count === 1 &&
     xArticlePublishCommands === 1 &&
+    xArticleImportCommands === 1 &&
+    xArticleAnchorReplacementCommands === 3 &&
+    sha256(xArticleAnchorReplacementOrdinals) === sha256(
+      xArticlePlan.intent.visuals.flatMap((visual) =>
+        visual.placement.kind === 'block' ? [visual.placement.block_ordinal] : []
+      )
+    ) &&
+    xArticleCommandKinds.filter((kind) => kind === 'insert_article_block').length === 0 &&
+    xArticleCommandKinds.filter((kind) => kind === 'open_article_preview').length === 1 &&
+    xArticleImportState === null &&
+    sha256(xArticleBlocks) === sha256(xArticlePlan.intent.document.blocks) &&
+    !JSON.stringify({ blocks: xArticleBlocks, visuals: xArticleVisuals }).includes('RPH_VISUAL_ANCHOR:') &&
     xArticleReceipt.status === 'published';
 
   const x = new XService(store, {
@@ -1025,7 +1127,9 @@ try {
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,
-      x_article_publish_commands: xArticlePublishCommands
+      x_article_publish_commands: xArticlePublishCommands,
+      x_article_import_commands: xArticleImportCommands,
+      x_article_anchor_replacement_commands: xArticleAnchorReplacementCommands
     })}\n`
   );
 } finally {

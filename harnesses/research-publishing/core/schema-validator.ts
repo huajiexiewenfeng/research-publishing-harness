@@ -13,6 +13,34 @@ import { CONTRACT_NAMES } from './types.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 (formatsModule as unknown as FormatsPlugin)(ajv);
+ajv.addKeyword({
+  keyword: 'orderedUniqueAnchorIds',
+  type: 'array',
+  schemaType: 'boolean',
+  errors: false,
+  validate: (enabled: boolean, value: unknown[]): boolean => {
+    if (!enabled) return true;
+
+    const anchorIds = new Set<string>();
+    let previousOrdinal = 0;
+    for (const item of value) {
+      if (typeof item !== 'object' || item === null) return false;
+      const anchorId = Reflect.get(item, 'anchor_id');
+      const blockOrdinal = Reflect.get(item, 'block_ordinal');
+      if (
+        typeof anchorId !== 'string'
+        || typeof blockOrdinal !== 'number'
+        || anchorIds.has(anchorId)
+        || blockOrdinal <= previousOrdinal
+      ) {
+        return false;
+      }
+      anchorIds.add(anchorId);
+      previousOrdinal = blockOrdinal;
+    }
+    return true;
+  }
+});
 
 const validators = new Map<ContractName, ValidateFunction>();
 
