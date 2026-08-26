@@ -30,6 +30,55 @@ describe('PublicationBundleService planning', () => {
 });
 
 describe('PublicationBundleService prepared Article binding', () => {
+  it('reconstructs the same cover-inclusive Preview receipt without inflating inline counts', async () => {
+    const fixture = await createPreparedPublicationBundleFixture({
+      withCover: true,
+      executionId: 'execution_v32_cover_bundle'
+    });
+    await expect(fixture.store.readJson(
+      `runs/${fixture.execution.execution_id}/x-article/browser/materialization-receipt.json`
+    )).resolves.toMatchObject({
+      body_block_count: fixture.plan.article_plan.intent.document.blocks.length,
+      inline_image_count: 0
+    });
+
+    await expect(fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    })).resolves.toMatchObject({
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision
+    });
+  });
+
+  it('rejects a foreign cover id while reconstructing the prepared Preview receipt', async () => {
+    const fixture = await createPreparedPublicationBundleFixture({
+      withCover: true,
+      executionId: 'execution_v32_cover_tamper'
+    });
+    const progressPath =
+      `runs/${fixture.execution.execution_id}/x-article/browser/materialization-progress.jsonl`;
+    const progress = (await fixture.store.readText(progressPath)).trim().split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const coverIndex = progress.findIndex((event) => event.asset_id === 'asset_bundle_cover');
+    progress[coverIndex] = { ...progress[coverIndex], asset_id: 'asset_foreign_cover' };
+    await fixture.store.replaceAtomic(
+      progressPath,
+      `${progress.map((event) => JSON.stringify(event)).join('\n')}\n`
+    );
+
+    await expect(fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
   it('binds a verified Preview and derives the exact Task 6 confirmation from one V2 approval', async () => {
     const fixture = await createPreparedPublicationBundleFixture();
     const prepared = await fixture.service.bindPreparedArticle({

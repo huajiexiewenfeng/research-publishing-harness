@@ -110,6 +110,7 @@ export interface CreateXArticleMaterializationReceiptInput {
     readonly plan: XArticleMaterializationPlanV1;
     readonly checkpoint: XArticleMaterializationCheckpointV1;
     readonly progress: readonly XArticleStageProgressV1[];
+    readonly cover_asset_id: string | null;
     readonly body_block_count: number;
     readonly command_count: number;
     readonly observation_count: number;

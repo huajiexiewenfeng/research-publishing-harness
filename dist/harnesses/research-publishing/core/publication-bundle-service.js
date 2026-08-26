@@ -961,6 +961,7 @@ export class PublicationBundleService {
             plan: materializationPlan,
             checkpoint,
             progress,
+            cover_asset_id: context.plan.intent.document.cover_asset_id,
             body_block_count: receipt.body_block_count,
             command_count: receipt.command_count,
             observation_count: receipt.observation_count,

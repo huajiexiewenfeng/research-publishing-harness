@@ -1231,7 +1231,7 @@ describe('XArticleBrowserAdapter', () => {
       .toBe(observing.command?.command_id);
   });
 
-  it('uploads a prepared cover once and reconciles an uncertain effect before Preview', async () => {
+  it('uploads a prepared cover once, reconciles uncertainty, and emits a truthful Preview receipt', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cover-materialize-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
       executionId: () => 'execution_cover_materialize_1',
@@ -1279,6 +1279,34 @@ describe('XArticleBrowserAdapter', () => {
     next = await adapter.next(execution.execution_id);
     expect(next.command?.kind).toBe('open_article_preview');
     expect(next.command?.command_id).not.toBe(coverCommandId);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776/preview',
+        page_kind: 'article_preview', controls: [],
+        preview: {
+          draft_id: '2090731994279755776', title: coverPlan.intent.document.title,
+          blocks: coverPlan.intent.document.blocks,
+          visuals: [{
+            ref: 'cover_ref_1', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          }]
+        }
+      }
+    ));
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`
+    )).resolves.toMatchObject({
+      body_block_count: 1,
+      inline_image_count: 0,
+      command_count: 6,
+      observation_count: 5,
+      recovery_count: 1
+    });
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
+      state: 'confirmation_pending'
+    });
   });
 
   it.each([

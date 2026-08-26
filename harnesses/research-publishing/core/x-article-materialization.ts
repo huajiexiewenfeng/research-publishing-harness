@@ -156,6 +156,7 @@ export interface CreateXArticleMaterializationReceiptInput {
   readonly plan: XArticleMaterializationPlanV1;
   readonly checkpoint: XArticleMaterializationCheckpointV1;
   readonly progress: readonly XArticleStageProgressV1[];
+  readonly cover_asset_id: string | null;
   readonly body_block_count: number;
   readonly command_count: number;
   readonly observation_count: number;
@@ -419,10 +420,24 @@ function validatePreviewEvidence(
 function progressSummary(
   plan: XArticleMaterializationPlanV1,
   progress: readonly XArticleStageProgressV1[],
+  coverAssetId: string | null,
   startedAt: number,
   verifiedAt: number
 ): { stageSeconds: Record<string, number>; retryCount: number; recoveryCount: number } {
   const assetIds = new Set(plan.visual_anchors.map((anchor) => anchor.asset_id));
+  if (coverAssetId !== null) {
+    if (
+      typeof coverAssetId !== 'string'
+      || coverAssetId.length === 0
+      || assetIds.has(coverAssetId)
+    ) {
+      throw new HarnessError(
+        'CONTRACT_INVALID',
+        'X Article materialization cover identity is invalid or duplicates an inline anchor'
+      );
+    }
+    assetIds.add(coverAssetId);
+  }
   const stageSeconds: Record<string, number> = {};
   let previous = startedAt;
   let retryCount = 0;
@@ -501,7 +516,7 @@ export function createXArticleMaterializationReceipt(
     );
   }
   const progress = input.progress.map((event) => structuredClone(event));
-  const summary = progressSummary(plan, progress, startedAt, verifiedAt);
+  const summary = progressSummary(plan, progress, input.cover_asset_id, startedAt, verifiedAt);
   const automationSeconds = (verifiedAt - startedAt) / 1000;
   finiteNonnegative(automationSeconds, 'automation_seconds');
   const body = {

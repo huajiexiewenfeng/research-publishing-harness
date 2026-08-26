@@ -15,7 +15,7 @@ const capabilities = {
   capabilities: [
     'observe_article_page', 'create_article_draft', 'open_article_preview',
     'open_publish_review', 'publish_article_once', 'import_article_document',
-    'replace_article_visual_anchor'
+    'replace_article_visual_anchor', 'upload_article_cover'
   ],
   observed_at: PREPARED_AT
 } as const;
@@ -41,9 +41,13 @@ async function claimAndReport(
 }
 
 export async function createPreparedPublicationBundleFixture(
-  input: { readonly bundleId?: string; readonly executionId?: string } = {}
+  input: {
+    readonly bundleId?: string;
+    readonly executionId?: string;
+    readonly withCover?: boolean;
+  } = {}
 ) {
-  const fixture = await createPublicationBundleFixture();
+  const fixture = await createPublicationBundleFixture({ withVisual: input.withCover === true });
   const service = new PublicationBundleService(fixture.store, fixture.weeks, {
     now: () => new Date(PREPARED_AT),
     approvalId: () => 'bundle_approval_prepared_1'
@@ -111,13 +115,40 @@ export async function createPreparedPublicationBundleFixture(
     }
   }));
   next = await adapter.next(execution.execution_id);
+  const coverBinding = plan.article_plan.intent.visuals.find(
+    (binding) => binding.placement.kind === 'cover'
+  );
+  const coverVisual = coverBinding === undefined ? null : {
+    ref: 'cover_bundle_ref', asset_id: coverBinding.asset.asset_id, kind: 'cover' as const,
+    block_ordinal: null, alt_text: null, status: 'uploaded' as const, owned_by_execution: true
+  };
+  if (coverVisual !== null) {
+    if (next.command?.kind !== 'upload_article_cover') {
+      throw new Error('expected prepared cover upload');
+    }
+    await claimAndReport(adapter, next.command, observed(
+      execution.execution_id,
+      next.command.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092246293603373056', title: plan.article_plan.intent.document.title,
+          blocks: plan.article_plan.intent.document.blocks, visuals: [coverVisual], import_state: null,
+          has_unknown_content: false, autosave_state: 'saved'
+        }
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+  }
   const preview = observed(execution.execution_id, next.command!.command_id, {
     canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056/preview',
     page_kind: 'article_preview',
     controls: [{ ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: false }],
     preview: {
       draft_id: '2092246293603373056', title: plan.article_plan.intent.document.title,
-      blocks: plan.article_plan.intent.document.blocks, visuals: []
+      blocks: plan.article_plan.intent.document.blocks,
+      visuals: coverVisual === null ? [] : [coverVisual]
     }
   });
   await claimAndReport(adapter, next.command!, preview);

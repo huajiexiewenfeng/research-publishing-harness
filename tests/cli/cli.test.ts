@@ -198,6 +198,7 @@ describe('research-publish CLI', () => {
       plan: materializationPlan,
       checkpoint: previewCheckpoint,
       progress: [],
+      cover_asset_id: null,
       body_block_count: 1,
       command_count: 0,
       observation_count: 0,

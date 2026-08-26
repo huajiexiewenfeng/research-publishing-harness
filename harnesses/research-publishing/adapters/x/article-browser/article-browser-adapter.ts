@@ -1873,6 +1873,7 @@ export class XArticleBrowserAdapter {
       plan,
       checkpoint,
       progress: activity.progress,
+      cover_asset_id: context.plan.intent.document.cover_asset_id,
       body_block_count: context.plan.intent.document.blocks.length,
       command_count: activity.commandCount,
       observation_count: activity.observationCount,

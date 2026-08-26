@@ -350,12 +350,15 @@ function receiptProgress(
 
 function createReceiptFor(
   plan: XArticleMaterializationPlanV1,
-  override: Partial<Parameters<typeof createXArticleMaterializationReceipt>[0]> = {}
+  override: Partial<Parameters<typeof createXArticleMaterializationReceipt>[0] & {
+    readonly cover_asset_id: string | null;
+  }> = {}
 ) {
   return createXArticleMaterializationReceipt({
     plan,
     checkpoint: previewCheckpoint(plan),
     progress: receiptProgress(plan),
+    cover_asset_id: null,
     body_block_count: 6,
     command_count: Math.min(11, plan.expected_command_ceiling),
     observation_count: Math.min(9, plan.expected_observation_ceiling),
@@ -473,6 +476,78 @@ describe('X Article materialization performance receipts', () => {
     }
   });
 
+  it('accepts the exact planned cover beside inline progress without counting it as inline media', () => {
+    const plan = materializationPlanWithVisualCount(1);
+    const body = receiptProgress(plan)[0]!;
+    const cover = createXArticleStageProgress({
+      ...body,
+      stage: 'upload_article_cover#command_cover',
+      asset_id: 'asset_cover',
+      elapsed_seconds: 7,
+      recorded_at: '2026-08-26T00:01:50.000Z'
+    });
+    const inline = createXArticleStageProgress({
+      ...body,
+      stage: 'replace_article_visual_anchor_1#command_inline',
+      asset_id: plan.visual_anchors[0]!.asset_id,
+      elapsed_seconds: 13,
+      recorded_at: '2026-08-26T00:02:00.000Z'
+    });
+
+    const receipt = createReceiptFor(plan, {
+      cover_asset_id: 'asset_cover',
+      progress: [body, cover, inline]
+    });
+
+    expect(receipt.inline_image_count).toBe(1);
+    expect(receipt.body_block_count).toBe(6);
+    expect(receipt.stage_seconds).toEqual({
+      body_import: 107,
+      upload_article_cover: 7,
+      replace_article_visual_anchor_1: 13
+    });
+  });
+
+  it('rejects a tampered cover progress asset even when another cover is planned', () => {
+    const plan = materializationPlanWithVisualCount(0);
+    expect(() => createReceiptFor(plan, {
+      cover_asset_id: 'asset_cover',
+      progress: receiptProgress(plan, {
+        stage: 'upload_article_cover#command_cover',
+        asset_id: 'asset_cover_tampered'
+      })
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it('rejects a planned cover identity that collides with an inline anchor', () => {
+    const plan = materializationPlanWithVisualCount(1);
+    const sharedAssetId = plan.visual_anchors[0]!.asset_id;
+    expect(() => createReceiptFor(plan, {
+      cover_asset_id: sharedAssetId,
+      progress: receiptProgress(plan, {
+        stage: 'upload_article_cover#command_cover',
+        asset_id: sharedAssetId
+      })
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it('fails closed when the validation-only cover identity boundary is omitted', () => {
+    const plan = materializationPlanWithVisualCount(0);
+    expect(() => createXArticleMaterializationReceipt({
+      plan,
+      checkpoint: previewCheckpoint(plan),
+      progress: receiptProgress(plan),
+      body_block_count: 0,
+      command_count: 0,
+      observation_count: 0,
+      automation_started_at: '2026-08-26T00:00:00.000Z',
+      preview_verified_at: '2026-08-26T00:03:47.000Z',
+      human_wait_seconds: 0,
+      preview_revision: digest('e'),
+      issued_at: '2026-08-26T00:03:47.000Z'
+    } as never)).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
   it.each([
     { phase: 'draft_reconciled' },
     { draft_id: null },
@@ -513,7 +588,7 @@ describe('X Article materialization performance receipts', () => {
     expect(() => createXArticleMaterializationReceipt({
       ...{
         plan: materializationPlan(), checkpoint: previewCheckpoint(materializationPlan()),
-        progress: receiptProgress(materializationPlan()), body_block_count: 6,
+        progress: receiptProgress(materializationPlan()), cover_asset_id: null, body_block_count: 6,
         command_count: 11, observation_count: 9,
         automation_started_at: '2026-08-26T00:00:00.000Z',
         preview_verified_at: '2026-08-26T00:03:47.000Z', human_wait_seconds: 0,

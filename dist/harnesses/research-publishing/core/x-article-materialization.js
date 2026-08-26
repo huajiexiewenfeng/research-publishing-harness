@@ -163,8 +163,16 @@ function validatePreviewEvidence(plan, checkpoint) {
         throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'X Article materialization receipt lacks complete Preview checkpoint evidence');
     }
 }
-function progressSummary(plan, progress, startedAt, verifiedAt) {
+function progressSummary(plan, progress, coverAssetId, startedAt, verifiedAt) {
     const assetIds = new Set(plan.visual_anchors.map((anchor) => anchor.asset_id));
+    if (coverAssetId !== null) {
+        if (typeof coverAssetId !== 'string'
+            || coverAssetId.length === 0
+            || assetIds.has(coverAssetId)) {
+            throw new HarnessError('CONTRACT_INVALID', 'X Article materialization cover identity is invalid or duplicates an inline anchor');
+        }
+        assetIds.add(coverAssetId);
+    }
     const stageSeconds = {};
     let previous = startedAt;
     let retryCount = 0;
@@ -222,7 +230,7 @@ export function createXArticleMaterializationReceipt(input) {
         throw new HarnessError('ARTICLE_MATERIALIZATION_TIMEOUT', 'X Article materialization activity exceeded its trusted ceiling');
     }
     const progress = input.progress.map((event) => structuredClone(event));
-    const summary = progressSummary(plan, progress, startedAt, verifiedAt);
+    const summary = progressSummary(plan, progress, input.cover_asset_id, startedAt, verifiedAt);
     const automationSeconds = (verifiedAt - startedAt) / 1000;
     finiteNonnegative(automationSeconds, 'automation_seconds');
     const body = {
