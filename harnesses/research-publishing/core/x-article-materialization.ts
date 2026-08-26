@@ -126,6 +126,15 @@ export interface XArticleMaterializationReceiptV1 {
   readonly receipt_digest: `sha256:${string}`;
 }
 
+export interface XArticleMaterializationStartEvidenceV1 {
+  readonly schema_version: 'x-article-materialization-start/v1';
+  readonly execution_id: string;
+  readonly publication_plan_digest: `sha256:${string}`;
+  readonly materialization_digest: `sha256:${string}`;
+  readonly started_at: string;
+  readonly start_digest: `sha256:${string}`;
+}
+
 export interface CreateXArticleMaterializationPlanInput {
   readonly execution_id: string;
   readonly publication_plan: XArticlePublicationPlanV1;
@@ -154,14 +163,19 @@ export interface CreateXArticleMaterializationReceiptInput {
   readonly preview_verified_at: string;
   readonly human_wait_seconds: number;
   readonly preview_revision: `sha256:${string}`;
-  readonly supersedes_receipt_digest: `sha256:${string}` | null;
   readonly issued_at: string;
 }
 
 export interface CreateSupersedingXArticleMaterializationReceiptInput {
   readonly preview_receipt: XArticleMaterializationReceiptV1;
+  readonly expected_preview_receipt_digest: `sha256:${string}`;
   readonly human_wait_seconds: number;
   readonly issued_at: string;
+}
+
+export interface CreateXArticleMaterializationStartEvidenceInput {
+  readonly plan: XArticleMaterializationPlanV1;
+  readonly started_at: string;
 }
 
 const MATERIALIZATION_BUDGET = {
@@ -321,6 +335,51 @@ function receiptBody(
   ) as Omit<XArticleMaterializationReceiptV1, 'receipt_digest'>;
 }
 
+function startEvidenceBody(
+  evidence: XArticleMaterializationStartEvidenceV1
+): Omit<XArticleMaterializationStartEvidenceV1, 'start_digest'> {
+  return Object.fromEntries(
+    Object.entries(evidence).filter(([key]) => key !== 'start_digest')
+  ) as Omit<XArticleMaterializationStartEvidenceV1, 'start_digest'>;
+}
+
+export function createXArticleMaterializationStartEvidence(
+  input: CreateXArticleMaterializationStartEvidenceInput
+): XArticleMaterializationStartEvidenceV1 {
+  const plan = validateContract<XArticleMaterializationPlanV1>(
+    'x-article-materialization-plan', structuredClone(input.plan)
+  );
+  if (!Number.isFinite(Date.parse(input.started_at))) {
+    throw new HarnessError('CONTRACT_INVALID', 'materialization start timestamp is invalid');
+  }
+  const body = {
+    schema_version: 'x-article-materialization-start/v1' as const,
+    execution_id: plan.execution_id,
+    publication_plan_digest: plan.publication_plan_digest,
+    materialization_digest: plan.materialization_digest,
+    started_at: input.started_at
+  };
+  return Object.freeze({ ...body, start_digest: sha256(body) });
+}
+
+export function verifyXArticleMaterializationStartEvidence(
+  evidence: XArticleMaterializationStartEvidenceV1,
+  plan: XArticleMaterializationPlanV1
+): XArticleMaterializationStartEvidenceV1 {
+  const expected = createXArticleMaterializationStartEvidence({
+    plan,
+    started_at: evidence.started_at
+  });
+  if (
+    evidence.schema_version !== 'x-article-materialization-start/v1'
+    || sha256(evidence) !== sha256(expected)
+    || evidence.start_digest !== sha256(startEvidenceBody(evidence))
+  ) {
+    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization start evidence changed');
+  }
+  return expected;
+}
+
 function validatePreviewEvidence(
   plan: XArticleMaterializationPlanV1,
   checkpoint: XArticleMaterializationCheckpointV1
@@ -405,6 +464,9 @@ function progressSummary(
 export function createXArticleMaterializationReceipt(
   input: CreateXArticleMaterializationReceiptInput
 ): XArticleMaterializationReceiptV1 {
+  if (Object.prototype.hasOwnProperty.call(input, 'supersedes_receipt_digest')) {
+    throw new HarnessError('CONTRACT_INVALID', 'base materialization receipts cannot supersede evidence');
+  }
   const plan = validateContract<XArticleMaterializationPlanV1>(
     'x-article-materialization-plan', structuredClone(input.plan)
   );
@@ -425,6 +487,7 @@ export function createXArticleMaterializationReceipt(
     || !Number.isFinite(issuedAt)
     || startedAt > verifiedAt
     || verifiedAt > issuedAt
+    || checkpoint.updated_at !== input.preview_verified_at
   ) {
     throw new HarnessError('CONTRACT_INVALID', 'X Article materialization receipt timestamps are invalid or reversed');
   }
@@ -463,7 +526,7 @@ export function createXArticleMaterializationReceipt(
       + (plan.budget.per_inline_visual_seconds * plan.visual_anchors.length)
     ),
     preview_revision: input.preview_revision,
-    supersedes_receipt_digest: input.supersedes_receipt_digest,
+    supersedes_receipt_digest: null,
     issued_at: input.issued_at
   };
   const receipt = validateContract<XArticleMaterializationReceiptV1>(
@@ -481,6 +544,7 @@ export function createSupersedingXArticleMaterializationReceipt(
   );
   if (
     preview.receipt_digest !== sha256(receiptBody(preview))
+    || preview.receipt_digest !== input.expected_preview_receipt_digest
     || preview.supersedes_receipt_digest !== null
   ) {
     throw new HarnessError('CONTRACT_INVALID', 'Preview materialization receipt is corrupt or already superseding');

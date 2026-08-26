@@ -87,6 +87,14 @@ export interface XArticleMaterializationReceiptV1 {
     readonly issued_at: string;
     readonly receipt_digest: `sha256:${string}`;
 }
+export interface XArticleMaterializationStartEvidenceV1 {
+    readonly schema_version: 'x-article-materialization-start/v1';
+    readonly execution_id: string;
+    readonly publication_plan_digest: `sha256:${string}`;
+    readonly materialization_digest: `sha256:${string}`;
+    readonly started_at: string;
+    readonly start_digest: `sha256:${string}`;
+}
 export interface CreateXArticleMaterializationPlanInput {
     readonly execution_id: string;
     readonly publication_plan: XArticlePublicationPlanV1;
@@ -109,16 +117,22 @@ export interface CreateXArticleMaterializationReceiptInput {
     readonly preview_verified_at: string;
     readonly human_wait_seconds: number;
     readonly preview_revision: `sha256:${string}`;
-    readonly supersedes_receipt_digest: `sha256:${string}` | null;
     readonly issued_at: string;
 }
 export interface CreateSupersedingXArticleMaterializationReceiptInput {
     readonly preview_receipt: XArticleMaterializationReceiptV1;
+    readonly expected_preview_receipt_digest: `sha256:${string}`;
     readonly human_wait_seconds: number;
     readonly issued_at: string;
+}
+export interface CreateXArticleMaterializationStartEvidenceInput {
+    readonly plan: XArticleMaterializationPlanV1;
+    readonly started_at: string;
 }
 export declare function createXArticleMaterializationPlan(input: CreateXArticleMaterializationPlanInput): XArticleMaterializationPlanV1;
 export declare function createInitialXArticleMaterializationCheckpoint(input: CreateInitialXArticleMaterializationCheckpointInput): XArticleMaterializationCheckpointV1;
 export declare function createXArticleStageProgress(input: CreateXArticleStageProgressInput): XArticleStageProgressV1;
+export declare function createXArticleMaterializationStartEvidence(input: CreateXArticleMaterializationStartEvidenceInput): XArticleMaterializationStartEvidenceV1;
+export declare function verifyXArticleMaterializationStartEvidence(evidence: XArticleMaterializationStartEvidenceV1, plan: XArticleMaterializationPlanV1): XArticleMaterializationStartEvidenceV1;
 export declare function createXArticleMaterializationReceipt(input: CreateXArticleMaterializationReceiptInput): XArticleMaterializationReceiptV1;
 export declare function createSupersedingXArticleMaterializationReceipt(input: CreateSupersedingXArticleMaterializationReceiptInput): XArticleMaterializationReceiptV1;

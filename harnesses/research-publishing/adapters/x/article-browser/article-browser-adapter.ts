@@ -31,11 +31,14 @@ import {
   createInitialXArticleMaterializationCheckpoint,
   createSupersedingXArticleMaterializationReceipt,
   createXArticleMaterializationReceipt,
+  createXArticleMaterializationStartEvidence,
   createXArticleMaterializationPlan,
   createXArticleStageProgress,
+  verifyXArticleMaterializationStartEvidence,
   type XArticleMaterializationCheckpointV1,
   type XArticleMaterializationPlanV1,
   type XArticleMaterializationReceiptV1,
+  type XArticleMaterializationStartEvidenceV1,
   type XArticleStageProgressV1
 } from '../../../core/x-article-materialization.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
@@ -119,6 +122,18 @@ interface ReportProjectionComplete {
   readonly execution_id: string;
   readonly command_id: string;
   readonly report_digest: string;
+  readonly preview_receipt_digest: `sha256:${string}` | null;
+  readonly projection_digest: `sha256:${string}`;
+}
+
+interface MaterializationReportEvidenceV1 {
+  readonly schema_version: 'x-article-materialization-report/v1';
+  readonly execution_id: string;
+  readonly command_id: string;
+  readonly report: XArticleBrowserReportInput;
+  readonly report_digest: `sha256:${string}`;
+  readonly reported_at: string;
+  readonly evidence_digest: `sha256:${string}`;
 }
 
 interface XArticlePublishConfirmationConsumptionV1 {
@@ -199,6 +214,10 @@ export class XArticleBrowserAdapter {
       plan: materializationPlan,
       updated_at: snapshot.updated_at
     });
+    const startEvidence = createXArticleMaterializationStartEvidence({
+      plan: materializationPlan,
+      started_at: snapshot.updated_at
+    });
     const context: AdapterContext = {
       schema_version: '1.0', plan, approval: null, capabilities,
       execution_mode: 'materialization_v3_2', materialization_plan: materializationPlan,
@@ -231,6 +250,15 @@ export class XArticleBrowserAdapter {
 
     await this.ensureExactArtifact(`${this.prefix(executionId)}/plan.json`, plan);
     await this.ensureExactArtifact(`${this.prefix(executionId)}/capabilities.json`, capabilities);
+    try {
+      await this.ensureExactArtifact(this.materializationStartPath(executionId), startEvidence);
+    } catch (error) {
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'prepared X Article materialization start evidence differs from durable state',
+        error
+      );
+    }
     const contextPath = `${this.prefix(executionId)}/adapter-context.json`;
     if (await this.store.exists(contextPath)) {
       const existing = await this.readContext(executionId);
@@ -560,7 +588,7 @@ export class XArticleBrowserAdapter {
     const reportPath = `${this.prefix(input.command.execution_id)}/reports/${input.command.command_id}.json`;
     const projectionPath = this.reportProjectionPath(input.command);
     if (await this.store.exists(projectionPath)) {
-      const projection = await this.store.readJson<ReportProjectionComplete>(projectionPath);
+      const projection = await this.readReportProjection(projectionPath);
       if (
         projection.execution_id !== input.command.execution_id
         || projection.command_id !== input.command.command_id
@@ -568,9 +596,16 @@ export class XArticleBrowserAdapter {
       ) {
         throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report projection changed');
       }
-      const persistedReport = await this.store.readJson<XArticleBrowserReportInput>(reportPath);
-      if (sha256(persistedReport) !== reportDigest) {
-        throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
+      if (context.execution_mode === 'materialization_v3_2') {
+        const evidence = await this.readMaterializationReportEvidence(reportPath, input.command);
+        if (evidence.report_digest !== reportDigest) {
+          throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
+        }
+      } else {
+        const persistedReport = await this.store.readJson<XArticleBrowserReportInput>(reportPath);
+        if (sha256(persistedReport) !== reportDigest) {
+          throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
+        }
       }
       if (
         context.pending_command?.command_id === input.command.command_id
@@ -613,9 +648,12 @@ export class XArticleBrowserAdapter {
       }
       throw new HarnessError('CONTRACT_INVALID', 'reported X Article command envelope changed');
     }
-    await this.ensureExactArtifact(reportPath, input);
+    let materializationReport: MaterializationReportEvidenceV1 | null = null;
     if (context.execution_mode === 'materialization_v3_2') {
-      await this.recordMaterializationProgress(context, input);
+      materializationReport = await this.persistMaterializationReportEvidence(reportPath, input);
+      await this.recordMaterializationProgress(context, materializationReport);
+    } else {
+      await this.ensureExactArtifact(reportPath, input);
     }
     if (
       this.isPreparedReportActive(context)
@@ -1391,20 +1429,28 @@ export class XArticleBrowserAdapter {
 
   private async recordMaterializationProgress(
     context: AdapterContext,
-    input: XArticleBrowserReportInput
+    evidence: MaterializationReportEvidenceV1
   ): Promise<void> {
+    const input = evidence.report;
     const stage = `${input.command.purpose}#${input.command.command_id}`;
+    const expected = this.progressFromReportEvidence(evidence);
     const existing = await this.materializationStore.readProgress(
       context.snapshot.execution_id
     );
     const prior = existing.find((event) => event.stage === stage);
     if (prior !== undefined) {
-      if (prior.execution_id !== input.command.execution_id) {
-        throw new HarnessError('CONTRACT_INVALID', 'persisted materialization progress identity changed');
+      if (!isDeepStrictEqual(prior, expected)) {
+        throw new HarnessError('CONTRACT_INVALID', 'persisted materialization progress changed');
       }
       return;
     }
-    const recordedAt = this.now().toISOString();
+    await this.materializationStore.appendProgress(expected);
+  }
+
+  private progressFromReportEvidence(
+    evidence: MaterializationReportEvidenceV1
+  ): XArticleStageProgressV1 {
+    const input = evidence.report;
     const payload = input.command.payload;
     const assetId = payload.kind === 'replace_article_visual_anchor'
       ? payload.asset.asset_id
@@ -1419,26 +1465,93 @@ export class XArticleBrowserAdapter {
     const waitingFor = observedEffect === 'unknown' || input.status === 'transient_failure'
       ? 'browser_effect_reconciliation'
       : null;
-    await this.materializationStore.appendProgress(createXArticleStageProgress({
+    return createXArticleStageProgress({
       execution_id: input.command.execution_id,
-      stage,
+      stage: `${input.command.purpose}#${input.command.command_id}`,
       asset_id: assetId,
-      elapsed_seconds: computeXArticleElapsedSeconds(input.command.issued_at, recordedAt),
+      elapsed_seconds: computeXArticleElapsedSeconds(input.command.issued_at, evidence.reported_at),
       waiting_for: waitingFor,
       retry_count: input.status === 'transient_failure' ? 1 : 0,
       observed_effect: observedEffect,
-      recorded_at: recordedAt
-    }));
+      recorded_at: evidence.reported_at
+    });
+  }
+
+  private materializationReportBody(
+    evidence: MaterializationReportEvidenceV1
+  ): Omit<MaterializationReportEvidenceV1, 'evidence_digest'> {
+    return Object.fromEntries(
+      Object.entries(evidence).filter(([key]) => key !== 'evidence_digest')
+    ) as Omit<MaterializationReportEvidenceV1, 'evidence_digest'>;
+  }
+
+  private async persistMaterializationReportEvidence(
+    path: string,
+    report: XArticleBrowserReportInput
+  ): Promise<MaterializationReportEvidenceV1> {
+    if (await this.store.exists(path)) {
+      const existing = await this.readMaterializationReportEvidence(path, report.command);
+      if (existing.report_digest !== sha256(report)) {
+        throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
+      }
+      return existing;
+    }
+    const observedAt = report.observation === null ? Number.NEGATIVE_INFINITY : Date.parse(report.observation.observed_at);
+    const reportedAt = new Date(Math.max(this.now().getTime(), observedAt)).toISOString();
+    const body = {
+      schema_version: 'x-article-materialization-report/v1' as const,
+      execution_id: report.command.execution_id,
+      command_id: report.command.command_id,
+      report: structuredClone(report),
+      report_digest: sha256(report),
+      reported_at: reportedAt
+    };
+    const evidence: MaterializationReportEvidenceV1 = {
+      ...body,
+      evidence_digest: sha256(body)
+    };
+    await this.store.writeNew(path, evidence);
+    return evidence;
+  }
+
+  private async readMaterializationReportEvidence(
+    path: string,
+    command: XArticleBrowserCommandV1
+  ): Promise<MaterializationReportEvidenceV1> {
+    const evidence = await this.store.readJson<MaterializationReportEvidenceV1>(path);
+    const commandAt = Date.parse(command.issued_at);
+    const reportedAt = Date.parse(evidence.reported_at);
+    const observedAt = evidence.report.observation === null
+      ? null
+      : Date.parse(evidence.report.observation.observed_at);
+    if (
+      evidence.schema_version !== 'x-article-materialization-report/v1'
+      || evidence.execution_id !== command.execution_id
+      || evidence.command_id !== command.command_id
+      || sha256(evidence.report.command) !== sha256(command)
+      || evidence.report_digest !== sha256(evidence.report)
+      || evidence.evidence_digest !== sha256(this.materializationReportBody(evidence))
+      || !Number.isFinite(commandAt)
+      || !Number.isFinite(reportedAt)
+      || commandAt > reportedAt
+      || (observedAt !== null && (!Number.isFinite(observedAt) || observedAt < commandAt || observedAt > reportedAt))
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'materialization report evidence changed or is time-reversed');
+    }
+    return evidence;
   }
 
   private async durableMaterializationActivity(
-    executionId: string,
-    recoveryRecordedAt: string
+    context: AdapterContext,
+    materializationPlan: XArticleMaterializationPlanV1,
+    recoveryRecordedAt: string,
+    currentCommandId: string
   ): Promise<{
     readonly commandCount: number;
     readonly observationCount: number;
     readonly progress: readonly XArticleStageProgressV1[];
   }> {
+    const executionId = context.snapshot.execution_id;
     const commandEntries = await this.store.list(`${this.prefix(executionId)}/commands`);
     const commandIds = new Set<string>();
     const commands: XArticleBrowserCommandV1[] = [];
@@ -1451,18 +1564,39 @@ export class XArticleBrowserAdapter {
         'x-article-browser-command',
         await this.store.readJson<unknown>(`${entry.relative_path}/command.json`)
       );
+      this.assertPreparedCommandBinding(context, materializationPlan, command);
       if (
         command.execution_id !== executionId
         || command.command_id !== entry.name
+        || command.run_id !== context.plan.run_id
+        || command.allowed_origin !== 'https://x.com'
+        || !this.isTrustedPreviewMaterializationCommand(context, command)
         || command.payload_digest !== sha256(command.payload)
+        || !Number.isFinite(Date.parse(command.issued_at))
+        || Date.parse(command.issued_at) < Date.parse(context.automation_started_at)
+        || Date.parse(command.issued_at) > Date.parse(recoveryRecordedAt)
       ) {
         throw new HarnessError('CONTRACT_INVALID', 'materialization command ledger identity changed');
+      }
+      if (commandIds.has(command.command_id)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization command ledger contains a duplicate');
       }
       commandIds.add(command.command_id);
       commands.push(command);
     }
 
+    const reportEntries = await this.store.list(`${this.prefix(executionId)}/reports`);
+    for (const entry of reportEntries) {
+      const commandId = entry.kind === 'file' && entry.name.endsWith('.json')
+        ? entry.name.slice(0, -'.json'.length)
+        : '';
+      if (!commandIds.has(commandId)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization report ledger contains extraneous evidence');
+      }
+    }
+
     const observationEntries = await this.store.list(`${this.prefix(executionId)}/observations`);
+    const observations = new Map<string, XArticleBrowserObservation>();
     for (const entry of observationEntries) {
       if (entry.kind !== 'file' || !entry.name.endsWith('.json')) {
         throw new HarnessError('CONTRACT_INVALID', 'materialization observation ledger contains an invalid entry');
@@ -1479,35 +1613,92 @@ export class XArticleBrowserAdapter {
         || `${observation.observation_id}.json` !== entry.name
         || !commandIds.has(observation.command_id)
         || observation.page_revision !== computeXArticlePageRevision(body)
+        || observations.has(observation.observation_id)
       ) {
         throw new HarnessError('CONTRACT_INVALID', 'materialization observation ledger identity changed');
       }
+      observations.set(observation.observation_id, observation);
     }
 
     let progress = await this.materializationStore.readProgress(executionId);
-    const progressedCommandIds = new Set(progress.map((event) =>
-      event.stage.slice(event.stage.lastIndexOf('#') + 1)
-    ));
-    for (const command of commands
-      .filter((candidate) => !progressedCommandIds.has(candidate.command_id))
-      .sort((left, right) => left.issued_at.localeCompare(right.issued_at)
-        || left.command_id.localeCompare(right.command_id))) {
-      const payload = command.payload;
-      const assetId = payload.kind === 'replace_article_visual_anchor'
-        ? payload.asset.asset_id
-        : payload.kind === 'upload_article_cover'
+    const progressByCommand = new Map<string, XArticleStageProgressV1>();
+    for (const event of progress) {
+      const separator = event.stage.lastIndexOf('#');
+      const commandId = separator < 1 ? '' : event.stage.slice(separator + 1);
+      if (!commandIds.has(commandId) || progressByCommand.has(commandId)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization progress ledger is duplicate or foreign');
+      }
+      progressByCommand.set(commandId, event);
+    }
+
+    const referencedObservations = new Set<string>();
+    for (const command of commands.sort((left, right) =>
+      left.issued_at.localeCompare(right.issued_at) || left.command_id.localeCompare(right.command_id))) {
+      const reportPath = `${this.prefix(executionId)}/reports/${command.command_id}.json`;
+      let expectedProgress: XArticleStageProgressV1;
+      if (await this.store.exists(reportPath)) {
+        const evidence = await this.readMaterializationReportEvidence(reportPath, command);
+        const observation = evidence.report.observation;
+        if (observation !== null) {
+          const durable = observations.get(observation.observation_id);
+          if (durable === undefined || !isDeepStrictEqual(durable, observation)) {
+            throw new HarnessError('CONTRACT_INVALID', 'materialization report observation is missing or changed');
+          }
+          if (referencedObservations.has(observation.observation_id)) {
+            throw new HarnessError('CONTRACT_INVALID', 'materialization observation is referenced more than once');
+          }
+          referencedObservations.add(observation.observation_id);
+        }
+        if (command.command_id !== currentCommandId) {
+          const projection = await this.readReportProjection(this.reportProjectionPath(command));
+          if (projection.report_digest !== evidence.report_digest) {
+            throw new HarnessError('CONTRACT_INVALID', 'materialization report projection changed');
+          }
+        }
+        expectedProgress = this.progressFromReportEvidence(evidence);
+      } else {
+        if (command.command_id === currentCommandId) {
+          throw new HarnessError('CONTRACT_INVALID', 'current Preview command lacks durable report evidence');
+        }
+        try {
+          await this.broker.readExistingClaim(command);
+        } catch (error) {
+          throw new HarnessError(
+            'CONTRACT_INVALID',
+            'unreported materialization command lacks a valid durable claim',
+            error
+          );
+        }
+        const payload = command.payload;
+        const assetId = payload.kind === 'replace_article_visual_anchor'
           ? payload.asset.asset_id
-          : null;
-      await this.materializationStore.appendProgress(createXArticleStageProgress({
-        execution_id: executionId,
-        stage: `durable_command_recovery#${command.command_id}`,
-        asset_id: assetId,
-        elapsed_seconds: 0,
-        waiting_for: 'durable_command_recovery',
-        retry_count: 0,
-        observed_effect: 'unknown',
-        recorded_at: recoveryRecordedAt
-      }));
+          : payload.kind === 'upload_article_cover'
+            ? payload.asset.asset_id
+            : null;
+        expectedProgress = createXArticleStageProgress({
+          execution_id: executionId,
+          stage: `durable_command_recovery#${command.command_id}`,
+          asset_id: assetId,
+          elapsed_seconds: 0,
+          waiting_for: 'durable_command_recovery',
+          retry_count: 0,
+          observed_effect: 'unknown',
+          recorded_at: recoveryRecordedAt
+        });
+        if (!progressByCommand.has(command.command_id)) {
+          await this.materializationStore.appendProgress(expectedProgress);
+          progressByCommand.set(command.command_id, expectedProgress);
+        }
+      }
+      if (!isDeepStrictEqual(progressByCommand.get(command.command_id), expectedProgress)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization progress differs from durable report evidence');
+      }
+      if (Date.parse(expectedProgress.recorded_at) > Date.parse(recoveryRecordedAt)) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization activity occurs after Preview checkpoint');
+      }
+    }
+    if (referencedObservations.size !== observations.size) {
+      throw new HarnessError('CONTRACT_INVALID', 'materialization observation ledger contains extraneous evidence');
     }
     progress = await this.materializationStore.readProgress(executionId);
     if (
@@ -1521,9 +1712,44 @@ export class XArticleBrowserAdapter {
     }
     return {
       commandCount: commandIds.size,
-      observationCount: observationEntries.length,
+      observationCount: observations.size,
       progress
     };
+  }
+
+  private isTrustedPreviewMaterializationCommand(
+    context: AdapterContext,
+    command: XArticleBrowserCommandV1
+  ): boolean {
+    const preDraft = command.purpose === 'observe_articles_index'
+      || command.purpose === 'create_article_draft';
+    if (preDraft ? command.draft_id !== null : command.draft_id !== context.snapshot.draft_id) {
+      return false;
+    }
+    if (command.kind === 'observe_article_page') {
+      return command.side_effect === 'read'
+        && [
+          'observe_articles_index',
+          'reconcile_article_editor',
+          'reconcile_article_import_completion'
+        ].includes(command.purpose);
+    }
+    if (command.kind === 'create_article_draft') {
+      return command.purpose === 'create_article_draft' && command.side_effect === 'write';
+    }
+    if (command.kind === 'import_article_document') {
+      return command.purpose === 'import_article_document' && command.side_effect === 'write';
+    }
+    if (command.kind === 'replace_article_visual_anchor') {
+      return /^replace_article_visual_anchor_[1-9][0-9]*$/.test(command.purpose)
+        && command.side_effect === 'write';
+    }
+    if (command.kind === 'upload_article_cover') {
+      return command.purpose === 'upload_article_cover' && command.side_effect === 'write';
+    }
+    return command.kind === 'open_article_preview'
+      && command.purpose === 'open_article_preview'
+      && command.side_effect === 'write';
   }
 
   private async persistPreviewMaterializationReceipt(
@@ -1532,9 +1758,12 @@ export class XArticleBrowserAdapter {
     preview: XArticleBrowserObservation
   ): Promise<XArticleMaterializationReceiptV1> {
     const plan = await this.readBoundMaterializationPlan(context);
+    const start = await this.readBoundMaterializationStart(context, plan);
     const activity = await this.durableMaterializationActivity(
-      context.snapshot.execution_id,
-      checkpoint.updated_at
+      context,
+      plan,
+      checkpoint.updated_at,
+      preview.command_id
     );
     const receipt = createXArticleMaterializationReceipt({
       plan,
@@ -1543,11 +1772,10 @@ export class XArticleBrowserAdapter {
       body_block_count: context.plan.intent.document.blocks.length,
       command_count: activity.commandCount,
       observation_count: activity.observationCount,
-      automation_started_at: context.automation_started_at,
+      automation_started_at: start.started_at,
       preview_verified_at: checkpoint.updated_at,
       human_wait_seconds: 0,
       preview_revision: preview.page_revision,
-      supersedes_receipt_digest: null,
       issued_at: checkpoint.updated_at
     });
     const path = this.previewMaterializationReceiptPath(context.snapshot.execution_id);
@@ -1589,6 +1817,7 @@ export class XArticleBrowserAdapter {
     }
     const receipt = createSupersedingXArticleMaterializationReceipt({
       preview_receipt: previewReceipt,
+      expected_preview_receipt_digest: await this.boundPreviewReceiptDigest(context),
       human_wait_seconds: computeXArticleElapsedSeconds(
         previewReceipt.issued_at,
         confirmation.confirmed_at
@@ -1668,6 +1897,50 @@ export class XArticleBrowserAdapter {
     return persisted;
   }
 
+  private async readBoundMaterializationStart(
+    context: AdapterContext,
+    plan: XArticleMaterializationPlanV1
+  ): Promise<XArticleMaterializationStartEvidenceV1> {
+    try {
+      const evidence = await this.store.readJson<XArticleMaterializationStartEvidenceV1>(
+        this.materializationStartPath(context.snapshot.execution_id)
+      );
+      const verified = verifyXArticleMaterializationStartEvidence(evidence, plan);
+      if (verified.started_at !== context.automation_started_at) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adapter start mirror differs from immutable evidence');
+      }
+      return verified;
+    } catch (error) {
+      if (error instanceof HarnessError && error.code === 'ARTICLE_CHECKPOINT_CONFLICT') throw error;
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'materialization start evidence is missing, corrupt, or mismatched',
+        error
+      );
+    }
+  }
+
+  private async boundPreviewReceiptDigest(
+    context: AdapterContext
+  ): Promise<`sha256:${string}`> {
+    if (context.latest_preview_observation_id === null) {
+      throw new HarnessError('CONTRACT_INVALID', 'public receipt lacks a bound Preview observation');
+    }
+    const observation = await this.store.readJson<XArticleBrowserObservation>(
+      `${this.prefix(context.snapshot.execution_id)}/observations/${context.latest_preview_observation_id}.json`
+    );
+    const projection = await this.readReportProjection(this.reportProjectionPath({
+      execution_id: context.snapshot.execution_id,
+      command_id: observation.command_id
+    }));
+    if (projection.preview_receipt_digest === null) {
+      throw new HarnessError('CONTRACT_INVALID', 'Preview projection lacks an immutable receipt binding');
+    }
+    const plan = await this.readBoundMaterializationPlan(context);
+    await this.readBoundMaterializationStart(context, plan);
+    return projection.preview_receipt_digest;
+  }
+
   private isOnlyMissingCover(
     reconciliation: ReturnType<typeof reconcileXArticleDraft>
   ): boolean {
@@ -1682,6 +1955,17 @@ export class XArticleBrowserAdapter {
     materializationPlan: XArticleMaterializationPlanV1,
     input: IssueXArticleBrowserCommandInput
   ): void {
+    if (input.payload.kind === 'import_article_document') {
+      const canonicalTemplate = createXArticleImportTemplate(context.plan.intent.document);
+      if (
+        input.payload.package_root !== context.plan.intent.article_package.root
+        || input.payload.package_digest !== context.plan.intent.article_package.digest
+        || input.payload.template.template_digest !== materializationPlan.import_template_digest
+        || !isDeepStrictEqual(input.payload.template, canonicalTemplate)
+      ) {
+        throw new HarnessError('ARTICLE_MATERIALIZATION_DRIFT', 'prepared import command is not bound to durable content');
+      }
+    }
     if (input.payload.kind === 'replace_article_visual_anchor') {
       const payload = input.payload;
       const anchor = materializationPlan.visual_anchors.find((candidate) =>
@@ -1699,6 +1983,7 @@ export class XArticleBrowserAdapter {
         || anchor.block_ordinal !== payload.anchor.block_ordinal
         || anchor.asset_digest !== payload.asset.digest
         || binding.asset.digest !== anchor.asset_digest
+        || input.purpose !== `replace_article_visual_anchor_${anchor.block_ordinal}`
         || !isDeepStrictEqual(binding.asset, payload.asset)
       ) {
         throw new HarnessError('ARTICLE_ASSET_MISMATCH', 'prepared anchor command is not bound to durable assets');
@@ -1952,14 +2237,37 @@ export class XArticleBrowserAdapter {
     commandId: string,
     reportDigest: string
   ): Promise<AdapterContext> {
-    await this.ensureExactArtifact(this.reportProjectionPath({
+    let previewReceiptDigest: `sha256:${string}` | null = null;
+    if (
+      context.execution_mode === 'materialization_v3_2'
+      && context.latest_preview_observation_id !== null
+    ) {
+      const observation = await this.store.readJson<XArticleBrowserObservation>(
+        `${this.prefix(context.snapshot.execution_id)}/observations/${context.latest_preview_observation_id}.json`
+      );
+      if (
+        observation.command_id === commandId
+        && await this.store.exists(this.previewMaterializationReceiptPath(context.snapshot.execution_id))
+      ) {
+        const receipt = await this.store.readJson<XArticleMaterializationReceiptV1>(
+          this.previewMaterializationReceiptPath(context.snapshot.execution_id)
+        );
+        previewReceiptDigest = receipt.receipt_digest;
+      }
+    }
+    const projectionBody = {
       execution_id: context.snapshot.execution_id,
       command_id: commandId
-    }), {
-      schema_version: '1.0',
-      execution_id: context.snapshot.execution_id,
-      command_id: commandId,
-      report_digest: reportDigest
+    };
+    const projection = {
+      schema_version: '1.0' as const,
+      ...projectionBody,
+      report_digest: reportDigest,
+      preview_receipt_digest: previewReceiptDigest
+    };
+    await this.ensureExactArtifact(this.reportProjectionPath(projectionBody), {
+      ...projection,
+      projection_digest: sha256(projection)
     } satisfies ReportProjectionComplete);
     const next: AdapterContext = {
       ...context,
@@ -1969,6 +2277,25 @@ export class XArticleBrowserAdapter {
     };
     await this.writeContext(next);
     return next;
+  }
+
+  private async readReportProjection(path: string): Promise<ReportProjectionComplete> {
+    const projection = await this.store.readJson<ReportProjectionComplete>(path);
+    const body = Object.fromEntries(
+      Object.entries(projection).filter(([key]) => key !== 'projection_digest')
+    );
+    if (
+      projection.schema_version !== '1.0'
+      || projection.projection_digest !== sha256(body)
+      || typeof projection.execution_id !== 'string'
+      || typeof projection.command_id !== 'string'
+      || typeof projection.report_digest !== 'string'
+      || (projection.preview_receipt_digest !== null
+        && !/^sha256:[a-f0-9]{64}$/.test(projection.preview_receipt_digest))
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'X Article report projection changed');
+    }
+    return projection;
   }
 
   private async recoverBrokerPersistedCommand(
@@ -2513,6 +2840,10 @@ export class XArticleBrowserAdapter {
 
   private previewMaterializationReceiptPath(executionId: string): string {
     return `${this.prefix(executionId)}/materialization-receipt.json`;
+  }
+
+  private materializationStartPath(executionId: string): string {
+    return `${this.prefix(executionId)}/materialization-start.json`;
   }
 
   private publicMaterializationReceiptPath(executionId: string): string {

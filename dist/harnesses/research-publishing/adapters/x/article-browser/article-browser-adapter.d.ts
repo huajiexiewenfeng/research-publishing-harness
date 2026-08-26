@@ -71,12 +71,19 @@ export declare class XArticleBrowserAdapter {
     private reconcilePreparedPreview;
     private issueEditorObservation;
     private recordMaterializationProgress;
+    private progressFromReportEvidence;
+    private materializationReportBody;
+    private persistMaterializationReportEvidence;
+    private readMaterializationReportEvidence;
     private durableMaterializationActivity;
+    private isTrustedPreviewMaterializationCommand;
     private persistPreviewMaterializationReceipt;
     private persistPublicMaterializationReceipt;
     private isMaterializationEffect;
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
+    private readBoundMaterializationStart;
+    private boundPreviewReceiptDigest;
     private isOnlyMissingCover;
     private assertPreparedCommandBinding;
     private blockMaterialization;
@@ -87,6 +94,7 @@ export declare class XArticleBrowserAdapter {
     private transition;
     private verifyCapabilities;
     private finalizeProjectedReport;
+    private readReportProjection;
     private recoverBrokerPersistedCommand;
     private verifyPreparedCapabilities;
     private assertPreparedConfirmationEvidence;
@@ -103,6 +111,7 @@ export declare class XArticleBrowserAdapter {
     private prefix;
     private publishConfirmationPath;
     private previewMaterializationReceiptPath;
+    private materializationStartPath;
     private publicMaterializationReceiptPath;
     private publishConfirmationConsumptionPath;
     private ensureExactArtifact;

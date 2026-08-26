@@ -81,7 +81,7 @@ const capabilities = {
 function observed(executionId: string, commandId: string, value: Record<string, unknown>) {
   const body = {
     schema_version: '1.0', observation_id: `obs_${commandId}`, execution_id: executionId,
-    command_id: commandId, origin: 'https://x.com', observed_at: '2026-08-26T00:09:00.000Z',
+    command_id: commandId, origin: 'https://x.com', observed_at: '2026-08-26T00:10:00.000Z',
     account_handle: '@Glen56121', controls: [], editor: null, preview: null,
     publish_review: null, public_article: null, ...value
   } as const;

@@ -97,7 +97,7 @@ const inlineApproval = approveXArticlePublication(
 function observed(executionId: string, commandId: string, value: Record<string, unknown>) {
   const input = {
     schema_version: '1.0', observation_id: `obs_${commandId}`, execution_id: executionId,
-    command_id: commandId, origin: 'https://x.com', observed_at: '2026-08-21T09:00:01.000Z',
+    command_id: commandId, origin: 'https://x.com', observed_at: '2026-08-21T09:01:00.000Z',
     account_handle: '@Glen56121', controls: [], editor: null, preview: null,
     publish_review: null, public_article: null, ...value
   } as const;
@@ -252,6 +252,22 @@ async function advancePreparedToPublicObservation(
   });
 }
 
+function resignPersistedReport(
+  artifact: Record<string, unknown>,
+  report: Record<string, unknown>
+): Record<string, unknown> {
+  if (artifact.schema_version !== 'x-article-materialization-report/v1') return report;
+  const body = {
+    schema_version: artifact.schema_version,
+    execution_id: artifact.execution_id,
+    command_id: artifact.command_id,
+    report,
+    report_digest: sha256(report),
+    reported_at: artifact.reported_at
+  };
+  return { ...body, evidence_digest: sha256(body) };
+}
+
 async function coordinatedConcurrentNext(
   adapter: XArticleBrowserAdapter,
   executionId: string,
@@ -319,6 +335,160 @@ describe('XArticleBrowserAdapter', () => {
     await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
       state: 'confirmation_pending', publish_command_count: 0
     });
+  });
+
+  it('binds Preview timing to canonical write-once materialization-start evidence', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-start-evidence-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_start_evidence_1',
+      eventId: (() => { let n = 0; return () => `event_start_evidence_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_start_evidence_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const startPath = `runs/${execution.execution_id}/x-article/browser/materialization-start.json`;
+    const start = await store.readJson<Record<string, unknown>>(startPath);
+    expect(start).toMatchObject({
+      schema_version: 'x-article-materialization-start/v1',
+      execution_id: execution.execution_id,
+      started_at: '2026-08-21T09:01:00.000Z',
+      start_digest: expect.stringMatching(/^sha256:/)
+    });
+    const changedBody = { ...start, started_at: '2026-08-21T09:00:59.000Z' };
+    const changed = {
+      ...changedBody,
+      start_digest: sha256(Object.fromEntries(
+        Object.entries(changedBody).filter(([key]) => key !== 'start_digest')
+      ))
+    };
+    await store.replaceAtomic(startPath, changed);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
+  it('rejects a valid progress ledger whose fields no longer match its exact report', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-progress-tamper-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_progress_tamper_1',
+      eventId: (() => { let n = 0; return () => `event_progress_tamper_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_progress_tamper_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    const progressPath = `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`;
+    const progress = (await store.readText(progressPath)).trim().split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    progress[0] = { ...progress[0], elapsed_seconds: 1 };
+    await store.replaceAtomic(progressPath, `${progress.map((entry) => JSON.stringify(entry)).join('\n')}\n`);
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('rejects duplicate progress that masks a missing command projection', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-progress-duplicate-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_progress_duplicate_1',
+      eventId: (() => { let n = 0; return () => `event_progress_duplicate_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_progress_duplicate_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    const progressPath = `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`;
+    const progress = (await store.readText(progressPath)).trim().split('\n');
+    progress[0] = progress[1]!;
+    await store.replaceAtomic(progressPath, `${progress.join('\n')}\n`);
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('rejects an extraneous valid command without a durable claim or report', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-command-extra-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_command_extra_1',
+      eventId: (() => { let n = 0; return () => `event_command_extra_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_command_extra_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    const commandRoot = `runs/${execution.execution_id}/x-article/browser/commands`;
+    const source = await store.readJson<Record<string, unknown>>(
+      `${commandRoot}/command_command_extra_1/command.json`
+    );
+    await store.writeNew(`${commandRoot}/extraneous_command/command.json`, {
+      ...source,
+      command_id: 'extraneous_command'
+    });
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('rejects a re-signed observation that reverses command time', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-observation-time-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_observation_time_1',
+      eventId: (() => { let n = 0; return () => `event_observation_time_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_observation_time_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    const observationPath = `runs/${execution.execution_id}/x-article/browser/observations/obs_command_observation_time_1.json`;
+    const observation = await store.readJson<XArticleBrowserObservation>(observationPath);
+    const changedBody = {
+      ...Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision')),
+      observed_at: '2026-08-21T09:00:59.000Z'
+    };
+    const changedObservation = {
+      ...changedBody,
+      page_revision: computeXArticlePageRevision(changedBody)
+    } as XArticleBrowserObservation;
+    await store.replaceAtomic(observationPath, changedObservation);
+    const reportPath = `runs/${execution.execution_id}/x-article/browser/reports/command_observation_time_1.json`;
+    const artifact = await store.readJson<Record<string, unknown>>(reportPath);
+    const report = (artifact.report ?? artifact) as Record<string, unknown>;
+    await store.replaceAtomic(reportPath, resignPersistedReport(artifact, {
+      ...report,
+      observation: changedObservation
+    }));
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('rejects a re-digested report status that disagrees with progress', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-report-status-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_report_status_1',
+      eventId: (() => { let n = 0; return () => `event_report_status_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_report_status_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    const reportPath = `runs/${execution.execution_id}/x-article/browser/reports/command_report_status_1.json`;
+    const artifact = await store.readJson<Record<string, unknown>>(reportPath);
+    const report = (artifact.report ?? artifact) as Record<string, unknown>;
+    await store.replaceAtomic(reportPath, resignPersistedReport(artifact, {
+      ...report,
+      status: 'uncertain'
+    }));
+    await adapter.claim(pending.command);
+    await expect(adapter.report({
+      command: pending.command, status: 'success', observation: pending.preview
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
   });
 
   it('repairs an exact Preview receipt after a crash and rejects a mismatched prior receipt', async () => {
@@ -411,6 +581,40 @@ describe('XArticleBrowserAdapter', () => {
     await expect(store.exists(
       `runs/${execution.execution_id}/x-article/browser/materialization-receipt-public.json`
     )).resolves.toBe(false);
+  });
+
+  it.each([
+    ['execution', { execution_id: 'foreign_execution' }],
+    ['draft', { draft_id: 'foreign_draft' }],
+    ['revision', { preview_revision: `sha256:${'1'.repeat(64)}` }],
+    ['materialization', { materialization_digest: `sha256:${'2'.repeat(64)}` }],
+    ['count', { command_count: 0 }],
+    ['timing', { automation_seconds: 1 }]
+  ])('rejects a validly re-digested Preview receipt with changed %s binding', async (_name, changed) => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-redigest-')));
+    const executionId = `execution_receipt_redigest_${_name}`;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      eventId: (() => { let n = 0; return () => `${executionId}_event_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `${executionId}_command_${++n}`; })(),
+      attemptId: () => `${executionId}_attempt`,
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+    await advancePreparedToPublicObservation(adapter, execution.execution_id, preview);
+    const receiptPath = `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`;
+    const receipt = await store.readJson<Record<string, unknown>>(receiptPath);
+    const changedBody = { ...receipt, ...changed };
+    await store.replaceAtomic(receiptPath, {
+      ...changedBody,
+      receipt_digest: sha256(Object.fromEntries(
+        Object.entries(changedBody).filter(([key]) => key !== 'receipt_digest')
+      ))
+    });
+
+    await expect(adapter.next(execution.execution_id))
+      .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
   });
 
   it('rejects prepared materialization when bulk import is unavailable', async () => {

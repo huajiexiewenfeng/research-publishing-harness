@@ -107,6 +107,35 @@ function finiteNonnegative(value, label, integer = false) {
 function receiptBody(receipt) {
     return Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== 'receipt_digest'));
 }
+function startEvidenceBody(evidence) {
+    return Object.fromEntries(Object.entries(evidence).filter(([key]) => key !== 'start_digest'));
+}
+export function createXArticleMaterializationStartEvidence(input) {
+    const plan = validateContract('x-article-materialization-plan', structuredClone(input.plan));
+    if (!Number.isFinite(Date.parse(input.started_at))) {
+        throw new HarnessError('CONTRACT_INVALID', 'materialization start timestamp is invalid');
+    }
+    const body = {
+        schema_version: 'x-article-materialization-start/v1',
+        execution_id: plan.execution_id,
+        publication_plan_digest: plan.publication_plan_digest,
+        materialization_digest: plan.materialization_digest,
+        started_at: input.started_at
+    };
+    return Object.freeze({ ...body, start_digest: sha256(body) });
+}
+export function verifyXArticleMaterializationStartEvidence(evidence, plan) {
+    const expected = createXArticleMaterializationStartEvidence({
+        plan,
+        started_at: evidence.started_at
+    });
+    if (evidence.schema_version !== 'x-article-materialization-start/v1'
+        || sha256(evidence) !== sha256(expected)
+        || evidence.start_digest !== sha256(startEvidenceBody(evidence))) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization start evidence changed');
+    }
+    return expected;
+}
 function validatePreviewEvidence(plan, checkpoint) {
     const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
         && checkpoint.media.every((entry, index) => {
@@ -167,6 +196,9 @@ function progressSummary(plan, progress, startedAt, verifiedAt) {
     return { stageSeconds, retryCount, recoveryCount };
 }
 export function createXArticleMaterializationReceipt(input) {
+    if (Object.prototype.hasOwnProperty.call(input, 'supersedes_receipt_digest')) {
+        throw new HarnessError('CONTRACT_INVALID', 'base materialization receipts cannot supersede evidence');
+    }
     const plan = validateContract('x-article-materialization-plan', structuredClone(input.plan));
     const checkpoint = validateContract('x-article-materialization-checkpoint', structuredClone(input.checkpoint));
     validatePreviewEvidence(plan, checkpoint);
@@ -181,7 +213,8 @@ export function createXArticleMaterializationReceipt(input) {
         || !Number.isFinite(verifiedAt)
         || !Number.isFinite(issuedAt)
         || startedAt > verifiedAt
-        || verifiedAt > issuedAt) {
+        || verifiedAt > issuedAt
+        || checkpoint.updated_at !== input.preview_verified_at) {
         throw new HarnessError('CONTRACT_INVALID', 'X Article materialization receipt timestamps are invalid or reversed');
     }
     if (input.command_count > plan.expected_command_ceiling
@@ -212,7 +245,7 @@ export function createXArticleMaterializationReceipt(input) {
         within_budget: automationSeconds <= (plan.budget.fixed_seconds
             + (plan.budget.per_inline_visual_seconds * plan.visual_anchors.length)),
         preview_revision: input.preview_revision,
-        supersedes_receipt_digest: input.supersedes_receipt_digest,
+        supersedes_receipt_digest: null,
         issued_at: input.issued_at
     };
     const receipt = validateContract('x-article-materialization-receipt', { ...body, receipt_digest: sha256(body) });
@@ -221,6 +254,7 @@ export function createXArticleMaterializationReceipt(input) {
 export function createSupersedingXArticleMaterializationReceipt(input) {
     const preview = validateContract('x-article-materialization-receipt', structuredClone(input.preview_receipt));
     if (preview.receipt_digest !== sha256(receiptBody(preview))
+        || preview.receipt_digest !== input.expected_preview_receipt_digest
         || preview.supersedes_receipt_digest !== null) {
         throw new HarnessError('CONTRACT_INVALID', 'Preview materialization receipt is corrupt or already superseding');
     }
