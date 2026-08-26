@@ -41,6 +41,7 @@ export declare class PublicationBundleService {
     private optionalPreparedProjectionUnbinding;
     private readPreparedUnbinding;
     private ensurePreparedExecutionOwner;
+    private hasPreparedArticleLifecycle;
     private assertPreparedApproval;
     private persistDerivedArticleConfirmation;
     private readDerivedArticleConfirmation;

@@ -69,6 +69,43 @@ describe('PublicationBundleService prepared Article binding', () => {
       .resolves.toMatchObject({ state: 'confirmation_pending', publish_command_count: 0 });
   });
 
+  it('requires V2 confirmation fields after an active prepared Article binding exists', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const binding = await fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    });
+
+    await expect(fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      approved_by: 'human:Glen56121'
+    })).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    await expect(fixture.store.exists(
+      `runs/${fixture.plan.bundle_id}/publication-bundle/approval.json`
+    )).resolves.toBe(false);
+    await expect(fixture.service.articleAuthorization(fixture.plan.bundle_id))
+      .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    const approval = await fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      confirmed_preview_revision: binding.preview_revision,
+      approved_by: 'human:Glen56121'
+    });
+    const approvalPath = `runs/${fixture.plan.bundle_id}/publication-bundle/approval.json`;
+    const approvalBytes = await fixture.store.readBytes(approvalPath);
+    await expect(fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      approved_by: 'human:Glen56121'
+    })).rejects.toMatchObject({ code: 'APPROVAL_STALE' });
+    expect(await fixture.store.readBytes(approvalPath)).toEqual(approvalBytes);
+    expect(approval.schema_version).toBe('publication-bundle-approval/v2');
+  });
+
   it('repairs partial binding and approval persistence without changing authority', async () => {
     const fixture = await createPreparedPublicationBundleFixture();
     const bindInput = {
@@ -321,6 +358,95 @@ describe('PublicationBundleService prepared Article binding', () => {
       state: 'confirmation_pending',
       publish_command_count: 0
     });
+  });
+
+  it('cannot downgrade an interrupted prepared unbind to V1 approval authority', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    await fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    });
+    const replaceAtomic = fixture.store.replaceAtomic.bind(fixture.store);
+    let failProjectionClear = true;
+    fixture.store.replaceAtomic = async (path, value) => {
+      if (path.endsWith('/prepared-article-active.json') && failProjectionClear) {
+        failProjectionClear = false;
+        throw new Error('injected unbind projection crash');
+      }
+      return replaceAtomic(path, value);
+    };
+    await expect(fixture.service.unbindPreparedArticle(fixture.plan.bundle_id))
+      .rejects.toThrow('injected unbind projection crash');
+
+    await expect(fixture.service.approve({
+      bundle_id: fixture.plan.bundle_id,
+      confirmed_bundle_digest: fixture.plan.bundle_digest,
+      approved_by: 'human:Glen56121'
+    })).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    for (const artifact of [
+      'approval.json',
+      'article-authorization.json',
+      'article-publish-confirmation.json',
+      'single-authorization.json'
+    ]) {
+      await expect(fixture.store.exists(
+        `runs/${fixture.plan.bundle_id}/publication-bundle/${artifact}`
+      )).resolves.toBe(false);
+    }
+    await expect(fixture.service.articleAuthorization(fixture.plan.bundle_id))
+      .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    await expect(fixture.adapter.status(fixture.execution.execution_id)).resolves.toMatchObject({
+      state: 'confirmation_pending',
+      publish_command_count: 0
+    });
+  });
+
+  it('serializes legacy-shaped approval against prepared lifecycle entry', async () => {
+    const fixture = await createPreparedPublicationBundleFixture();
+    const withLock = fixture.store.withLock.bind(fixture.store);
+    let enteredResolve!: () => void;
+    let releaseResolve!: () => void;
+    const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+    const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+    let pauseBundle = true;
+    fixture.store.withLock = (path, operation) => withLock(path, async () => {
+      if (path.endsWith('/publication-bundle/control-plane.lock') && pauseBundle) {
+        pauseBundle = false;
+        enteredResolve();
+        await release;
+      }
+      return operation();
+    });
+    const binding = fixture.service.bindPreparedArticle({
+      bundle_id: fixture.plan.bundle_id,
+      execution_id: fixture.execution.execution_id,
+      preview_revision: fixture.preview.page_revision,
+      materialization_receipt_ref: fixture.receiptRef,
+      bound_at: '2026-08-26T00:10:00.000Z'
+    }).then(
+      (value) => ({ value, error: null }),
+      (error: unknown) => ({ value: null, error })
+    );
+    await entered;
+    try {
+      await expect(fixture.service.approve({
+        bundle_id: fixture.plan.bundle_id,
+        confirmed_bundle_digest: fixture.plan.bundle_digest,
+        approved_by: 'human:Glen56121'
+      })).rejects.toMatchObject({ code: 'EXECUTION_BUSY' });
+    } finally {
+      releaseResolve();
+    }
+    await expect(binding).resolves.toMatchObject({
+      value: { binding_version: 1 },
+      error: null
+    });
+    await expect(fixture.store.exists(
+      `runs/${fixture.plan.bundle_id}/publication-bundle/approval.json`
+    )).resolves.toBe(false);
   });
 
   it.each([

@@ -23,6 +23,12 @@ describe('Publication Bundle Approval security', () => {
     expect(approval).not.toHaveProperty('ttl_ms');
     const approvalPath = `runs/${plan.bundle_id}/publication-bundle/approval.json`;
     const historicalBytes = await fixture.store.readBytes(approvalPath);
+    await expect(service.approve({
+      bundle_id: plan.bundle_id,
+      confirmed_bundle_digest: plan.bundle_digest,
+      approved_by: 'human:Glen56121'
+    })).resolves.toEqual(approval);
+    expect(await fixture.store.readBytes(approvalPath)).toEqual(historicalBytes);
     await service.status(plan.bundle_id);
     await service.articleAuthorization(plan.bundle_id);
     expect(await fixture.store.readBytes(approvalPath)).toEqual(historicalBytes);

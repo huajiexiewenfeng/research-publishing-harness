@@ -298,29 +298,39 @@ export class PublicationBundleService {
   }
 
   async approve(input: ApprovePublicationBundleInput): Promise<PublicationBundleApproval> {
-    if ('confirmed_preview_revision' in input) {
-      return this.approvePreparedArticle(input);
+    const detached = structuredClone(input);
+    if ('confirmed_preview_revision' in detached) {
+      return this.approvePreparedArticle(detached);
     }
-    const plan = await this.readPlan(input.bundle_id);
-    const path = this.approvalPath(input.bundle_id);
-    if (await this.store.exists(path)) {
-      const existing = await this.readApproval(plan);
-      if (
-        existing.bundle_digest !== input.confirmed_bundle_digest ||
-        existing.approved_by !== input.approved_by
-      ) {
-        throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is immutable');
+    return this.store.withLock(this.bundleLockPath(detached.bundle_id), async () => {
+      const plan = await this.readPlan(detached.bundle_id);
+      const path = this.approvalPath(detached.bundle_id);
+      if (await this.store.exists(path)) {
+        const existing = await this.readApproval(plan);
+        if (
+          existing.schema_version !== 'publication-bundle-approval/v1'
+          || existing.bundle_digest !== detached.confirmed_bundle_digest
+          || existing.approved_by !== detached.approved_by
+        ) {
+          throw new HarnessError('APPROVAL_STALE', 'Publication Bundle Approval is immutable');
+        }
+        return existing;
       }
-      return existing;
-    }
-    const approval = createPublicationBundleApproval(
-      plan,
-      input,
-      this.now(),
-      this.approvalId()
-    );
-    await this.store.writeNew(path, approval);
-    return this.readApproval(plan);
+      if (await this.hasPreparedArticleLifecycle(plan)) {
+        throw new HarnessError(
+          'PUBLISH_GATE_BLOCKED',
+          'Prepared Article lifecycle requires exact Bundle V2 confirmation inputs'
+        );
+      }
+      const approval = createPublicationBundleApproval(
+        plan,
+        detached,
+        this.now(),
+        this.approvalId()
+      );
+      await this.store.writeNew(path, approval);
+      return this.readApproval(plan);
+    });
   }
 
   async bindPreparedArticle(input: BindPreparedArticleInput): Promise<BoundPreparedArticleV1> {
@@ -1737,6 +1747,49 @@ export class PublicationBundleService {
       return;
     }
     await this.store.writeNew(path, owner);
+  }
+
+  private async hasPreparedArticleLifecycle(plan: PublicationBundlePlanV1): Promise<boolean> {
+    if (
+      await this.store.exists(this.preparedProjectionPath(plan.bundle_id))
+      || (await this.store.list(this.preparedBindingsDirectory(plan.bundle_id))).length > 0
+      || (await this.store.list(
+        `runs/${plan.bundle_id}/publication-bundle/prepared-article-unbindings`
+      )).length > 0
+      || await this.store.exists(this.articlePublishConfirmationPath(plan.bundle_id))
+    ) {
+      return true;
+    }
+    const ownerEntries = await this.store.list('program/publication-bundle-prepared-executions');
+    for (const entry of ownerEntries) {
+      if (entry.kind !== 'file' || !/^[A-Za-z0-9][A-Za-z0-9_-]*\.json$/.test(entry.name)) {
+        throw new HarnessError('APPROVAL_STALE', 'prepared Article execution ownership is stale');
+      }
+      const artifact = await this.store.readContainedArtifact(entry.relative_path);
+      const owner = this.parseJson<PreparedArticleExecutionOwnerV1>(
+        artifact.content,
+        'prepared Article execution owner'
+      );
+      const { owner_digest: digest, ...body } = owner;
+      const canonicalBytes = `${JSON.stringify(owner, null, 2)}\n`;
+      if (
+        owner.schema_version !== 'publication-bundle-prepared-execution-owner/v1'
+        || `${owner.execution_id}.json` !== entry.name
+        || digest !== sha256(body)
+        || artifact.content.toString('utf8') !== canonicalBytes
+      ) {
+        throw new HarnessError('APPROVAL_STALE', 'prepared Article execution ownership is stale');
+      }
+      if (owner.bundle_id !== plan.bundle_id) continue;
+      if (
+        !exact(owner.bundle_plan_ref, await this.fileRef(this.planPath(plan.bundle_id)))
+        || owner.child_plan_digest !== plan.article_plan.plan_digest
+      ) {
+        throw new HarnessError('APPROVAL_STALE', 'prepared Article execution ownership is stale');
+      }
+      return true;
+    }
+    return false;
   }
 
   private assertPreparedApproval(
