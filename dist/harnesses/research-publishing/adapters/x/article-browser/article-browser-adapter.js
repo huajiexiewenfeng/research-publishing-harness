@@ -134,6 +134,9 @@ export class XArticleBrowserAdapter {
     }
     async nextLocked(executionId) {
         let context = await this.readContext(executionId);
+        if (context.snapshot.state === 'cancelled_before_publish') {
+            return { snapshot: context.snapshot, command: null };
+        }
         if (context.pending_issue !== null && context.pending_command === null) {
             return this.finishPendingIssue(context);
         }
@@ -297,6 +300,9 @@ export class XArticleBrowserAdapter {
                 context = await this.finalizeProjectedReport(context, input.command.command_id, reportDigest);
             }
             return context.snapshot;
+        }
+        if (context.snapshot.state === 'cancelled_before_publish') {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'cancelled X Article execution does not accept reports');
         }
         if (context.pending_command === null
             && context.pending_issue?.command_id === input.command.command_id) {
@@ -559,8 +565,9 @@ export class XArticleBrowserAdapter {
         if (context.snapshot.publish_command_count > 0 || context.snapshot.state === 'publish_attempted') {
             throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article execution cannot be cancelled after Publish');
         }
-        if (context.pending_command !== null)
+        if (context.pending_command !== null || context.pending_issue !== null) {
             context = await this.clearPending(context);
+        }
         context = await this.transition(context, 'cancelled_before_publish', 'article_cancelled_before_publish');
         return context.snapshot;
     }
@@ -1169,6 +1176,9 @@ export class XArticleBrowserAdapter {
         return next;
     }
     async recoverBrokerPersistedCommand(context, reported) {
+        if (context.snapshot.state === 'cancelled_before_publish') {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'cancelled X Article execution cannot recover a broker command');
+        }
         const intent = context.pending_issue;
         if (intent === null
             || intent.command_id !== reported.command_id

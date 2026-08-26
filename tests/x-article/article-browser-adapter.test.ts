@@ -1445,6 +1445,75 @@ describe('XArticleBrowserAdapter', () => {
     }
   );
 
+  it('cancels intent-only issue recovery before broker persistence', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-intent-only-')));
+    const executionId = 'execution_cancel_intent_only_1';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      eventId: (() => { let n = 0; return () => `event_cancel_intent_only_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_cancel_intent_only_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    await adapter.prepare(plan, bulkCapabilities);
+    const writeNew = store.writeNew.bind(store);
+    let failOnce = true;
+    store.writeNew = async (path, value) => {
+      if (failOnce && path.endsWith('/command.json')) {
+        failOnce = false;
+        throw new Error('injected pre-broker cancellation crash');
+      }
+      return writeNew(path, value);
+    };
+    await expect(adapter.next(executionId)).rejects.toThrow('injected pre-broker cancellation crash');
+    await expect(adapter.cancelBeforePublish(executionId))
+      .resolves.toMatchObject({ state: 'cancelled_before_publish' });
+    await expect(adapter.next(executionId)).resolves.toMatchObject({
+      snapshot: { state: 'cancelled_before_publish' }, command: null
+    });
+    await expect(store.exists(
+      `runs/${executionId}/x-article/browser/commands/command_cancel_intent_only_1/command.json`
+    )).resolves.toBe(false);
+  });
+
+  it('cancels broker-persisted context-gap recovery before direct report projection', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-broker-gap-')));
+    const executionId = 'execution_cancel_broker_gap_1';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      eventId: (() => { let n = 0; return () => `event_cancel_broker_gap_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_cancel_broker_gap_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    await adapter.prepare(plan, bulkCapabilities);
+    const replaceAtomic = store.replaceAtomic.bind(store);
+    let failOnce = true;
+    store.replaceAtomic = async (path, value) => {
+      const projected = value as { pending_command?: unknown };
+      if (failOnce && path.endsWith('/adapter-context.json') && projected.pending_command != null) {
+        failOnce = false;
+        throw new Error('injected broker-persisted cancellation crash');
+      }
+      return replaceAtomic(path, value);
+    };
+    await expect(adapter.next(executionId)).rejects.toThrow('injected broker-persisted cancellation crash');
+    const command = await store.readJson<NonNullable<Awaited<ReturnType<XArticleBrowserAdapter['next']>>['command']>>(
+      `runs/${executionId}/x-article/browser/commands/command_cancel_broker_gap_1/command.json`
+    );
+    await expect(adapter.cancelBeforePublish(executionId))
+      .resolves.toMatchObject({ state: 'cancelled_before_publish' });
+    const observation = observed(executionId, command.command_id, {
+      canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+      controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+    });
+    await expect(adapter.report({ command, status: 'success', observation }))
+      .rejects.toMatchObject({ code: 'COMMAND_REPLAY_REJECTED' });
+    await expect(adapter.status(executionId))
+      .resolves.toMatchObject({ state: 'cancelled_before_publish' });
+    await expect(store.exists(
+      `runs/${executionId}/x-article/browser/observations/${observation.observation_id}.json`
+    )).resolves.toBe(false);
+  });
+
   it('drives a verified draft to exactly one final Publish command', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-adapter-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
