@@ -691,13 +691,16 @@ export class XArticleBrowserAdapter {
             'X Article editor resume has no durable reconciliation observation'
           );
         }
-    const reconciliation = reconcileXArticleDraft({
+        const reconciliation = reconcileXArticleDraft({
           plan: materializationPlan,
           checkpoint,
           document: context.plan.intent.document,
           observation: durableEditor
         });
-    if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+        if (
+          (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
+          && !this.isOnlyMissingCover(reconciliation)
+        ) {
           context = await this.blockMaterialization(context, checkpoint, reconciliation);
           throw new HarnessError(
             'ARTICLE_MATERIALIZATION_DRIFT',
@@ -919,7 +922,7 @@ export class XArticleBrowserAdapter {
     }
     const persistedPlan = await this.readBoundMaterializationPlan(context);
     const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-        const reconciliation = reconcileXArticleDraft({
+    const reconciliation = reconcileXArticleDraft({
       plan: persistedPlan,
       checkpoint,
       document: context.plan.intent.document,
@@ -948,10 +951,7 @@ export class XArticleBrowserAdapter {
         }
       });
     }
-        if (
-          (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
-          && !this.isOnlyMissingCover(reconciliation)
-        ) {
+    if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
       context = await this.blockMaterialization(context, checkpoint, reconciliation);
       return { snapshot: context.snapshot, command: null };
     }

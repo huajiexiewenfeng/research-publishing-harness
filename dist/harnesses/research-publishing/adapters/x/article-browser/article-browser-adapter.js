@@ -474,7 +474,8 @@ export class XArticleBrowserAdapter {
                     document: context.plan.intent.document,
                     observation: durableEditor
                 });
-                if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
+                if ((reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
+                    && !this.isOnlyMissingCover(reconciliation)) {
                     context = await this.blockMaterialization(context, checkpoint, reconciliation);
                     throw new HarnessError('ARTICLE_MATERIALIZATION_DRIFT', 'saved X Article Draft cannot resume safely', reconciliation);
                 }
@@ -682,8 +683,7 @@ export class XArticleBrowserAdapter {
                 }
             });
         }
-        if ((reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
-            && !this.isOnlyMissingCover(reconciliation)) {
+        if (reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable') {
             context = await this.blockMaterialization(context, checkpoint, reconciliation);
             return { snapshot: context.snapshot, command: null };
         }
