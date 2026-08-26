@@ -71,6 +71,7 @@ export declare class XArticleBrowserAdapter {
     private blockMaterialization;
     private issue;
     private finishPendingIssue;
+    private projectPendingIssueCheckpoint;
     private clearPending;
     private transition;
     private verifyCapabilities;

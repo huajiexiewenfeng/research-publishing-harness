@@ -413,7 +413,11 @@ export class XArticleBrowserAdapter {
                 || checkpoint.materialization_digest !== materializationPlan.materialization_digest
                 || checkpoint.draft_id !== context.snapshot.draft_id
                 || checkpoint.publish_confirmation !== 'absent'
-                || (context.pending_command === null) !== (context.pending_issue === null)) {
+                || (context.pending_command !== null && context.pending_issue === null)
+                || (context.pending_issue !== null && (context.pending_issue.input.execution_id !== executionId
+                    || context.pending_issue.input_digest !== sha256(context.pending_issue.input)
+                    || (context.pending_command !== null
+                        && context.pending_command.command_id !== context.pending_issue.command_id)))) {
                 throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'saved X Article editor lifecycle is not bound to durable materialization state');
             }
             if (context.snapshot.state === 'materialization_blocked'
@@ -444,7 +448,7 @@ export class XArticleBrowserAdapter {
                     throw new HarnessError('ARTICLE_MATERIALIZATION_DRIFT', 'saved X Article editor observation is foreign or stale');
                 }
             }
-            const mustObserve = context.pending_command !== null || context.needs_editor_observation;
+            const mustObserve = context.pending_issue !== null || context.needs_editor_observation;
             if (!mustObserve) {
                 if (durableEditor === null) {
                     throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article editor resume has no durable reconciliation observation');
@@ -675,13 +679,6 @@ export class XArticleBrowserAdapter {
         }
         if (decision.kind === 'complete')
             return { snapshot: context.snapshot, command: null };
-        if (decision.input.kind === 'import_article_document') {
-            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => ({
-                ...current,
-                body: { status: 'issued', observed_digest: null },
-                updated_at: this.now().toISOString()
-            }));
-        }
         this.assertPreparedCommandBinding(context, persistedPlan, decision.input);
         return this.issue(context, decision.input);
     }
@@ -963,6 +960,7 @@ export class XArticleBrowserAdapter {
         };
         const intendedContext = { ...context, pending_issue: pendingIssue };
         await this.writeContext(intendedContext);
+        await this.projectPendingIssueCheckpoint(intendedContext);
         return this.finishPendingIssue(intendedContext);
     }
     async finishPendingIssue(context) {
@@ -973,6 +971,7 @@ export class XArticleBrowserAdapter {
         if (pendingIssue.input_digest !== sha256(pendingIssue.input)) {
             throw new HarnessError('CONTRACT_INVALID', 'X Article command issue intent changed');
         }
+        await this.projectPendingIssueCheckpoint(context);
         const command = await this.broker.issue(pendingIssue.input, pendingIssue.command_id);
         const nextContext = {
             ...context,
@@ -987,6 +986,48 @@ export class XArticleBrowserAdapter {
         };
         await this.writeContext(nextContext);
         return { snapshot: nextContext.snapshot, command };
+    }
+    async projectPendingIssueCheckpoint(context) {
+        const intent = context.pending_issue;
+        if (context.execution_mode !== 'materialization_v3_2' || intent === null)
+            return;
+        if (intent.input.execution_id !== context.snapshot.execution_id
+            || intent.input_digest !== sha256(intent.input)) {
+            throw new HarnessError('CONTRACT_INVALID', 'prepared command issue intent identity changed');
+        }
+        const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        if (intent.input.kind === 'import_article_document') {
+            if (checkpoint.body.status === 'issued')
+                return;
+            if (checkpoint.body.status !== 'pending' || checkpoint.revision !== intent.checkpoint_revision) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'body issue intent checkpoint changed');
+            }
+            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => ({
+                ...current,
+                body: { status: 'issued', observed_digest: null },
+                updated_at: this.now().toISOString()
+            }));
+            return;
+        }
+        if (intent.input.kind === 'replace_article_visual_anchor') {
+            const anchorId = intent.input.payload.anchor.anchor_id;
+            const mediaIndex = checkpoint.media.findIndex((entry) => entry.anchor_id === anchorId);
+            const media = checkpoint.media[mediaIndex];
+            if (media?.status === 'upload_started')
+                return;
+            if (media === undefined
+                || media.status !== 'pending'
+                || checkpoint.revision !== intent.checkpoint_revision) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'anchor issue intent checkpoint changed');
+            }
+            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => ({
+                ...current,
+                media: current.media.map((entry, index) => index === mediaIndex
+                    ? { ...entry, status: 'upload_started' }
+                    : entry),
+                updated_at: this.now().toISOString()
+            }));
+        }
     }
     async clearPending(context) {
         const next = { ...context, pending_command: null, pending_issue: null };

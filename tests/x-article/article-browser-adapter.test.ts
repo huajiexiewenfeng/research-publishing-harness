@@ -286,6 +286,59 @@ describe('XArticleBrowserAdapter', () => {
     )).resolves.toBe(false);
   });
 
+  it('repairs body checkpoint projection after intent-before-broker crash without re-deciding', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-body-intent-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_body_intent_1',
+      eventId: (() => { let n = 0; return () => `event_body_intent_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_body_intent_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+        controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
+        import_state: null, has_unknown_content: false, autosave_state: 'saved'
+      }
+    ));
+    const writeNew = store.writeNew.bind(store);
+    let failOnce = true;
+    store.writeNew = async (path, value) => {
+      if (failOnce && path.endsWith('/command.json')) {
+        failOnce = false;
+        throw new Error('injected import broker crash');
+      }
+      return writeNew(path, value);
+    };
+
+    await expect(adapter.next(execution.execution_id)).rejects.toThrow('injected import broker crash');
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+    )).resolves.toMatchObject({ body: { status: 'issued' } });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/adapter-context.json`
+    )).resolves.toMatchObject({
+      pending_command: null,
+      pending_issue: { command_id: 'command_body_intent_3', input: { kind: 'import_article_document' } }
+    });
+    const repaired = await adapter.next(execution.execution_id);
+    expect(repaired.command).toMatchObject({
+      command_id: 'command_body_intent_3', kind: 'import_article_document'
+    });
+  });
+
   it('preserves the legacy approval notifier and does not announce prepare as approved', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-notifier-')));
     const notifications: string[] = [];
