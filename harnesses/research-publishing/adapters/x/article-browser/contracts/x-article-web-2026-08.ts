@@ -24,6 +24,10 @@ const PREVIEW_URL = /^https:\/\/x\.com\/compose\/articles\/edit\/(\d+)\/preview$
 export class XArticleWeb2026_08Contract implements XArticlePageContract {
   readonly id = 'x-article-web';
   readonly version = '2026-08';
+  readonly media_alt_capabilities = {
+    cover: 'unobservable',
+    inline: 'editable'
+  } as const;
 
   detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage {
     this.assertObservation(observation);

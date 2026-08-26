@@ -1026,6 +1026,15 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const artifact = await browser.status(requiredExecutionId(options));
       return { ok: true, operation, artifact, state: artifact.state };
     }
+    if (operation === 'x-article browser resume-editor') {
+      const artifact = await browser.resumeEditor(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser refresh-approval') {
+      const value = input as unknown as { approval: XArticleApprovalV1 };
+      const artifact = await browser.refreshApproval(requiredExecutionId(options), value.approval);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
     if (operation === 'x-article browser resume-verification') {
       const artifact = await browser.resumeVerification(requiredExecutionId(options));
       return { ok: true, operation, artifact, state: artifact.state };

@@ -12,9 +12,15 @@ export type XArticleDetectedPage = {
     readonly kind: 'login_required' | 'security_challenge';
 };
 export type XArticleControlPurpose = 'create' | 'title' | 'body' | 'preview' | 'publish' | 'final_publish';
+export type XArticleAltCapability = 'editable' | 'unobservable';
+export interface XArticleMediaAltCapabilities {
+    readonly cover: XArticleAltCapability;
+    readonly inline: XArticleAltCapability;
+}
 export interface XArticlePageContract {
     readonly id: string;
     readonly version: string;
+    readonly media_alt_capabilities: XArticleMediaAltCapabilities;
     detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage;
     detectAccount(observation: XArticleBrowserObservation): {
         readonly handle: string;

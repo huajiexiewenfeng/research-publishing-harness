@@ -41,7 +41,7 @@ const TRANSITIONS: Readonly<Record<XArticleExecutionState, readonly XArticleExec
   public_verifying: ['finalized', 'published_unverified', 'outcome_unknown', 'verification_conflict'],
   published_unverified: ['public_verifying'],
   outcome_unknown: ['public_verifying'],
-  pre_publish_failed: ['preflight', 'cancelled_before_publish'],
+  pre_publish_failed: ['preflight', 'content_filling', 'cancelled_before_publish'],
   finalized: [],
   cancelled_before_publish: [],
   verification_conflict: [],

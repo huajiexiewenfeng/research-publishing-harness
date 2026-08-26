@@ -47,6 +47,8 @@ export declare class XArticleBrowserAdapter {
     report(input: XArticleBrowserReportInput): Promise<XArticleExecutionSnapshotV1>;
     status(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     resumeVerification(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    resumeEditor(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    refreshApproval(executionId: string, approval: XArticleApprovalV1): Promise<XArticleExecutionSnapshotV1>;
     cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     private nextPublicVerification;
     private nextEditorCommand;

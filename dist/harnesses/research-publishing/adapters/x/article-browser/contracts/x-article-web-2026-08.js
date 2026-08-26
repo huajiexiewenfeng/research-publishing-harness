@@ -7,6 +7,10 @@ const PREVIEW_URL = /^https:\/\/x\.com\/compose\/articles\/edit\/(\d+)\/preview$
 export class XArticleWeb2026_08Contract {
     id = 'x-article-web';
     version = '2026-08';
+    media_alt_capabilities = {
+        cover: 'unobservable',
+        inline: 'editable'
+    };
     detectPage(observation) {
         this.assertObservation(observation);
         if (observation.page_kind === 'login_required' || observation.page_kind === 'security_challenge') {

@@ -98,7 +98,7 @@ function nextBulkDocumentDecision(context, observation, contract, editor) {
             kind: 'observe_article_page', scope: 'editor'
         }, 'read');
     }
-    const coverDecision = nextCoverDecision(context, observation, editor);
+    const coverDecision = nextCoverDecision(context, observation, contract, editor);
     if (coverDecision !== null)
         return coverDecision;
     if (sha256(contract.readEditorDocument(observation)) !== sha256(document)) {
@@ -118,7 +118,7 @@ function nextBulkDocumentDecision(context, observation, contract, editor) {
 }
 function nextIncrementalBlocksDecision(context, observation, contract, editor) {
     const document = context.plan.intent.document;
-    const coverDecision = nextCoverDecision(context, observation, editor);
+    const coverDecision = nextCoverDecision(context, observation, contract, editor);
     if (coverDecision !== null)
         return coverDecision;
     if (editor.blocks.length > document.blocks.length) {
@@ -156,7 +156,7 @@ function nextIncrementalBlocksDecision(context, observation, contract, editor) {
         kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
     });
 }
-function nextCoverDecision(context, observation, editor) {
+function nextCoverDecision(context, observation, contract, editor) {
     const coverBinding = context.plan.intent.visuals.find((binding) => binding.placement.kind === 'cover');
     const observedCover = editor.visuals.find((visual) => visual.kind === 'cover');
     if (coverBinding !== undefined && observedCover === undefined) {
@@ -180,7 +180,8 @@ function nextCoverDecision(context, observation, editor) {
                 kind: 'observe_article_page', scope: 'editor'
             }, 'read');
         }
-        if (observedCover.alt_text !== coverBinding.asset.alt_text) {
+        if (contract.media_alt_capabilities.cover === 'editable' &&
+            observedCover.alt_text !== coverBinding.asset.alt_text) {
             return command(context, observation, 'set_cover_alt_text', 'set_article_image_alt', {
                 kind: 'set_article_image_alt', visual_ref: observedCover.ref, alt_text: coverBinding.asset.alt_text
             });

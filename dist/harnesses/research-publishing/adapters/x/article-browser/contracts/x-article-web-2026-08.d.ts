@@ -4,6 +4,10 @@ import type { XArticleControlPurpose, XArticleDetectedPage, XArticlePageContract
 export declare class XArticleWeb2026_08Contract implements XArticlePageContract {
     readonly id = "x-article-web";
     readonly version = "2026-08";
+    readonly media_alt_capabilities: {
+        readonly cover: "unobservable";
+        readonly inline: "editable";
+    };
     detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage;
     detectAccount(observation: XArticleBrowserObservation): {
         readonly handle: string;

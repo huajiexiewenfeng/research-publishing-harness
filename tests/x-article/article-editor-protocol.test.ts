@@ -91,6 +91,21 @@ const zeroBlockBulkCoverPlan = createXArticlePublicationPlan({
   plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
 });
 const draftId = '2090731994279755776';
+const coverAsset = {
+  asset_id: 'asset_cover_runtime', relative_path: 'assets/cover.png',
+  digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`, mime_type: 'image/png' as const,
+  alt_text: 'Skill knowledge passes through a governed Runtime boundary.', claim_refs: ['claim_runtime']
+};
+const coverPlan = createXArticlePublicationPlan({
+  planId: 'plan_editor_cover', runId: 'run_editor_cover', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_cover', digest: `sha256:${'c'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Runtime boundary', cover_asset_id: coverAsset.asset_id,
+    blocks: plan.intent.document.blocks
+  },
+  visuals: [{ asset: coverAsset, placement: { kind: 'cover' } }],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
 
 function revise<T extends { readonly page_revision: string }>(value: T): T {
   const input = Object.fromEntries(
@@ -100,6 +115,13 @@ function revise<T extends { readonly page_revision: string }>(value: T): T {
 }
 
 describe('nextArticleEditorDecision', () => {
+  it('declares cover Alt unobservable while keeping inline Alt editable in the 2026-08 contract', () => {
+    expect(contract.media_alt_capabilities).toEqual({
+      cover: 'unobservable',
+      inline: 'editable'
+    });
+  });
+
   it('sets the title before inserting Article blocks', () => {
     expect(nextArticleEditorDecision(
       { plan, draft_id: draftId, import_strategy: 'incremental_blocks', bulk_import_issued: false },
@@ -118,6 +140,27 @@ describe('nextArticleEditorDecision', () => {
       titleOnly, contract
     ))
       .toMatchObject({ kind: 'command', input: { purpose: 'insert_article_block_1', payload: { kind: 'insert_article_block', block_ordinal: 1 } } });
+  });
+
+  it('continues after an owned cover when cover Alt is unobservable', () => {
+    const titleAndCover = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        title: coverPlan.intent.document.title,
+        visuals: [{
+          ref: 'cover_visual', asset_id: coverAsset.asset_id, kind: 'cover' as const,
+          block_ordinal: null, alt_text: null, status: 'uploaded' as const,
+          owned_by_execution: true
+        }]
+      }
+    });
+    expect(nextArticleEditorDecision(
+      { plan: coverPlan, draft_id: '2090731994279755776' }, titleAndCover, contract
+    )).toMatchObject({
+      kind: 'command',
+      input: { purpose: 'insert_article_block_1', payload: { kind: 'insert_article_block', block_ordinal: 1 } }
+    });
   });
 
   it('opens Preview only after the full editor document is saved and verified', () => {

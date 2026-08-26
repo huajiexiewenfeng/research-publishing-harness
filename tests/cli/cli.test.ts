@@ -518,7 +518,7 @@ describe('research-publish CLI', () => {
       operation: 'x-article browser status', artifact: { state: 'created' }, state: 'created'
     });
 
-    for (const operation of ['resume-verification', 'cancel-before-publish']) {
+    for (const operation of ['resume-verification', 'resume-editor', 'cancel-before-publish']) {
       const missing = runSource([
         'x-article', 'browser', operation, '--workspace', workspace,
         '--execution-id', 'missing_execution', '--output', 'json'
@@ -529,5 +529,17 @@ describe('research-publish CLI', () => {
         error: { code: 'ARTIFACT_NOT_FOUND' }
       });
     }
+
+    const refreshInput = join(parent, 'refresh-approval.json');
+    await writeFile(refreshInput, JSON.stringify({ approval }));
+    const missingRefresh = runSource([
+      'x-article', 'browser', 'refresh-approval', '--workspace', workspace,
+      '--execution-id', 'missing_execution', '--input', refreshInput, '--output', 'json'
+    ]);
+    expect(missingRefresh.status).toBe(5);
+    expect(JSON.parse(missingRefresh.stdout)).toMatchObject({
+      ok: false, operation: 'x-article browser refresh-approval',
+      error: { code: 'ARTIFACT_NOT_FOUND' }
+    });
   });
 });

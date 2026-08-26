@@ -31,6 +31,44 @@ const capabilities = {
   capabilities: ['observe_article_page', 'create_article_draft', 'set_article_title', 'insert_article_block', 'open_article_preview', 'open_publish_review', 'publish_article_once'],
   observed_at: '2026-08-21T09:00:00.000Z'
 } as const;
+const coverAsset = {
+  asset_id: 'asset_cover_runtime', relative_path: 'assets/cover.png',
+  digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`, mime_type: 'image/png' as const,
+  alt_text: 'Skill knowledge passes through a governed Runtime boundary.', claim_refs: ['claim_runtime']
+};
+const coverPlan = createXArticlePublicationPlan({
+  planId: 'plan_browser_cover', runId: 'run_browser_cover', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_cover', digest: `sha256:${'c'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Runtime boundary', cover_asset_id: coverAsset.asset_id,
+    blocks: plan.intent.document.blocks
+  },
+  visuals: [{ asset: coverAsset, placement: { kind: 'cover' } }],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
+const coverApproval = approveXArticlePublication(
+  coverPlan, 'human:Glen56121', 3_600_000,
+  new Date('2026-08-21T09:00:00.000Z'), () => 'approval_browser_cover'
+);
+const inlineAsset = {
+  ...coverAsset,
+  asset_id: 'asset_inline_runtime', relative_path: 'assets/runtime.png',
+  digest: `sha256:${'d'.repeat(64)}` as `sha256:${string}`, alt_text: 'A governed Runtime boundary.'
+};
+const inlinePlan = createXArticlePublicationPlan({
+  planId: 'plan_browser_inline', runId: 'run_browser_inline', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_inline', digest: `sha256:${'e'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Runtime boundary', cover_asset_id: null,
+    blocks: [{ kind: 'image', asset_id: inlineAsset.asset_id, alt_text: inlineAsset.alt_text }]
+  },
+  visuals: [{ asset: inlineAsset, placement: { kind: 'block', block_ordinal: 1 } }],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
+const inlineApproval = approveXArticlePublication(
+  inlinePlan, 'human:Glen56121', 3_600_000,
+  new Date('2026-08-21T09:00:00.000Z'), () => 'approval_browser_inline'
+);
 
 function observed(executionId: string, commandId: string, value: Record<string, unknown>) {
   const input = {
@@ -190,6 +228,113 @@ describe('XArticleBrowserAdapter', () => {
 
     expect(next.command?.payload.kind).toBe('open_article_preview');
     expect(next.command?.payload.kind).not.toBe('import_article_document');
+  });
+
+  it('does not require a cover Alt command when the versioned contract marks it unobservable', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cover-cap-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cover_cap_1', eventId: () => 'event_cover_cap_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    await expect(adapter.start(coverPlan, coverApproval, {
+      ...capabilities,
+      capabilities: [...capabilities.capabilities, 'upload_article_cover']
+    })).resolves.toMatchObject({ state: 'created' });
+  });
+
+  it('keeps the inline-image Alt capability fail-closed', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-inline-cap-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_inline_cap_1', eventId: () => 'event_inline_cap_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    await expect(adapter.start(inlinePlan, inlineApproval, {
+      ...capabilities,
+      capabilities: [...capabilities.capabilities, 'insert_article_image']
+    })).rejects.toMatchObject({ code: 'BROWSER_EXECUTOR_INCOMPATIBLE' });
+  });
+
+  it('resumes the exact saved editor after a pre-Publish command failure without creating another draft', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-editor-resume-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_editor_resume_1',
+      eventId: (() => { let n = 0; return () => `event_resume_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_resume_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.start(plan, approval, capabilities);
+
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(execution.execution_id, next.command!.command_id, {
+      canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+      controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+    }));
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(execution.execution_id, next.command!.command_id, {
+      canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776', page_kind: 'article_editor',
+      controls: [
+        { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+        { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+        { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
+        { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
+      ],
+      editor: {
+        draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
+        import_state: null, has_unknown_content: false, autosave_state: 'saved'
+      }
+    }));
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(execution.execution_id, next.command!.command_id, {
+      canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776', page_kind: 'article_editor',
+      controls: [
+        { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+        { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+        { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false },
+        { ref: 'publish', role: 'button', name: 'Publish', test_id: null, disabled: true }
+      ],
+      editor: {
+        draft_id: '2090731994279755776', title: plan.intent.document.title, blocks: [], visuals: [],
+        import_state: null, has_unknown_content: false, autosave_state: 'saved'
+      }
+    }));
+    next = await adapter.next(execution.execution_id);
+    await adapter.claim(next.command!);
+    await expect(adapter.report({ command: next.command!, status: 'rejected', observation: null }))
+      .resolves.toMatchObject({ state: 'pre_publish_failed', publish_command_count: 0 });
+
+    await expect(adapter.resumeEditor(execution.execution_id))
+      .resolves.toMatchObject({ state: 'content_filling', draft_id: '2090731994279755776' });
+    next = await adapter.next(execution.execution_id);
+    expect(next.command).toMatchObject({
+      kind: 'insert_article_block', draft_id: '2090731994279755776',
+      payload: { kind: 'insert_article_block', block_ordinal: 1 }
+    });
+  });
+
+  it('installs a fresh same-Plan Approval immutably before Publish', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-approval-refresh-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_approval_refresh_1', eventId: () => 'event_approval_refresh_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.start(plan, approval, capabilities);
+    const refreshed = approveXArticlePublication(
+      plan, 'human:Glen56121', 3_600_000,
+      new Date('2026-08-21T09:00:30.000Z'), () => 'approval_browser_refreshed'
+    );
+
+    await expect(adapter.refreshApproval(execution.execution_id, refreshed))
+      .resolves.toMatchObject({ state: 'created', publish_command_count: 0 });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/approval-refreshes/${refreshed.approval_id}.json`
+    )).resolves.toEqual(refreshed);
+
+    const stale = approveXArticlePublication(
+      plan, 'human:Glen56121', 1_000,
+      new Date('2026-08-21T08:00:00.000Z'), () => 'approval_browser_stale'
+    );
+    await expect(adapter.refreshApproval(execution.execution_id, stale))
+      .rejects.toMatchObject({ code: 'APPROVAL_STALE' });
   });
 
   it('cancels only before Publish and does not expose verification recovery from a preflight state', async () => {

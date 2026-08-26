@@ -186,7 +186,7 @@ function nextBulkDocumentDecision(
     }, 'read');
   }
 
-  const coverDecision = nextCoverDecision(context, observation, editor);
+  const coverDecision = nextCoverDecision(context, observation, contract, editor);
   if (coverDecision !== null) return coverDecision;
 
   if (sha256(contract.readEditorDocument(observation)) !== sha256(document)) {
@@ -212,7 +212,7 @@ function nextIncrementalBlocksDecision(
 ): XArticleEditorDecision {
   const document = context.plan.intent.document;
 
-  const coverDecision = nextCoverDecision(context, observation, editor);
+  const coverDecision = nextCoverDecision(context, observation, contract, editor);
   if (coverDecision !== null) return coverDecision;
 
   if (editor.blocks.length > document.blocks.length) {
@@ -255,6 +255,7 @@ function nextIncrementalBlocksDecision(
 function nextCoverDecision(
   context: XArticleEditorContext,
   observation: XArticleBrowserObservation,
+  contract: XArticlePageContract,
   editor: XArticleEditorObservation
 ): XArticleEditorDecision | null {
   const coverBinding = context.plan.intent.visuals.find((binding) => binding.placement.kind === 'cover');
@@ -280,7 +281,10 @@ function nextCoverDecision(
         kind: 'observe_article_page', scope: 'editor'
       }, 'read');
     }
-    if (observedCover.alt_text !== coverBinding.asset.alt_text) {
+    if (
+      contract.media_alt_capabilities.cover === 'editable' &&
+      observedCover.alt_text !== coverBinding.asset.alt_text
+    ) {
       return command(context, observation, 'set_cover_alt_text', 'set_article_image_alt', {
         kind: 'set_article_image_alt', visual_ref: observedCover.ref, alt_text: coverBinding.asset.alt_text
       });

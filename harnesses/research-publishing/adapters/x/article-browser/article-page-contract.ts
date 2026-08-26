@@ -24,9 +24,17 @@ export type XArticleControlPurpose =
   | 'publish'
   | 'final_publish';
 
+export type XArticleAltCapability = 'editable' | 'unobservable';
+
+export interface XArticleMediaAltCapabilities {
+  readonly cover: XArticleAltCapability;
+  readonly inline: XArticleAltCapability;
+}
+
 export interface XArticlePageContract {
   readonly id: string;
   readonly version: string;
+  readonly media_alt_capabilities: XArticleMediaAltCapabilities;
   detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage;
   detectAccount(observation: XArticleBrowserObservation): { readonly handle: string };
   detectEditor(observation: XArticleBrowserObservation): XArticleEditorObservation;

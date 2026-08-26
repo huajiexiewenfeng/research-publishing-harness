@@ -329,6 +329,79 @@ export class XArticleBrowserAdapter {
     return context.snapshot;
   }
 
+  async resumeEditor(executionId: string): Promise<XArticleExecutionSnapshotV1> {
+    let context = await this.readContext(executionId);
+    if (
+      context.snapshot.state !== 'pre_publish_failed' ||
+      context.snapshot.publish_command_count !== 0 ||
+      context.submit_delivered ||
+      context.pending_command !== null ||
+      context.snapshot.draft_id === null ||
+      context.latest_observation === null
+    ) {
+      throw new HarnessError(
+        'STATE_TRANSITION_INVALID',
+        `X Article editor cannot resume from ${context.snapshot.state}`
+      );
+    }
+    const account = this.contract.detectAccount(context.latest_observation);
+    const page = this.contract.detectPage(context.latest_observation);
+    if (
+      account.handle !== context.plan.intent.target_account ||
+      page.kind !== 'article_editor' ||
+      page.draft_id !== context.snapshot.draft_id
+    ) {
+      throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'saved X Article editor does not match the execution');
+    }
+    const decision = nextArticleEditorDecision(
+      {
+        plan: context.plan,
+        draft_id: context.snapshot.draft_id,
+        import_strategy: context.import_strategy,
+        bulk_import_issued: context.bulk_import_issued
+      },
+      context.latest_observation,
+      this.contract
+    );
+    if (decision.kind === 'blocked') throw new HarnessError(decision.code, decision.message);
+    context = await this.transition(context, 'content_filling', 'article_editor_failure_resumed');
+    return context.snapshot;
+  }
+
+  async refreshApproval(
+    executionId: string,
+    approval: XArticleApprovalV1
+  ): Promise<XArticleExecutionSnapshotV1> {
+    let context = await this.readContext(executionId);
+    if (
+      context.snapshot.publish_command_count !== 0 ||
+      context.submit_delivered ||
+      ['publish_attempted', 'outcome_resolving', 'public_verifying', 'finalized',
+        'published_unverified', 'outcome_unknown', 'verification_conflict',
+        'failed_after_publish', 'cancelled_before_publish'].includes(context.snapshot.state)
+    ) {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article Approval cannot refresh after Publish');
+    }
+    verifyXArticleApproval(context.plan, approval, this.now());
+    this.assertId(approval.approval_id);
+    const approvalPath = `${this.prefix(executionId)}/approval-refreshes/${approval.approval_id}.json`;
+    if (await this.store.exists(approvalPath)) {
+      const existing = await this.store.readJson<XArticleApprovalV1>(approvalPath);
+      if (sha256(existing) !== sha256(approval)) {
+        throw new HarnessError('ARTIFACT_EXISTS', 'X Article Approval refresh identity is already used');
+      }
+    } else {
+      await this.store.writeNew(approvalPath, approval);
+    }
+    context = {
+      ...context,
+      approval,
+      snapshot: { ...context.snapshot, updated_at: this.now().toISOString() }
+    };
+    await this.writeContext(context);
+    return context.snapshot;
+  }
+
   async cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1> {
     let context = await this.readContext(executionId);
     if (context.snapshot.publish_command_count > 0 || context.snapshot.state === 'publish_attempted') {
@@ -514,7 +587,13 @@ export class XArticleBrowserAdapter {
     ];
     if (plan.intent.visuals.some((visual) => visual.placement.kind === 'cover')) required.push('upload_article_cover');
     if (plan.intent.visuals.some((visual) => visual.placement.kind === 'block')) required.push('insert_article_image');
-    if (plan.intent.visuals.length > 0) required.push('set_article_image_alt');
+    const coverAltRequired =
+      this.contract.media_alt_capabilities.cover === 'editable' &&
+      plan.intent.visuals.some((visual) => visual.placement.kind === 'cover');
+    const inlineAltRequired =
+      this.contract.media_alt_capabilities.inline === 'editable' &&
+      plan.intent.visuals.some((visual) => visual.placement.kind === 'block');
+    if (coverAltRequired || inlineAltRequired) required.push('set_article_image_alt');
     if (
       manifest.executor !== 'codex-chrome' || manifest.browser_family !== 'chrome' ||
       required.some((capability) => !manifest.capabilities.includes(capability))
