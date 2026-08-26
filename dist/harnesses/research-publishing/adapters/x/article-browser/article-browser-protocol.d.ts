@@ -82,7 +82,7 @@ export interface XArticleBrowserObservation {
     readonly command_id: string;
     readonly origin: 'https://x.com';
     readonly canonical_url: string;
-    readonly page_revision: string;
+    readonly page_revision: `sha256:${string}`;
     readonly observed_at: string;
     readonly account_handle: string | null;
     readonly page_kind: XArticlePageKind;
@@ -93,4 +93,4 @@ export interface XArticleBrowserObservation {
     readonly public_article: XArticlePublicObservation | null;
 }
 export type XArticleBrowserObservationInput = Omit<XArticleBrowserObservation, 'page_revision'>;
-export declare function computeXArticlePageRevision(input: object): string;
+export declare function computeXArticlePageRevision(input: object): `sha256:${string}`;
