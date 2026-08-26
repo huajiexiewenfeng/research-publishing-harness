@@ -101,6 +101,21 @@ async function fixture() {
 }
 
 describe('XArticleMaterializationStore', () => {
+  it('reads the validated persisted plan bound to the requested execution', async () => {
+    const { workspace, store } = await fixture();
+    const materializationPlan = plan('execution_read_plan');
+    await store.create(materializationPlan, checkpoint(materializationPlan));
+
+    await expect(store.readPlan(materializationPlan.execution_id)).resolves.toEqual(materializationPlan);
+
+    await workspace.replaceAtomic(
+      'runs/execution_read_plan/x-article/browser/materialization-plan.json',
+      { ...materializationPlan, execution_id: 'execution_foreign' }
+    );
+    await expect(store.readPlan(materializationPlan.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
   it('creates and reads a validated plan and checkpoint at the execution paths', async () => {
     const { workspace, store } = await fixture();
     const materializationPlan = plan();

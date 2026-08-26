@@ -57,6 +57,17 @@ export class XArticleMaterializationStore {
         this.assertSafeExecutionId(requestedExecutionId);
         return this.store.withLock(this.lockPath(requestedExecutionId), async () => snapshot((await this.readStateUnlocked(requestedExecutionId)).checkpoint));
     }
+    async readPlan(executionId) {
+        const requestedExecutionId = executionId;
+        this.assertSafeExecutionId(requestedExecutionId);
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+            const plan = await this.readArtifact(this.planPath(requestedExecutionId), 'x-article-materialization-plan', 'materialization plan');
+            if (plan.execution_id !== requestedExecutionId) {
+                throw this.conflict('materialization plan does not match the requested execution');
+            }
+            return snapshot(plan);
+        });
+    }
     async updateCheckpoint(executionId, expectedRevision, update) {
         const requestedExecutionId = executionId;
         this.assertSafeExecutionId(requestedExecutionId);

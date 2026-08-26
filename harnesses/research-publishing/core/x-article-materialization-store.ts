@@ -24,6 +24,7 @@ export interface XArticleMaterializationStoreApi {
     plan: XArticleMaterializationPlanV1,
     checkpoint: XArticleMaterializationCheckpointV1
   ): Promise<XArticleMaterializationCheckpointV1>;
+  readPlan(executionId: string): Promise<XArticleMaterializationPlanV1>;
   readCheckpoint(executionId: string): Promise<XArticleMaterializationCheckpointV1>;
   updateCheckpoint(
     executionId: string,
@@ -118,6 +119,22 @@ export class XArticleMaterializationStore implements XArticleMaterializationStor
     return this.store.withLock(this.lockPath(requestedExecutionId), async () =>
       snapshot((await this.readStateUnlocked(requestedExecutionId)).checkpoint)
     );
+  }
+
+  async readPlan(executionId: string): Promise<XArticleMaterializationPlanV1> {
+    const requestedExecutionId = executionId;
+    this.assertSafeExecutionId(requestedExecutionId);
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+      const plan = await this.readArtifact<XArticleMaterializationPlanV1>(
+        this.planPath(requestedExecutionId),
+        'x-article-materialization-plan',
+        'materialization plan'
+      );
+      if (plan.execution_id !== requestedExecutionId) {
+        throw this.conflict('materialization plan does not match the requested execution');
+      }
+      return snapshot(plan);
+    });
   }
 
   async updateCheckpoint(

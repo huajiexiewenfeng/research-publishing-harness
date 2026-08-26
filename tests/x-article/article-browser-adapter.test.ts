@@ -40,6 +40,10 @@ const bulkCapabilities = {
     'replace_article_visual_anchor'
   ]
 } as const;
+const coverBulkCapabilities = {
+  ...bulkCapabilities,
+  capabilities: [...bulkCapabilities.capabilities, 'upload_article_cover']
+} as const;
 const coverAsset = {
   asset_id: 'asset_cover_runtime', relative_path: 'assets/cover.png',
   digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`, mime_type: 'image/png' as const,
@@ -138,6 +142,37 @@ async function advancePreparedToImport(
   return adapter.next(executionId);
 }
 
+async function coordinatedConcurrentNext(
+  adapter: XArticleBrowserAdapter,
+  executionId: string,
+  store: WorkspaceStore
+) {
+  const withLock = store.withLock.bind(store);
+  let adapterLockCalls = 0;
+  store.withLock = async (path, operation) => {
+    if (path.endsWith('/adapter-execution.lock')) adapterLockCalls += 1;
+    return withLock(path, operation);
+  };
+  const results = await Promise.allSettled([
+    adapter.next(executionId),
+    adapter.next(executionId)
+  ]);
+  store.withLock = withLock;
+  const fulfilled = results.filter(
+    (result): result is PromiseFulfilledResult<Awaited<ReturnType<XArticleBrowserAdapter['next']>>> =>
+      result.status === 'fulfilled'
+  );
+  const rejected = results.filter(
+    (result): result is PromiseRejectedResult => result.status === 'rejected'
+  );
+  expect(fulfilled.length).toBeGreaterThan(0);
+  expect(rejected.every((result) => (result.reason as { code?: string }).code === 'EXECUTION_BUSY'))
+    .toBe(true);
+  expect(new Set(fulfilled.map((result) => result.value.command?.command_id)).size).toBe(1);
+  expect(adapterLockCalls).toBe(2);
+  return fulfilled[0]!.value;
+}
+
 describe('XArticleBrowserAdapter', () => {
   it('rejects prepared materialization when bulk import is unavailable', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-no-bulk-')));
@@ -167,6 +202,40 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toBe(false);
   });
 
+  it('repairs exact prepare retries after context-first and store-first crashes', async () => {
+    for (const boundary of ['materialization_store', 'adapter_context'] as const) {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-prepare-repair-${boundary}-`)));
+      const executionId = `execution_prepare_repair_${boundary}`;
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => executionId,
+        now: () => new Date('2026-08-21T09:01:00.000Z')
+      });
+      const writeNew = store.writeNew.bind(store);
+      let failOnce = true;
+      store.writeNew = async (path, value) => {
+        if (boundary === 'materialization_store' && failOnce && path.endsWith('/materialization-plan.json')) {
+          failOnce = false;
+          throw new Error('injected materialization store crash');
+        }
+        if (boundary === 'adapter_context' && failOnce && path.endsWith('/adapter-context.json')) {
+          failOnce = false;
+          throw new Error('injected adapter context crash');
+        }
+        return writeNew(path, value);
+      };
+
+      await expect(adapter.prepare(plan, bulkCapabilities)).rejects.toThrow(/injected/);
+      if (boundary === 'adapter_context') {
+        await expect(store.exists(`runs/${executionId}/x-article/browser/materialization-plan.json`))
+          .resolves.toBe(true);
+      }
+      await expect(adapter.prepare(plan, bulkCapabilities))
+        .resolves.toMatchObject({ execution_id: executionId, state: 'created' });
+      await expect(adapter.prepare(plan, bulkCapabilities))
+        .resolves.toMatchObject({ execution_id: executionId, state: 'created' });
+    }
+  });
+
   it('keeps start as the explicit legacy_preapproved compatibility mode', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-legacy-mode-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -180,6 +249,41 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toMatchObject({ execution_mode: 'legacy_preapproved', approval });
     await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-plan.json`))
       .resolves.toBe(false);
+  });
+
+  it('persists prepared command intent before broker issue and repairs the same command id', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-issue-intent-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_issue_intent_1',
+      commandId: (() => { let n = 0; return () => `command_issue_intent_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const writeNew = store.writeNew.bind(store);
+    let failOnce = true;
+    store.writeNew = async (path, value) => {
+      if (failOnce && path.endsWith('/command.json')) {
+        failOnce = false;
+        throw new Error('injected broker issue crash');
+      }
+      return writeNew(path, value);
+    };
+
+    await expect(adapter.next(execution.execution_id)).rejects.toThrow('injected broker issue crash');
+    const context = await store.readJson<{
+      pending_issue: { command_id: string } | null;
+      pending_command: unknown;
+    }>(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`);
+    expect(context).toMatchObject({
+      pending_issue: { command_id: 'command_issue_intent_1' },
+      pending_command: null
+    });
+
+    const repaired = await adapter.next(execution.execution_id);
+    expect(repaired.command?.command_id).toBe('command_issue_intent_1');
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/commands/command_issue_intent_2/command.json`
+    )).resolves.toBe(false);
   });
 
   it('preserves the legacy approval notifier and does not announce prepare as approved', async () => {
@@ -244,7 +348,7 @@ describe('XArticleBrowserAdapter', () => {
       )
     });
     expect(reconciled).toMatchObject({ state: 'materialization_reconciling', publish_command_count: 0 });
-    next = await adapter.next(execution.execution_id);
+    next = await coordinatedConcurrentNext(adapter, execution.execution_id, store);
     expect(next.command?.kind).toBe('open_article_preview');
     await adapter.claim(next.command!);
     const completed = await adapter.report({
@@ -270,6 +374,49 @@ describe('XArticleBrowserAdapter', () => {
       });
   });
 
+  it('blocks Preview when the durable reconciliation checkpoint is partial or tampered', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-preview-gate-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_preview_gate_1',
+      eventId: (() => { let n = 0; return () => `event_preview_gate_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_preview_gate_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    let next = await advancePreparedToImport(adapter, execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: plan.intent.document.title,
+        blocks: plan.intent.document.blocks, visuals: [], import_state: null,
+        has_unknown_content: false, autosave_state: 'saved'
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('open_article_preview');
+    await adapter.claim(next.command!);
+    const checkpointPath = `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`;
+    const checkpoint = await store.readJson<Record<string, unknown>>(checkpointPath);
+    await store.replaceAtomic(checkpointPath, { ...checkpoint, phase: 'body_verified' });
+
+    await expect(adapter.report({
+      command: next.command!, status: 'success', observation: observed(
+        execution.execution_id,
+        next.command!.command_id,
+        {
+          canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776/preview',
+          page_kind: 'article_preview', controls: [],
+          preview: {
+            draft_id: '2090731994279755776', title: plan.intent.document.title,
+            blocks: plan.intent.document.blocks, visuals: []
+          }
+        }
+      )
+    })).resolves.toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.readJson(checkpointPath)).resolves.toMatchObject({ phase: 'blocked' });
+  });
+
   it('observes an uncertain bulk import and never falls back or retries it', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-uncertain-import-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -290,6 +437,162 @@ describe('XArticleBrowserAdapter', () => {
     expect(observing.command?.kind).not.toBe('insert_article_block');
     expect((await adapter.next(execution.execution_id)).command?.command_id)
       .toBe(observing.command?.command_id);
+  });
+
+  it('uploads a prepared cover once and reconciles an uncertain effect before Preview', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cover-materialize-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cover_materialize_1',
+      eventId: (() => { let n = 0; return () => `event_cover_materialize_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_cover_materialize_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(coverPlan, coverBulkCapabilities);
+    let next = await advancePreparedToImport(adapter, execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: coverPlan.intent.document.title,
+        blocks: coverPlan.intent.document.blocks, visuals: [], has_unknown_content: false,
+        autosave_state: 'saved', import_state: null
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command).toMatchObject({
+      kind: 'upload_article_cover',
+      payload: { kind: 'upload_article_cover', asset: coverAsset }
+    });
+    const coverCommandId = next.command!.command_id;
+    await adapter.claim(next.command!);
+    await expect(adapter.report({ command: next.command!, status: 'uncertain', observation: null }))
+      .resolves.toMatchObject({ state: 'materialization_reconciling' });
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('observe_article_page');
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: coverPlan.intent.document.title,
+        blocks: coverPlan.intent.document.blocks,
+        visuals: [{
+          ref: 'cover_ref_1', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+          alt_text: null, status: 'uploaded', owned_by_execution: true
+        }],
+        has_unknown_content: false, autosave_state: 'saved', import_state: null
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('open_article_preview');
+    expect(next.command?.command_id).not.toBe(coverCommandId);
+  });
+
+  it('replays an identical accepted report across observation, checkpoint, and context crashes', async () => {
+    for (const boundary of ['observation', 'checkpoint', 'context'] as const) {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-report-${boundary}-`)));
+      const executionId = `execution_report_${boundary}`;
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => executionId,
+        eventId: (() => { let n = 0; return () => `event_report_${boundary}_${++n}`; })(),
+        commandId: (() => { let n = 0; return () => `command_report_${boundary}_${++n}`; })(),
+        now: () => new Date('2026-08-21T09:01:00.000Z')
+      });
+      const execution = await adapter.prepare(plan, bulkCapabilities);
+      const importing = await advancePreparedToImport(adapter, execution.execution_id);
+      await adapter.claim(importing.command!);
+      const observation = editorObservation(
+        execution.execution_id,
+        importing.command!.command_id,
+        {
+          draft_id: '2090731994279755776', title: plan.intent.document.title,
+          blocks: plan.intent.document.blocks, visuals: [], import_state: null,
+          has_unknown_content: false, autosave_state: 'saved'
+        }
+      );
+      const report = { command: importing.command!, status: 'success' as const, observation };
+      const writeNew = store.writeNew.bind(store);
+      const replaceAtomic = store.replaceAtomic.bind(store);
+      let failOnce = true;
+      store.writeNew = async (path, value) => {
+        if (boundary === 'observation' && failOnce && path.includes('/observations/')) {
+          failOnce = false;
+          throw new Error('injected observation projection crash');
+        }
+        return writeNew(path, value);
+      };
+      store.replaceAtomic = async (path, value) => {
+        if (
+          failOnce
+          && ((boundary === 'checkpoint' && path.endsWith('/materialization-checkpoint.json'))
+            || (boundary === 'context' && path.endsWith('/adapter-context.json')))
+        ) {
+          failOnce = false;
+          throw new Error(`injected ${boundary} projection crash`);
+        }
+        return replaceAtomic(path, value);
+      };
+
+      await expect(adapter.report(report)).rejects.toThrow('injected');
+      await expect(adapter.report(report)).resolves.toMatchObject({ state: 'materialization_reconciling' });
+      const context = await store.readJson<{
+        pending_command: unknown;
+        pending_issue: unknown;
+        last_projected_report: { command_id: string } | null;
+      }>(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`);
+      expect(context).toMatchObject({
+        pending_command: null,
+        pending_issue: null,
+        last_projected_report: { command_id: importing.command!.command_id }
+      });
+      await expect(store.readJson(
+        `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+      )).resolves.toMatchObject({ phase: 'draft_reconciled', body: { status: 'verified' } });
+    }
+  });
+
+  it('fails malformed prepared reports closed from each externally active setup stage', async () => {
+    for (const stage of ['preflight', 'draft_create_armed', 'materialization_reconciling'] as const) {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-malformed-${stage}-`)));
+      const executionId = `execution_malformed_${stage}`;
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => executionId,
+        eventId: (() => { let n = 0; return () => `event_malformed_${stage}_${++n}`; })(),
+        commandId: (() => { let n = 0; return () => `command_malformed_${stage}_${++n}`; })(),
+        now: () => new Date('2026-08-21T09:01:00.000Z')
+      });
+      const execution = await adapter.prepare(plan, bulkCapabilities);
+      let pending = await adapter.next(execution.execution_id);
+      if (stage !== 'preflight') {
+        await reportSuccess(adapter, execution.execution_id, pending.command, observed(
+          execution.execution_id,
+          pending.command!.command_id,
+          {
+            canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+            controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+          }
+        ));
+        pending = await adapter.next(execution.execution_id);
+      }
+      if (stage === 'materialization_reconciling') {
+        await reportSuccess(adapter, execution.execution_id, pending.command, editorObservation(
+          execution.execution_id,
+          pending.command!.command_id,
+          {
+            draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
+            import_state: null, has_unknown_content: false, autosave_state: 'saved'
+          }
+        ));
+        pending = await adapter.next(execution.execution_id);
+      }
+      await adapter.claim(pending.command!);
+      await expect(adapter.report({ command: pending.command!, status: 'success', observation: null }))
+        .resolves.toMatchObject({ state: 'materialization_blocked' });
+      await expect(store.readJson(
+        `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+      )).resolves.toMatchObject({ phase: 'blocked' });
+    }
   });
 
   it('resumes an issued body by observing instead of re-importing', async () => {
@@ -338,7 +641,7 @@ describe('XArticleBrowserAdapter', () => {
         }
       }
     ));
-    next = await adapter.next(execution.execution_id);
+    next = await coordinatedConcurrentNext(adapter, execution.execution_id, store);
     expect(next.command?.kind).toBe('replace_article_visual_anchor');
     await adapter.claim(next.command!);
 
@@ -509,6 +812,9 @@ describe('XArticleBrowserAdapter', () => {
     const duplicate = await adapter.report({ command: next.command!, status: 'success', observation });
     expect(duplicate).toEqual(first);
     await expect(adapter.report({
+      command: next.command!, status: 'rejected', observation
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(adapter.report({
       command: { ...next.command!, purpose: 'forged_replay' },
       status: 'success', observation
     })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
@@ -554,6 +860,12 @@ describe('XArticleBrowserAdapter', () => {
     await expect(adapter.report({
       command: importing.command!, status: 'success', observation: mutate(valid)
     })).resolves.toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+    )).resolves.toMatchObject({
+      phase: 'blocked', body: { status: 'issued', observed_digest: null },
+      last_editor_revision: null
+    });
     expect((await adapter.next(execution.execution_id)).command).toBeNull();
     await expect(adapter.resumeEditor(execution.execution_id))
       .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_DRIFT' });
@@ -802,6 +1114,18 @@ describe('XArticleBrowserAdapter', () => {
     );
     await expect(adapter.refreshApproval(execution.execution_id, stale))
       .rejects.toMatchObject({ code: 'APPROVAL_STALE' });
+  });
+
+  it('rejects legacy Approval refresh for prepared materialization', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-prepared-approval-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_prepared_approval_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+
+    await expect(adapter.refreshApproval(execution.execution_id, approval))
+      .rejects.toMatchObject({ code: 'STATE_TRANSITION_INVALID' });
   });
 
   it('cancels only before Publish and does not expose verification recovery from a preflight state', async () => {

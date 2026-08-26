@@ -22,6 +22,8 @@ describe('X Article execution state machine', () => {
       .toBe('materialization_reconciling');
     expect(transitionXArticleExecution('materialization_reconciling', 'confirmation_pending'))
       .toBe('confirmation_pending');
+    expect(() => transitionXArticleExecution('confirmation_pending', 'publish_armed'))
+      .toThrowError(expect.objectContaining({ code: 'STATE_TRANSITION_INVALID' }));
     expect(transitionXArticleExecution('pre_publish_failed', 'materialization_reconciling'))
       .toBe('materialization_reconciling');
   });

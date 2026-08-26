@@ -32,6 +32,7 @@ export declare class XArticleBrowserAdapter {
     private readonly contract;
     private readonly executionId;
     private readonly eventId;
+    private readonly commandId;
     private readonly attemptId;
     private readonly receiptId;
     private readonly now;
@@ -40,16 +41,20 @@ export declare class XArticleBrowserAdapter {
     private readonly materializationStore;
     constructor(store: WorkspaceStore, contract: XArticlePageContract, options?: XArticleBrowserAdapterOptions);
     prepare(plan: XArticlePublicationPlanV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
+    private prepareLocked;
     start(plan: XArticlePublicationPlanV1, approval: XArticleApprovalV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     next(executionId: string): Promise<{
         readonly snapshot: XArticleExecutionSnapshotV1;
         readonly command: XArticleBrowserCommandV1 | null;
     }>;
+    private nextLocked;
     claim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1>;
     report(input: XArticleBrowserReportInput): Promise<XArticleExecutionSnapshotV1>;
+    private reportLocked;
     status(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     resumeVerification(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     resumeEditor(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    private resumeEditorLocked;
     refreshApproval(executionId: string, approval: XArticleApprovalV1): Promise<XArticleExecutionSnapshotV1>;
     cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     private nextPublicVerification;
@@ -59,10 +64,17 @@ export declare class XArticleBrowserAdapter {
     private reconcilePreparedPreview;
     private issueEditorObservation;
     private isMaterializationEffect;
+    private isPreparedReportActive;
+    private readBoundMaterializationPlan;
+    private isOnlyMissingCover;
+    private assertPreparedCommandBinding;
+    private blockMaterialization;
     private issue;
+    private finishPendingIssue;
     private clearPending;
     private transition;
     private verifyCapabilities;
+    private finalizeProjectedReport;
     private verifyPreparedCapabilities;
     private initialSnapshot;
     private requireApproval;
@@ -70,7 +82,8 @@ export declare class XArticleBrowserAdapter {
     private readContext;
     private writeContext;
     private prefix;
-    private commandPath;
+    private ensureExactArtifact;
+    private withExecutionLock;
     private assertId;
 }
 export {};
