@@ -43,6 +43,8 @@ export declare class XArticleBrowserAdapter {
     constructor(store: WorkspaceStore, contract: XArticlePageContract, options?: XArticleBrowserAdapterOptions);
     prepare(plan: XArticlePublicationPlanV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     private prepareLocked;
+    private resolveMaterializationStart;
+    private writeNewMaterializationStart;
     start(plan: XArticlePublicationPlanV1, approval: XArticleApprovalV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     next(executionId: string): Promise<{
         readonly snapshot: XArticleExecutionSnapshotV1;
@@ -83,7 +85,7 @@ export declare class XArticleBrowserAdapter {
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
     private readBoundMaterializationStart;
-    private boundPreviewReceiptDigest;
+    private boundPreviewReceiptEvidence;
     private isOnlyMissingCover;
     private assertPreparedCommandBinding;
     private blockMaterialization;

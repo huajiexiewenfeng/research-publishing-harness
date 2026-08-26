@@ -50,20 +50,17 @@ export class XArticleBrowserAdapter {
         return this.withExecutionLock(executionId, () => this.prepareLocked(plan, capabilities, executionId));
     }
     async prepareLocked(plan, capabilities, executionId) {
-        const snapshot = this.initialSnapshot(executionId, plan);
         const materializationPlan = createXArticleMaterializationPlan({
             execution_id: executionId,
             publication_plan: plan,
             import_template: createXArticleImportTemplate(plan.intent.document),
             strategy: 'rich_text_anchor_import/v1'
         });
+        const startEvidence = await this.resolveMaterializationStart(materializationPlan);
+        const snapshot = this.initialSnapshot(executionId, plan, startEvidence.started_at);
         const checkpoint = createInitialXArticleMaterializationCheckpoint({
             plan: materializationPlan,
-            updated_at: snapshot.updated_at
-        });
-        const startEvidence = createXArticleMaterializationStartEvidence({
-            plan: materializationPlan,
-            started_at: snapshot.updated_at
+            updated_at: startEvidence.started_at
         });
         const context = {
             schema_version: '1.0', plan, approval: null, capabilities,
@@ -92,25 +89,89 @@ export class XArticleBrowserAdapter {
         }
         await this.ensureExactArtifact(`${this.prefix(executionId)}/plan.json`, plan);
         await this.ensureExactArtifact(`${this.prefix(executionId)}/capabilities.json`, capabilities);
-        try {
-            await this.ensureExactArtifact(this.materializationStartPath(executionId), startEvidence);
-        }
-        catch (error) {
-            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization start evidence differs from durable state', error);
-        }
         const contextPath = `${this.prefix(executionId)}/adapter-context.json`;
         if (await this.store.exists(contextPath)) {
             const existing = await this.readContext(executionId);
             if (existing.execution_mode !== 'materialization_v3_2'
                 || !isDeepStrictEqual(existing.plan, plan)
                 || !isDeepStrictEqual(existing.capabilities, capabilities)
-                || !isDeepStrictEqual(existing.materialization_plan, materializationPlan)) {
+                || !isDeepStrictEqual(existing.materialization_plan, materializationPlan)
+                || existing.automation_started_at !== startEvidence.started_at) {
                 throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article adapter retry differs from durable state');
             }
             return existing.snapshot;
         }
         await this.store.writeNew(contextPath, context);
         return snapshot;
+    }
+    async resolveMaterializationStart(plan) {
+        const path = this.materializationStartPath(plan.execution_id);
+        if (await this.store.exists(path)) {
+            try {
+                return verifyXArticleMaterializationStartEvidence(await this.store.readJson(path), plan);
+            }
+            catch (error) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization start evidence differs from durable state', error);
+            }
+        }
+        const planPath = `${this.prefix(plan.execution_id)}/materialization-plan.json`;
+        const checkpointPath = `${this.prefix(plan.execution_id)}/materialization-checkpoint.json`;
+        const planExists = await this.store.exists(planPath);
+        const checkpointExists = await this.store.exists(checkpointPath);
+        let startedAt;
+        if (planExists || checkpointExists) {
+            if (!planExists || !checkpointExists) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'missing start evidence cannot be repaired from partial materialization state');
+            }
+            const persistedPlan = await this.materializationStore.readPlan(plan.execution_id);
+            const persistedCheckpoint = await this.materializationStore.readCheckpoint(plan.execution_id);
+            const expectedCheckpoint = createInitialXArticleMaterializationCheckpoint({
+                plan,
+                updated_at: persistedCheckpoint.updated_at
+            });
+            if (!isDeepStrictEqual(persistedPlan, plan)
+                || !isDeepStrictEqual(persistedCheckpoint, expectedCheckpoint)) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'missing start evidence cannot be repaired from advanced materialization state');
+            }
+            const contextPath = `${this.prefix(plan.execution_id)}/adapter-context.json`;
+            if (await this.store.exists(contextPath)) {
+                const context = await this.readContext(plan.execution_id);
+                if (context.execution_mode !== 'materialization_v3_2'
+                    || context.snapshot.state !== 'created'
+                    || context.snapshot.sequence !== 0
+                    || context.snapshot.updated_at !== persistedCheckpoint.updated_at
+                    || context.automation_started_at !== persistedCheckpoint.updated_at) {
+                    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'missing start evidence cannot be repaired after adapter execution advanced');
+                }
+            }
+            startedAt = persistedCheckpoint.updated_at;
+        }
+        else {
+            startedAt = this.now().toISOString();
+        }
+        const evidence = createXArticleMaterializationStartEvidence({ plan, started_at: startedAt });
+        await this.writeNewMaterializationStart(path, evidence, plan);
+        return evidence;
+    }
+    async writeNewMaterializationStart(path, evidence, plan) {
+        try {
+            await this.store.writeNew(path, evidence);
+        }
+        catch (error) {
+            if (!(await this.store.exists(path))) {
+                try {
+                    await this.store.writeNew(path, evidence);
+                }
+                catch {
+                    throw error;
+                }
+            }
+            const persisted = verifyXArticleMaterializationStartEvidence(await this.store.readJson(path), plan);
+            if (!isDeepStrictEqual(persisted, evidence)) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization start write repaired different evidence');
+            }
+            throw error;
+        }
     }
     async start(plan, approval, capabilities) {
         assertXArticlePublicationPlan(plan);
@@ -364,7 +425,11 @@ export class XArticleBrowserAdapter {
         const reportPath = `${this.prefix(input.command.execution_id)}/reports/${input.command.command_id}.json`;
         const projectionPath = this.reportProjectionPath(input.command);
         if (await this.store.exists(projectionPath)) {
-            const projection = await this.readReportProjection(projectionPath);
+            const projection = await this.readReportProjection(projectionPath, {
+                execution_id: input.command.execution_id,
+                command_id: input.command.command_id,
+                report_digest: reportDigest
+            });
             if (projection.execution_id !== input.command.execution_id
                 || projection.command_id !== input.command.command_id
                 || projection.report_digest !== reportDigest) {
@@ -1183,7 +1248,11 @@ export class XArticleBrowserAdapter {
                     referencedObservations.add(observation.observation_id);
                 }
                 if (command.command_id !== currentCommandId) {
-                    const projection = await this.readReportProjection(this.reportProjectionPath(command));
+                    const projection = await this.readReportProjection(this.reportProjectionPath(command), {
+                        execution_id: command.execution_id,
+                        command_id: command.command_id,
+                        report_digest: evidence.report_digest
+                    });
                     if (projection.report_digest !== evidence.report_digest) {
                         throw new HarnessError('CONTRACT_INVALID', 'materialization report projection changed');
                     }
@@ -1319,10 +1388,11 @@ export class XArticleBrowserAdapter {
         if (publicProgress === undefined) {
             throw new HarnessError('CONTRACT_INVALID', 'public receipt lacks durable verification progress');
         }
+        const previewBoundary = await this.boundPreviewReceiptEvidence(context, previewReceipt);
         const receipt = createSupersedingXArticleMaterializationReceipt({
             preview_receipt: previewReceipt,
-            expected_preview_receipt_digest: await this.boundPreviewReceiptDigest(context),
-            human_wait_seconds: computeXArticleElapsedSeconds(previewReceipt.issued_at, confirmation.confirmed_at),
+            expected_preview_receipt_digest: previewBoundary.receipt_digest,
+            human_wait_seconds: computeXArticleElapsedSeconds(previewBoundary.observed_at, confirmation.confirmed_at),
             issued_at: publicProgress.recorded_at
         });
         try {
@@ -1391,21 +1461,41 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization start evidence is missing, corrupt, or mismatched', error);
         }
     }
-    async boundPreviewReceiptDigest(context) {
+    async boundPreviewReceiptEvidence(context, previewReceipt) {
         if (context.latest_preview_observation_id === null) {
             throw new HarnessError('CONTRACT_INVALID', 'public receipt lacks a bound Preview observation');
         }
         const observation = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/observations/${context.latest_preview_observation_id}.json`);
+        if (observation.execution_id !== context.snapshot.execution_id
+            || observation.preview === null
+            || observation.page_revision !== previewReceipt.preview_revision) {
+            throw new HarnessError('CONTRACT_INVALID', 'Preview receipt boundary observation changed');
+        }
+        const command = validateContract('x-article-browser-command', await this.store.readJson(this.commandPath({
+            execution_id: context.snapshot.execution_id,
+            command_id: observation.command_id
+        })));
+        const report = await this.readMaterializationReportEvidence(`${this.prefix(context.snapshot.execution_id)}/reports/${command.command_id}.json`, command);
+        if (report.report.observation === null || !isDeepStrictEqual(report.report.observation, observation)) {
+            throw new HarnessError('CONTRACT_INVALID', 'Preview report does not bind its durable observation');
+        }
         const projection = await this.readReportProjection(this.reportProjectionPath({
             execution_id: context.snapshot.execution_id,
             command_id: observation.command_id
-        }));
+        }), {
+            execution_id: context.snapshot.execution_id,
+            command_id: observation.command_id,
+            report_digest: report.report_digest
+        });
         if (projection.preview_receipt_digest === null) {
             throw new HarnessError('CONTRACT_INVALID', 'Preview projection lacks an immutable receipt binding');
         }
         const plan = await this.readBoundMaterializationPlan(context);
         await this.readBoundMaterializationStart(context, plan);
-        return projection.preview_receipt_digest;
+        return {
+            receipt_digest: projection.preview_receipt_digest,
+            observed_at: observation.observed_at
+        };
     }
     isOnlyMissingCover(reconciliation) {
         return reconciliation.kind === 'content_drift'
@@ -1661,14 +1751,14 @@ export class XArticleBrowserAdapter {
         await this.writeContext(next);
         return next;
     }
-    async readReportProjection(path) {
+    async readReportProjection(path, expected) {
         const projection = await this.store.readJson(path);
         const body = Object.fromEntries(Object.entries(projection).filter(([key]) => key !== 'projection_digest'));
         if (projection.schema_version !== '1.0'
             || projection.projection_digest !== sha256(body)
-            || typeof projection.execution_id !== 'string'
-            || typeof projection.command_id !== 'string'
-            || typeof projection.report_digest !== 'string'
+            || projection.execution_id !== expected.execution_id
+            || projection.command_id !== expected.command_id
+            || (expected.report_digest !== undefined && projection.report_digest !== expected.report_digest)
             || (projection.preview_receipt_digest !== null
                 && !/^sha256:[a-f0-9]{64}$/.test(projection.preview_receipt_digest))) {
             throw new HarnessError('CONTRACT_INVALID', 'X Article report projection changed');
@@ -2017,12 +2107,12 @@ export class XArticleBrowserAdapter {
             });
         }
     }
-    initialSnapshot(executionId, plan) {
+    initialSnapshot(executionId, plan, updatedAt = this.now().toISOString()) {
         return {
             schema_version: '1.0', execution_id: executionId, run_id: plan.run_id,
             plan_id: plan.plan_id, state: 'created', sequence: 0, draft_id: null,
             attempt_id: null, publish_command_count: 0, latest_command_id: null,
-            latest_observation_id: null, latest_receipt_path: null, updated_at: this.now().toISOString()
+            latest_observation_id: null, latest_receipt_path: null, updated_at: updatedAt
         };
     }
     requireApproval(context) {

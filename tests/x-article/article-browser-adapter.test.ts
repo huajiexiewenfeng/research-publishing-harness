@@ -207,7 +207,8 @@ async function advancePreparedToPreview(
 async function advancePreparedToPublicObservation(
   adapter: XArticleBrowserAdapter,
   executionId: string,
-  preview: XArticleBrowserObservation
+  preview: XArticleBrowserObservation,
+  confirmedAt = '2026-08-21T09:01:00.000Z'
 ) {
   await adapter.confirmPublish(executionId, createXArticlePublishConfirmation({
     confirmation_id: `confirmation_${executionId}`,
@@ -220,7 +221,7 @@ async function advancePreparedToPublicObservation(
     preview_revision: preview.page_revision,
     asset_digests: [],
     confirmed_by: 'human:Glen56121',
-    confirmed_at: '2026-08-21T09:01:00.000Z'
+    confirmed_at: confirmedAt
   }));
   let next = await adapter.next(executionId);
   await reportSuccess(adapter, executionId, next.command, observed(executionId, next.command!.command_id, {
@@ -266,6 +267,16 @@ function resignPersistedReport(
     reported_at: artifact.reported_at
   };
   return { ...body, evidence_digest: sha256(body) };
+}
+
+function resignReportProjection(
+  projection: Record<string, unknown>,
+  changed: Record<string, unknown>
+): Record<string, unknown> {
+  const body = Object.fromEntries(
+    Object.entries({ ...projection, ...changed }).filter(([key]) => key !== 'projection_digest')
+  );
+  return { ...body, projection_digest: sha256(body) };
 }
 
 async function coordinatedConcurrentNext(
@@ -560,6 +571,65 @@ describe('XArticleBrowserAdapter', () => {
     });
   });
 
+  it('measures human wait from the verified Preview observation rather than later receipt issuance', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-human-wait-')));
+    let clock = '2026-08-21T09:01:00.000Z';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_human_wait_1',
+      eventId: (() => { let n = 0; return () => `event_human_wait_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_human_wait_${++n}`; })(),
+      attemptId: () => 'attempt_human_wait_1',
+      receiptId: () => 'publication_human_wait_1',
+      now: () => new Date(clock)
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const pending = await advancePreparedToPreviewCommand(adapter, execution.execution_id);
+    clock = '2026-08-21T09:03:00.000Z';
+    await reportSuccess(adapter, execution.execution_id, pending.command, pending.preview);
+    const previewReceipt = await store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt.json`
+    );
+    expect(previewReceipt.issued_at).toBe('2026-08-21T09:03:00.000Z');
+    await advancePreparedToPublicObservation(
+      adapter,
+      execution.execution_id,
+      pending.preview,
+      '2026-08-21T09:02:00.000Z'
+    );
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'finalized' }
+    });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-receipt-public.json`
+    )).resolves.toMatchObject({ human_wait_seconds: 60 });
+  });
+
+  it.each([
+    ['execution', { execution_id: 'foreign_execution' }],
+    ['command', { command_id: 'foreign_command' }],
+    ['report digest', { report_digest: `sha256:${'3'.repeat(64)}` }]
+  ])('rejects a validly re-digested Preview projection with changed %s identity', async (_name, changed) => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-projection-redigest-')));
+    const executionId = `execution_projection_redigest_${_name.replace(' ', '_')}`;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      eventId: (() => { let n = 0; return () => `${executionId}_event_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `${executionId}_command_${++n}`; })(),
+      attemptId: () => `${executionId}_attempt`,
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+    await advancePreparedToPublicObservation(adapter, execution.execution_id, preview);
+    const projectionPath = `runs/${execution.execution_id}/x-article/browser/report-projections/${preview.command_id}.json`;
+    const projection = await store.readJson<Record<string, unknown>>(projectionPath);
+    await store.replaceAtomic(projectionPath, resignReportProjection(projection, changed));
+
+    await expect(adapter.next(execution.execution_id))
+      .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
   it('fails public verification closed when the immutable Preview receipt is missing', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-missing-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -677,6 +747,68 @@ describe('XArticleBrowserAdapter', () => {
       await expect(adapter.prepare(plan, bulkCapabilities))
         .resolves.toMatchObject({ execution_id: executionId, state: 'created' });
     }
+  });
+
+  it.each([
+    ['before start write', 'materialization-start.json', false],
+    ['after start write', 'materialization-start.json', true],
+    ['materialization store', 'materialization-plan.json', false],
+    ['adapter context', 'adapter-context.json', false]
+  ])('reuses immutable start evidence across an advancing-clock crash at %s', async (_name, suffix, persistBeforeFailure) => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-start-repair-')));
+    const executionId = `execution_start_repair_${suffix.replace(/[^a-z]/g, '_')}`;
+    let tick = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      now: () => new Date(`2026-08-21T09:01:0${tick++}.000Z`)
+    });
+    const writeNew = store.writeNew.bind(store);
+    let failOnce = true;
+    store.writeNew = async (path, value) => {
+      if (failOnce && path.endsWith(`/${suffix}`)) {
+        failOnce = false;
+        if (persistBeforeFailure) await writeNew(path, value);
+        throw new Error(`injected ${_name} crash`);
+      }
+      return writeNew(path, value);
+    };
+
+    await expect(adapter.prepare(plan, bulkCapabilities)).rejects.toThrow(`injected ${_name} crash`);
+    const persistedStart = await store.readJson<{ started_at: string }>(
+      `runs/${executionId}/x-article/browser/materialization-start.json`
+    );
+    await expect(adapter.prepare(plan, bulkCapabilities)).resolves.toMatchObject({
+      execution_id: executionId,
+      updated_at: persistedStart.started_at
+    });
+    await expect(store.readJson(`runs/${executionId}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ automation_started_at: persistedStart.started_at });
+  });
+
+  it('repairs a missing legacy start only from an untouched initial checkpoint', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-start-legacy-repair-')));
+    const executionId = 'execution_start_legacy_repair_1';
+    let clock = '2026-08-21T09:01:00.000Z';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      commandId: (() => { let n = 0; return () => `command_start_legacy_${++n}`; })(),
+      now: () => new Date(clock)
+    });
+    await adapter.prepare(plan, bulkCapabilities);
+    const startPath = `runs/${executionId}/x-article/browser/materialization-start.json`;
+    await store.removeFile(startPath);
+    clock = '2026-08-21T09:02:00.000Z';
+    await expect(adapter.prepare(plan, bulkCapabilities)).resolves.toMatchObject({
+      updated_at: '2026-08-21T09:01:00.000Z'
+    });
+    await expect(store.readJson(startPath)).resolves.toMatchObject({
+      started_at: '2026-08-21T09:01:00.000Z'
+    });
+
+    await adapter.next(executionId);
+    await store.removeFile(startPath);
+    await expect(adapter.prepare(plan, bulkCapabilities))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
   });
 
   it('keeps start as the explicit legacy_preapproved compatibility mode', async () => {
