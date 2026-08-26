@@ -77,6 +77,13 @@ const crashPoints = [
 
 type CrashPoint = (typeof crashPoints)[number];
 
+interface HostLocalMetadataState {
+  readonly draft_id: string;
+  readonly title: string;
+  readonly persisted: boolean;
+  readonly digest: `sha256:${string}`;
+}
+
 function createMaterializationFixturePlan(
   imageCount: number,
   suffix: string,
@@ -144,14 +151,38 @@ class OfflineMaterializationHost {
   bodyImportEffects = 0;
   bodyOverwriteAttempts = 0;
   coverEffects = 0;
+  metadataOverwriteAttempts = 0;
+  metadataWriteEffects = 0;
   publishEffects = 0;
   localAnchorCleanupRecoveries = 0;
+  private metadataPersisted = false;
   private title = '';
   private blocks: readonly XArticleBlockV1[] = [];
   private visuals: NonNullable<XArticleBrowserObservation['editor']>['visuals'] = [];
   private importState: NonNullable<XArticleBrowserObservation['editor']>['import_state'] = null;
 
   constructor(private readonly plan: XArticlePublicationPlanV1) {}
+
+  persistDraftMetadata(): void {
+    const plannedTitle = this.plan.intent.document.title;
+    if (this.metadataPersisted) {
+      if (this.title !== plannedTitle) this.metadataOverwriteAttempts += 1;
+      return;
+    }
+    if (this.title !== '' && this.title !== plannedTitle) this.metadataOverwriteAttempts += 1;
+    this.title = plannedTitle;
+    this.metadataPersisted = true;
+    this.metadataWriteEffects += 1;
+  }
+
+  metadataState(): HostLocalMetadataState {
+    const body = {
+      draft_id: this.draftId,
+      title: this.title,
+      persisted: this.metadataPersisted
+    } as const;
+    return { ...body, digest: sha256(body) };
+  }
 
   private observed(
     command: XArticleBrowserCommandV1,
@@ -244,6 +275,9 @@ class OfflineMaterializationHost {
       if (this.bodyImportEffects > 0 || this.blocks.length > 0) this.bodyOverwriteAttempts += 1;
       if (this.bodyImportEffects === 0) {
         this.bodyImportEffects += 1;
+        if (this.metadataPersisted && this.title !== this.plan.intent.document.title) {
+          this.metadataOverwriteAttempts += 1;
+        }
         this.title = this.plan.intent.document.title;
         this.blocks = this.plan.intent.document.blocks.filter((block) => block.kind !== 'image');
         const template = createXArticleImportTemplate(this.plan.intent.document);
@@ -332,6 +366,7 @@ interface MaterializationRunResult {
   readonly body_import_command_count: number;
   readonly incremental_block_command_count: number;
   readonly cover_effect_count: number;
+  readonly cover_command_count: number;
   readonly expected_asset_ids: readonly string[];
   readonly completed_asset_ids: readonly string[];
   readonly publish_effect_count: number;
@@ -345,8 +380,13 @@ interface MaterializationRunResult {
   readonly human_text_digest_after_recovery: `sha256:${string}`;
   readonly network: 'unused';
   readonly local_anchor_cleanup_recoveries: number;
+  readonly metadata_state_before_recovery: HostLocalMetadataState | null;
+  readonly metadata_state_after_recovery: HostLocalMetadataState;
+  readonly metadata_write_count: number;
+  readonly metadata_overwrite_count: number;
   readonly boundary_checkpoint: Record<string, unknown> | null;
   readonly boundary_command_id: string | null;
+  readonly boundary_claim_persisted: boolean | null;
   readonly boundary_report_persisted: boolean | null;
 }
 
@@ -375,11 +415,18 @@ async function runOfflineMaterialization(
   let confirmed = false;
   let boundaryCheckpoint: Record<string, unknown> | null = null;
   let boundaryCommandId: string | null = null;
+  let boundaryClaimPersisted: boolean | null = null;
   let boundaryReportPersisted: boolean | null = null;
+  let metadataStateBeforeRecovery: HostLocalMetadataState | null = null;
   let humanTextDigestBeforeRecovery: `sha256:${string}` | null = null;
 
   const recordBoundary = async (command: XArticleBrowserCommandV1 | null): Promise<void> => {
     boundaryCommandId = command?.command_id ?? null;
+    boundaryClaimPersisted = command === null
+      ? null
+      : await store.exists(
+          `runs/${execution.execution_id}/x-article/browser/commands/${command.command_id}/claim.json`
+        );
     boundaryReportPersisted = command === null
       ? null
       : await store.exists(
@@ -389,6 +436,7 @@ async function runOfflineMaterialization(
       `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
     );
     if (host.bodyImportEffects > 0) humanTextDigestBeforeRecovery = host.humanTextDigest();
+    metadataStateBeforeRecovery = host.metadataState();
     adapter = createAdapter();
     crashed = true;
   };
@@ -510,8 +558,10 @@ async function runOfflineMaterialization(
       && !crashed
       && command.kind === 'create_article_draft'
     ) {
-      // Prepared V3.2 has no standalone metadata command. This is the truthful Host-local
-      // create/metadata substage boundary after its exact create report is durable.
+      // Prepared V3.2 has no standalone metadata command/checkpoint. The offline Host
+      // persists the planned title as its exact local metadata substage; cover remains
+      // a later, separate upload_article_cover command.
+      host.persistDraftMetadata();
       await recordBoundary(command);
     }
   }
@@ -539,6 +589,7 @@ async function runOfflineMaterialization(
     body_import_command_count: commands.filter((command) => command.kind === 'import_article_document').length,
     incremental_block_command_count: commands.filter((command) => command.kind === 'insert_article_block').length,
     cover_effect_count: host.coverEffects,
+    cover_command_count: commands.filter((command) => command.kind === 'upload_article_cover').length,
     expected_asset_ids: plan.intent.visuals.map((binding) => binding.asset.asset_id),
     completed_asset_ids: progress
       .filter((entry) => entry.asset_id !== null && entry.observed_effect === 'complete')
@@ -554,15 +605,20 @@ async function runOfflineMaterialization(
     human_text_digest_after_recovery: host.humanTextDigest(),
     network: host.network,
     local_anchor_cleanup_recoveries: host.localAnchorCleanupRecoveries,
+    metadata_state_before_recovery: metadataStateBeforeRecovery,
+    metadata_state_after_recovery: host.metadataState(),
+    metadata_write_count: host.metadataWriteEffects,
+    metadata_overwrite_count: host.metadataOverwriteAttempts,
     boundary_checkpoint: boundaryCheckpoint,
     boundary_command_id: boundaryCommandId,
+    boundary_claim_persisted: boundaryClaimPersisted,
     boundary_report_persisted: boundaryReportPersisted
   };
 }
 
 describe('X Article Browser workflow', () => {
   it.each(crashPoints)('recovers the %s crash boundary without replaying irreversible effects', async (point) => {
-    const result = await runOfflineMaterialization(3, `crash_${point}`, point);
+    const result = await runOfflineMaterialization(3, `crash_${point}`, point, true);
     const expectedState = point === 'after_confirmation_before_publish'
       ? 'publish_armed'
       : point === 'publish_effect_unknown'
@@ -574,10 +630,13 @@ describe('X Article Browser workflow', () => {
     expect(result.body_import_command_count).toBe(1);
     expect(result.incremental_block_command_count).toBe(0);
     expect(result.completed_asset_ids).toEqual(result.expected_asset_ids);
-    expect(new Set(result.completed_asset_ids).size).toBe(result.completed_asset_ids.length);
+    expect(new Set(result.completed_asset_ids).size).toBe(4);
+    expect(result.cover_effect_count).toBe(1);
+    expect(result.cover_command_count).toBe(1);
     expect(result.publish_command_count).toBe(point === 'publish_effect_unknown' ? 1 : 0);
     expect(result.publish_effect_count).toBe(point === 'publish_effect_unknown' ? 1 : 0);
     expect(result.human_content_overwrite_count).toBe(0);
+    expect(result.metadata_overwrite_count).toBe(0);
     expect(result.human_text_digest_after_recovery).toBe(result.human_text_digest_before_recovery);
     expect(result.network).toBe('unused');
     expect(result.boundary_checkpoint).not.toBeNull();
@@ -605,6 +664,24 @@ describe('X Article Browser workflow', () => {
     }
     if (point === 'after_metadata') {
       expect(result.boundary_report_persisted).toBe(true);
+      expect(result).toMatchObject({
+        metadata_state_before_recovery: {
+          draft_id: '2092246293603373056',
+          title: `Control plane crash_${point}`,
+          persisted: true
+        },
+        metadata_state_after_recovery: {
+          draft_id: '2092246293603373056',
+          title: `Control plane crash_${point}`,
+          persisted: true
+        },
+        metadata_write_count: 1,
+        metadata_overwrite_count: 0
+      });
+      expect(result.metadata_state_after_recovery).toEqual(result.metadata_state_before_recovery);
+    }
+    if (point === 'before_media_1') {
+      expect(result).toMatchObject({ boundary_claim_persisted: false });
     }
     if (point === 'after_preview') {
       expect(result.boundary_checkpoint).toMatchObject({ phase: 'preview_verified' });

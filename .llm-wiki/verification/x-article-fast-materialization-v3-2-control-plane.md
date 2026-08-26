@@ -36,23 +36,25 @@ The integration test runs the actual `WorkspaceStore` and `XArticleBrowserAdapte
 
 The first valid RED was `3 passed / 10 failed` in the new 13-case workflow surface. Initial failures identified incorrect fixture timestamp/progress assumptions and the zero-image anchor-clearing behavior. After correcting the fixture and modeling the zero-anchor stabilization observation, the no-cover workflow was `13/13` green. Adding a planned cover then exposed a production regression: the receipt progress validator rejected the planned cover asset ID. The cover-inclusive regression remained RED until the separate production fix `8a84bec602e916baee46fd780dbabbc0cda98a9d`; after integration, the workflow was `14/14` green. Missing local `pnpm vitest` and a sandbox `spawn EPERM` were environment failures and are not counted as RED evidence.
 
-No assertion was repeated superficially across the matrix. Every row captures the boundary checkpoint, report durability, claimed command where one exists, external effect count, recovery path, and terminal control state. Every row also proves exactly one bulk body import, zero incremental block insertion, the exact unique completed asset set, no more than one Publish command/effect, zero Human-content overwrite attempts, stable Human-reviewed text digest, and `network = unused`.
+Independent review then exposed two test-model gaps. The review assertions produced a valid `2 failed / 12 passed` RED: `after_metadata` had no persisted Host-local metadata state, and `before_media_1` did not prove claim absence. The fix gives the offline Host a distinct planned-title metadata substage after the durable create report, records its exact state/digest across adapter reconstruction, and checks one metadata write with zero overwrite. It also reads the durable claim path at every boundary. The isolated workflow returned to `14/14` green.
+
+No assertion was repeated superficially across the matrix. Every row captures the boundary checkpoint, claim/report durability, external effect count, recovery path, and terminal control state. All nine rows use one cover plus three inline images. Every row proves exactly one bulk body import, zero incremental block insertion, exactly one cover command/effect, the exact four-entry unique completed progress set (cover plus inline assets), no more than one Publish command/effect, zero Human-content or metadata overwrite attempts, stable Human-reviewed text digest, and `network = unused`.
 
 ## Nine-boundary crash matrix
 
 | Boundary | Durable/effect state at crash | Recovery evidence | Terminal state |
 |---|---|---|---|
 | `after_draft_create` | draft-create command claimed and its Host effect exists; completion report absent; checkpoint remains before verified body import | reconstructed adapter receives the same pending command and reports it without a second create/import effect | `confirmation_pending` |
-| `after_metadata` | the create report is durable and the Host has completed the local draft shell/metadata substage | V3.2 exposes no standalone metadata adapter command, so this row truthfully restarts from that durable shell instead of inventing a hook | `confirmation_pending` |
+| `after_metadata` | the create report is durable; the Host-local metadata substage has persisted the exact planned title once, with its state/digest captured before restart | the reconstructed adapter continues from the same external draft; final Host metadata equals the captured state exactly and metadata overwrite count remains zero | `confirmation_pending` |
 | `import_effect_before_checkpoint` | one bulk-import effect exists; import completion report is absent; body checkpoint is `issued` | the same claimed import command is reported after restart; body import remains exactly one | `confirmation_pending` |
-| `before_media_1` | first media command is claimed but no upload effect/report exists; body is `verified`, media 1 is `upload_started`, later media is `pending` | restart receives and completes the same first media command | `confirmation_pending` |
+| `before_media_1` | first media command is issued but unclaimed (`claim.json` absent); no upload effect/report exists; body is `verified`, media 1 is `upload_started`, later media is `pending` | restart receives, claims, and completes that issued first-media command | `confirmation_pending` |
 | `media_effect_before_anchor_cleanup` | first media has a Host-local partial effect; its adapter report is absent; media checkpoint remains `upload_started` | the same claimed command resumes local anchor cleanup, then reports once; no second media effect | `confirmation_pending` |
 | `media_complete_before_checkpoint` | first media Host effect is complete; report/checkpoint completion is absent and media remains `upload_started` | the same claimed command is reported after restart; exact asset set stays unique | `confirmation_pending` |
 | `after_preview` | checkpoint phase is `preview_verified`; immutable Preview receipt exists; no Publish command exists | restart returns to confirmation wait without rematerialization | `confirmation_pending` |
 | `after_confirmation_before_publish` | confirmation is consumed into checkpoint phase `human_confirmed` with `publish_confirmation = armed`; no Publish claim/effect exists | restart exposes `publish_armed`; it does not silently submit | `publish_armed` |
 | `publish_effect_unknown` | checkpoint phase is `publish_submitted`, confirmation is `consumed`, and exactly one Publish effect has an uncertain report | restart does not reissue Publish and preserves the ambiguity boundary for read-only resolution | `outcome_unknown` |
 
-`after_metadata` and `media_effect_before_anchor_cleanup` are deliberately Host-local boundary models because the current adapter has no standalone metadata command and no partial-DOM checkpoint. This limitation is explicit; the matrix does not claim hooks that do not exist.
+`after_metadata` and `media_effect_before_anchor_cleanup` are deliberately Host-local boundary models because the current adapter has no standalone metadata command/checkpoint and no partial-DOM checkpoint. The modeled metadata is only the exact planned Article title stored in the external draft shell; it is not the cover, which remains a separate claimed `upload_article_cover` command. This limitation is explicit; the matrix does not claim hooks that do not exist.
 
 ## Measured command and observation budgets
 
@@ -64,22 +66,24 @@ Counts are persisted command/observation totals from the real adapter with a no-
 | 3 | 7 | 15 | 7 | 12 | pass |
 | 10 | 14 | 22 | 14 | 19 | pass |
 
-The zero-image case includes one required stabilization observation that clears the empty import-state anchor set. The cover-inclusive 3-image case measures `8 commands / 8 observations`, exactly one cover effect, exactly one bulk body import, four unique completed assets, no Publish, and no network use.
+The zero-image case includes one required stabilization observation that clears the empty import-state anchor set. The separate no-crash cover-inclusive 3-image case remains as a reference budget/receipt path: it measures `8 commands / 8 observations`, exactly one cover effect, exactly one bulk body import, four unique completed assets, no Publish, and no network use.
 
 ## Gate record
 
 | Gate | Result |
 |---|---|
-| workflow matrix/budgets/cover | `1 file / 14 tests passed`; 21.53 s |
-| V3.2 focused control-plane regression | `19 files / 350 tests passed`; 77.72 s |
+| workflow matrix/budgets/cover | review-fix isolated run: `1 file / 14 tests passed`; 19.77 s |
+| Task 10 owned tests | `3 files / 34 tests passed`; 15.30 s |
+| V3.2 focused control-plane regression | `19 files / 350 tests passed`; 82.00 s |
 | repository build | `pnpm build`; exit 0 |
 | repository lint | `pnpm lint`; exit 0 |
 | repository typecheck | `pnpm typecheck`; exit 0 |
-| repository full test | `165 files / 1007 tests passed`, `1 file / 1 test failed`, `1 file / 1 test skipped`; 1009 total tests; 91.31 s |
+| repository full test | `164 files / 1006 tests passed`, `2 files / 2 tests failed`, `1 file / 1 test skipped`; 1009 total tests; 100.01 s |
+| isolated full-load timeout | CLI case `prepares V3.2 from separate validated files and reports redacted durable status`: `1 passed / 21 skipped`; 6.18 s |
 | direct offline acceptance | exit 1 at `published_unverified` |
 | whitespace | `git diff --check`; no whitespace errors (Windows line-ending advisories only) |
 
-The only full-gate failure is `tests/tools/acceptance-output.test.ts > offline acceptance > reports the simulated X Article workflow and at-most-once Publish evidence`: `tools/acceptance.ts` rejects the `published_unverified` state. The direct `pnpm acceptance` command reproduces the same error. This is the documented Browser Host companion-plan baseline, not a Task 10 control-plane regression, and no test or runtime behavior was weakened to mask it. No load-sensitive timeout occurred.
+The persistent full-gate failure is `tests/tools/acceptance-output.test.ts > offline acceptance > reports the simulated X Article workflow and at-most-once Publish evidence`: `tools/acceptance.ts` rejects the `published_unverified` state. The direct `pnpm acceptance` command reproduces the same error. This is the documented Browser Host companion-plan baseline, not a Task 10 control-plane regression, and no test or runtime behavior was weakened to mask it. One unrelated CLI case exceeded its 15-second limit only under full-suite load (17.026 seconds) and passed its single required isolated rerun in 5.53 test-seconds / 6.18 wall-seconds; no timeout or out-of-scope test setting was changed.
 
 ## Registry manifest evidence
 
