@@ -208,7 +208,8 @@ async function advancePreparedToPublicObservation(
   adapter: XArticleBrowserAdapter,
   executionId: string,
   preview: XArticleBrowserObservation,
-  confirmedAt = '2026-08-21T09:01:00.000Z'
+  confirmedAt = '2026-08-21T09:01:00.000Z',
+  publicObservedAt = '2026-08-21T09:01:00.000Z'
 ) {
   await adapter.confirmPublish(executionId, createXArticlePublishConfirmation({
     confirmation_id: `confirmation_${executionId}`,
@@ -225,6 +226,7 @@ async function advancePreparedToPublicObservation(
   }));
   let next = await adapter.next(executionId);
   await reportSuccess(adapter, executionId, next.command, observed(executionId, next.command!.command_id, {
+    observed_at: publicObservedAt,
     canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776/preview',
     page_kind: 'publish_review',
     controls: [{ ref: 'publish_final', role: 'button', name: 'Publish', test_id: null, disabled: false }],
@@ -238,6 +240,7 @@ async function advancePreparedToPublicObservation(
     command: next.command!,
     status: 'success',
     observation: observed(executionId, next.command!.command_id, {
+      observed_at: publicObservedAt,
       canonical_url: 'https://x.com/Glen56121/article/2090731994279755777',
       page_kind: 'public_article', controls: [],
       public_article: {
@@ -479,6 +482,29 @@ describe('XArticleBrowserAdapter', () => {
     })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
   });
 
+  it('rejects a fresh report whose observation precedes its command', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-fresh-time-reversal-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_fresh_time_reversal_1',
+      commandId: () => 'command_fresh_time_reversal_1',
+      now: () => new Date('2026-08-21T09:02:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const next = await adapter.next(execution.execution_id);
+    await adapter.claim(next.command!);
+    const observation = observed(execution.execution_id, next.command!.command_id, {
+      canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+      controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+    });
+
+    await expect(adapter.report({
+      command: next.command!, status: 'success', observation
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/reports/${next.command!.command_id}.json`
+    )).resolves.toBe(false);
+  });
+
   it('rejects a re-digested report status that disagrees with progress', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-report-status-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -594,7 +620,8 @@ describe('XArticleBrowserAdapter', () => {
       adapter,
       execution.execution_id,
       pending.preview,
-      '2026-08-21T09:02:00.000Z'
+      '2026-08-21T09:02:00.000Z',
+      '2026-08-21T09:03:00.000Z'
     );
 
     await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
@@ -625,6 +652,35 @@ describe('XArticleBrowserAdapter', () => {
     const projectionPath = `runs/${execution.execution_id}/x-article/browser/report-projections/${preview.command_id}.json`;
     const projection = await store.readJson<Record<string, unknown>>(projectionPath);
     await store.replaceAtomic(projectionPath, resignReportProjection(projection, changed));
+
+    await expect(adapter.next(execution.execution_id))
+      .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('revalidates the current public report before trusting its progress timestamp', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-public-report-time-')));
+    const executionId = 'execution_public_report_time_1';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      eventId: (() => { let n = 0; return () => `event_public_report_time_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_public_report_time_${++n}`; })(),
+      attemptId: () => 'attempt_public_report_time_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const preview = await advancePreparedToPreview(adapter, execution.execution_id);
+    await advancePreparedToPublicObservation(adapter, execution.execution_id, preview);
+    const publicCommandId = (await adapter.status(execution.execution_id)).latest_command_id!;
+    const reportPath = `runs/${execution.execution_id}/x-article/browser/reports/${publicCommandId}.json`;
+    const artifact = await store.readJson<Record<string, unknown>>(reportPath);
+    const changedBody = {
+      ...Object.fromEntries(Object.entries(artifact).filter(([key]) => key !== 'evidence_digest')),
+      reported_at: '2026-08-21T09:00:59.000Z'
+    };
+    await store.replaceAtomic(reportPath, {
+      ...changedBody,
+      evidence_digest: sha256(changedBody)
+    });
 
     await expect(adapter.next(execution.execution_id))
       .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });

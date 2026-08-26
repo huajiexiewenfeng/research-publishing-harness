@@ -1127,8 +1127,7 @@ export class XArticleBrowserAdapter {
             }
             return existing;
         }
-        const observedAt = report.observation === null ? Number.NEGATIVE_INFINITY : Date.parse(report.observation.observed_at);
-        const reportedAt = new Date(Math.max(this.now().getTime(), observedAt)).toISOString();
+        const reportedAt = this.now().toISOString();
         const body = {
             schema_version: 'x-article-materialization-report/v1',
             execution_id: report.command.execution_id,
@@ -1141,11 +1140,15 @@ export class XArticleBrowserAdapter {
             ...body,
             evidence_digest: sha256(body)
         };
-        await this.store.writeNew(path, evidence);
-        return evidence;
+        const validated = this.validateMaterializationReportEvidence(evidence, report.command);
+        await this.store.writeNew(path, validated);
+        return validated;
     }
     async readMaterializationReportEvidence(path, command) {
         const evidence = await this.store.readJson(path);
+        return this.validateMaterializationReportEvidence(evidence, command);
+    }
+    validateMaterializationReportEvidence(evidence, command) {
         const commandAt = Date.parse(command.issued_at);
         const reportedAt = Date.parse(evidence.reported_at);
         const observedAt = evidence.report.observation === null
@@ -1387,6 +1390,16 @@ export class XArticleBrowserAdapter {
             : progress.find((event) => event.stage.endsWith(`#${latestCommandId}`));
         if (publicProgress === undefined) {
             throw new HarnessError('CONTRACT_INVALID', 'public receipt lacks durable verification progress');
+        }
+        const publicCommand = validateContract('x-article-browser-command', await this.store.readJson(this.commandPath({
+            execution_id: context.snapshot.execution_id,
+            command_id: latestCommandId
+        })));
+        const publicReport = await this.readMaterializationReportEvidence(`${this.prefix(context.snapshot.execution_id)}/reports/${publicCommand.command_id}.json`, publicCommand);
+        if (!isDeepStrictEqual(publicProgress, this.progressFromReportEvidence(publicReport))
+            || context.latest_observation === null
+            || !isDeepStrictEqual(publicReport.report.observation, context.latest_observation)) {
+            throw new HarnessError('CONTRACT_INVALID', 'public verification progress differs from its exact report evidence');
         }
         const previewBoundary = await this.boundPreviewReceiptEvidence(context, previewReceipt);
         const receipt = createSupersedingXArticleMaterializationReceipt({

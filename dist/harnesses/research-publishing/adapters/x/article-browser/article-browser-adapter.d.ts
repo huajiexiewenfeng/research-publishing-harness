@@ -77,6 +77,7 @@ export declare class XArticleBrowserAdapter {
     private materializationReportBody;
     private persistMaterializationReportEvidence;
     private readMaterializationReportEvidence;
+    private validateMaterializationReportEvidence;
     private durableMaterializationActivity;
     private isTrustedPreviewMaterializationCommand;
     private persistPreviewMaterializationReceipt;
