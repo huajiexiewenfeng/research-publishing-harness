@@ -45,6 +45,25 @@ export interface XArticleEditorObservation {
   readonly autosave_state: 'saving' | 'saved' | 'failed';
 }
 
+export interface XArticleSemanticDifferenceV1 {
+  readonly path: string;
+  readonly expected_digest: `sha256:${string}` | null;
+  readonly observed_digest: `sha256:${string}` | null;
+  readonly reason: 'missing' | 'extra' | 'changed' | 'reordered' | 'ambiguous';
+}
+
+export type XArticleDraftReconciliationV1 =
+  | { readonly kind: 'empty'; readonly next_action: 'import_body' }
+  | {
+      readonly kind: 'recoverable_partial';
+      readonly completed_anchor_ids: readonly string[];
+      readonly next_anchor_id: string | null;
+      readonly next_action: 'replace_anchor' | 'reconcile_final';
+    }
+  | { readonly kind: 'exact' | 'semantically_equivalent'; readonly next_action: 'open_preview' }
+  | { readonly kind: 'content_drift'; readonly differences: readonly XArticleSemanticDifferenceV1[] }
+  | { readonly kind: 'unverifiable'; readonly reasons: readonly string[] };
+
 export interface XArticlePreviewObservation {
   readonly draft_id: string;
   readonly title: string;
