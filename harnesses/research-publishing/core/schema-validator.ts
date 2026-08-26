@@ -7,6 +7,7 @@ import {
 } from 'ajv/dist/2020.js';
 import formatsModule, { type FormatsPlugin } from 'ajv-formats';
 
+import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
 import type { ContractName } from './types.js';
 import { CONTRACT_NAMES } from './types.js';
@@ -39,6 +40,37 @@ ajv.addKeyword({
       previousOrdinal = blockOrdinal;
     }
     return true;
+  }
+});
+ajv.addKeyword({
+  keyword: 'materializationPlanConsistent',
+  type: 'object',
+  schemaType: 'boolean',
+  errors: false,
+  validate: (enabled: boolean, value: object): boolean => {
+    if (!enabled) return true;
+
+    try {
+      const visualAnchors = Reflect.get(value, 'visual_anchors');
+      const commandCeiling = Reflect.get(value, 'expected_command_ceiling');
+      const observationCeiling = Reflect.get(value, 'expected_observation_ceiling');
+      const materializationDigest = Reflect.get(value, 'materialization_digest');
+      if (
+        !Array.isArray(visualAnchors)
+        || commandCeiling !== 12 + visualAnchors.length
+        || observationCeiling !== 9 + visualAnchors.length
+        || typeof materializationDigest !== 'string'
+      ) {
+        return false;
+      }
+
+      const body = Object.fromEntries(
+        Object.entries(value).filter(([key]) => key !== 'materialization_digest')
+      );
+      return materializationDigest === sha256(body);
+    } catch {
+      return false;
+    }
   }
 });
 
