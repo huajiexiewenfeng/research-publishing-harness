@@ -665,7 +665,35 @@ describe('bounded X Article Browser Host transactions', () => {
     expect(result.progress_events.every((event) =>
       event.elapsed_seconds <= 20 || event.waiting_for !== null
     )).toBe(true);
+    const expectedStages = new Set(result.command_timeline.map((entry) =>
+      `${entry.purpose}#${entry.command_id}`
+    ));
+    expect(result.progress_events.every((event) => expectedStages.has(event.stage))).toBe(true);
+    expect(result.command_timeline.every((entry) => {
+      const progress = result.progress_events.filter((event) =>
+        event.stage === `${entry.purpose}#${entry.command_id}`
+      );
+      return progress.length > 0
+        && progress.every((event) => Date.parse(event.recorded_at) < Date.parse(entry.observation_at));
+    })).toBe(true);
+    const timeline = result.command_timeline.flatMap((entry) => [
+      entry.issued_at,
+      entry.claimed_at,
+      ...result.progress_events
+        .filter((event) => event.stage.endsWith(`#${entry.command_id}`))
+        .map((event) => event.recorded_at),
+      entry.observation_at
+    ]).map(Date.parse);
+    expect(timeline.every((at, index) => index === 0 || at >= timeline[index - 1]!)).toBe(true);
     expect(result.wall_clock_sleeps).toBe(0);
+  });
+
+  it('fails closed when progress is not bound to the issued purpose and command', async () => {
+    await expect(runXArticleHostAcceptance({
+      body_blocks: 76,
+      inline_images: 3,
+      fault: 'wrong_progress_stage'
+    })).rejects.toThrow('progress stage does not match');
   });
 
   it('corrects X grouping each uploaded image at the opening before success', async () => {
@@ -708,20 +736,33 @@ describe('bounded X Article Browser Host transactions', () => {
     })).rejects.toThrow(message);
   });
 
-  it('resumes after an interruption without reimporting or duplicating media', async () => {
-    const result = await runXArticleHostAcceptance({
-      body_blocks: 76,
-      inline_images: 3,
-      interrupt_after_transaction: 2
-    });
+  it.each(['import', 'first_image'] as const)(
+    'restarts after a durable %s effect and reports without replaying the transaction',
+    async (restartAfterEffect) => {
+      const result = await runXArticleHostAcceptance({
+        body_blocks: 76,
+        inline_images: 3,
+        restart_after_effect: restartAfterEffect
+      });
 
-    expect(result.interruption_count).toBe(1);
-    expect(result.body_import_effects).toBe(1);
-    expect(result.host_transactions.filter((kind) => kind === 'import_article_document')).toHaveLength(1);
-    expect(result.image_upload_effects).toHaveLength(3);
-    expect(new Set(result.image_upload_effects).size).toBe(3);
-    expect(result.normalized_post_state.visuals).toHaveLength(3);
-  });
+      expect(result.restart_count).toBe(1);
+      expect(result.recovered_command_ids).toHaveLength(1);
+      expect(result.recovered_claim_created).toEqual([false]);
+      expect(result.claim_identity_unchanged).toBe(true);
+      expect(result.command_digest_unchanged).toBe(true);
+      expect(result.body_import_effects).toBe(1);
+      expect(result.host_transactions.filter((kind) =>
+        kind === 'import_article_document'
+      )).toHaveLength(1);
+      expect(result.image_upload_effects).toHaveLength(3);
+      expect(new Set(result.image_upload_effects).size).toBe(3);
+      expect(result.normalized_post_state.visuals).toHaveLength(3);
+      expect(result.host_transactions).toHaveLength(4);
+      expect(result.observation_count).toBe(4);
+      expect(result.report_count).toBe(4);
+      expect(result.human_content_overwrite_count).toBe(0);
+    }
+  );
 });
 
 describe('X Article Browser workflow', () => {
