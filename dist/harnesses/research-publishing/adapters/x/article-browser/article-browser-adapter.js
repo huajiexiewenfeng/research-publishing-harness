@@ -301,15 +301,46 @@ export class XArticleBrowserAdapter {
         return { snapshot: context.snapshot, command: null };
     }
     async claim(command) {
-        if (command.kind !== 'publish_article_once' || command.side_effect !== 'submit') {
-            return this.broker.claim(command);
+        const detachedCommand = structuredClone(command);
+        return this.withExecutionLock(detachedCommand.execution_id, () => this.claimLocked(detachedCommand));
+    }
+    async claimLocked(command) {
+        let context = await this.readContext(command.execution_id);
+        this.assertClaimLifecycleActive(context);
+        if (context.pending_command === null
+            && context.pending_issue?.command_id === command.command_id) {
+            context = await this.recoverBrokerPersistedCommand(context, command);
         }
-        return this.withExecutionLock(command.execution_id, async () => {
-            const context = await this.readContext(command.execution_id);
-            if (context.execution_mode === 'legacy_preapproved')
-                return this.broker.claim(command);
+        this.assertPendingClaimIdentity(context, command);
+        if (command.kind === 'publish_article_once'
+            && command.side_effect === 'submit'
+            && context.execution_mode === 'materialization_v3_2') {
             return this.claimPreparedPublish(context, command);
-        });
+        }
+        return this.broker.claim(command);
+    }
+    assertClaimLifecycleActive(context) {
+        if (context.snapshot.state === 'cancelled_before_publish'
+            || context.snapshot.state === 'finalized'
+            || context.snapshot.state === 'verification_conflict'
+            || context.snapshot.state === 'failed_after_publish') {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', `X Article command cannot be claimed from terminal state ${context.snapshot.state}`);
+        }
+    }
+    assertPendingClaimIdentity(context, command) {
+        const intent = context.pending_issue;
+        const stableCommandInput = Object.fromEntries(Object.entries(command).filter(([key]) => !['schema_version', 'command_id', 'payload_digest', 'issued_at'].includes(key)));
+        if (context.pending_command === null
+            || intent === null
+            || command.execution_id !== context.snapshot.execution_id
+            || context.snapshot.latest_command_id !== command.command_id
+            || intent.command_id !== command.command_id
+            || intent.input.execution_id !== context.snapshot.execution_id
+            || intent.input_digest !== sha256(intent.input)
+            || intent.input_digest !== sha256(stableCommandInput)
+            || sha256(context.pending_command) !== sha256(command)) {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article claim does not match the current durable pending command issue');
+        }
     }
     async report(input) {
         return this.withExecutionLock(input.command.execution_id, () => this.reportLocked(input));
@@ -497,7 +528,22 @@ export class XArticleBrowserAdapter {
             confirmed_at_not_before: evidence.preview.observed_at,
             confirmed_at_not_after: this.now().toISOString()
         });
-        await this.ensureExactArtifact(this.publishConfirmationPath(executionId), confirmation);
+        const confirmationPath = this.publishConfirmationPath(executionId);
+        if (evidence.checkpoint.publish_confirmation === 'absent') {
+            await this.ensureExactArtifact(confirmationPath, confirmation);
+        }
+        else {
+            let existing;
+            try {
+                existing = await this.store.readJson(confirmationPath);
+            }
+            catch (error) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'armed X Article Publish confirmation artifact is missing or unreadable', error);
+            }
+            if (!isDeepStrictEqual(existing, confirmation)) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'armed X Article Publish confirmation differs on retry');
+            }
+        }
         if (evidence.checkpoint.publish_confirmation === 'absent') {
             await this.materializationStore.updateCheckpoint(executionId, evidence.checkpoint.revision, (current) => {
                 if (current.phase !== 'preview_verified' || current.publish_confirmation !== 'absent') {
@@ -948,10 +994,28 @@ export class XArticleBrowserAdapter {
         if (context.execution_mode !== 'materialization_v3_2' || context.materialization_plan === null) {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared materialization plan is absent');
         }
+        let durablePlan;
+        try {
+            durablePlan = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/plan.json`);
+            assertXArticlePublicationPlan(durablePlan);
+        }
+        catch (error) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'immutable X Article adapter plan is missing, corrupt, or invalid', error);
+        }
         assertXArticlePublicationPlan(context.plan);
         const persisted = await this.materializationStore.readPlan(context.snapshot.execution_id);
-        if (persisted.publication_plan_digest !== context.plan.plan_digest
-            || !isDeepStrictEqual(persisted, context.materialization_plan)) {
+        const expectedMaterialization = createXArticleMaterializationPlan({
+            execution_id: context.snapshot.execution_id,
+            publication_plan: durablePlan,
+            import_template: createXArticleImportTemplate(durablePlan.intent.document),
+            strategy: persisted.strategy
+        });
+        if (!isDeepStrictEqual(durablePlan, context.plan)
+            || durablePlan.plan_id !== context.snapshot.plan_id
+            || durablePlan.run_id !== context.snapshot.run_id
+            || persisted.publication_plan_digest !== context.plan.plan_digest
+            || !isDeepStrictEqual(persisted, context.materialization_plan)
+            || !isDeepStrictEqual(persisted, expectedMaterialization)) {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'durable materialization plan is not bound to the locked publication plan');
         }
         return persisted;
@@ -1460,27 +1524,56 @@ export class XArticleBrowserAdapter {
             consumed_at: this.now().toISOString()
         };
         const consumptionPath = this.publishConfirmationConsumptionPath(context.snapshot.execution_id);
-        let consumption;
-        if (await this.store.exists(consumptionPath)) {
-            consumption = await this.store.readJson(consumptionPath);
-            const { consumption_digest: persistedDigest, ...persistedBody } = consumption;
-            const stablePersisted = { ...persistedBody, consumed_at: null };
-            const stableExpected = { ...consumptionBody, consumed_at: null };
-            if (persistedDigest !== sha256(persistedBody)
-                || !isDeepStrictEqual(stablePersisted, stableExpected)
-                || !Number.isFinite(Date.parse(consumption.consumed_at))) {
-                throw new HarnessError('CONTRACT_INVALID', 'X Article Publish confirmation consumption changed or belongs to another command');
+        const consumptionExists = await this.store.exists(consumptionPath);
+        const alreadyConsumed = context.snapshot.state === 'publish_attempted'
+            || verified.evidence.checkpoint.publish_confirmation === 'consumed'
+            || consumptionExists;
+        if (alreadyConsumed) {
+            const consumption = await this.readExactPublishConsumption(consumptionPath, consumptionBody);
+            if (verified.evidence.checkpoint.publish_confirmation === 'consumed'
+                && verified.evidence.checkpoint.updated_at !== consumption.consumed_at) {
+                throw new HarnessError('CONTRACT_INVALID', 'consumed X Article checkpoint differs from its confirmation consumption');
             }
+            if (verified.evidence.checkpoint.publish_confirmation === 'armed') {
+                await this.consumePublishCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint, consumption.consumed_at);
+            }
+            await this.broker.readExistingClaim(command);
+            if (context.snapshot.state === 'publish_armed') {
+                context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
+                    publish_command_count: 1,
+                    submit_delivered: true
+                });
+            }
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command was already consumed');
         }
-        else {
-            consumption = {
-                ...consumptionBody,
-                consumption_digest: sha256(consumptionBody)
-            };
-            await this.store.writeNew(consumptionPath, consumption);
+        const consumption = {
+            ...consumptionBody,
+            consumption_digest: sha256(consumptionBody)
+        };
+        await this.store.writeNew(consumptionPath, consumption);
+        await this.consumePublishCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint, consumption.consumed_at);
+        const claim = await this.broker.claim(command);
+        context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
+            publish_command_count: 1,
+            submit_delivered: true
+        });
+        return claim;
+    }
+    async readExactPublishConsumption(path, expectedBody) {
+        const consumption = await this.store.readJson(path);
+        const { consumption_digest: persistedDigest, ...persistedBody } = consumption;
+        const stablePersisted = { ...persistedBody, consumed_at: null };
+        const stableExpected = { ...expectedBody, consumed_at: null };
+        if (persistedDigest !== sha256(persistedBody)
+            || !isDeepStrictEqual(stablePersisted, stableExpected)
+            || !Number.isFinite(Date.parse(consumption.consumed_at))) {
+            throw new HarnessError('CONTRACT_INVALID', 'X Article Publish confirmation consumption changed or belongs to another command');
         }
-        if (verified.evidence.checkpoint.publish_confirmation === 'armed') {
-            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint.revision, (current) => {
+        return consumption;
+    }
+    async consumePublishCheckpoint(executionId, checkpoint, consumedAt) {
+        if (checkpoint.publish_confirmation === 'armed') {
+            await this.materializationStore.updateCheckpoint(executionId, checkpoint.revision, (current) => {
                 if (current.phase !== 'human_confirmed' || current.publish_confirmation !== 'armed') {
                     throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'X Article Publish confirmation checkpoint changed before consumption');
                 }
@@ -1488,21 +1581,10 @@ export class XArticleBrowserAdapter {
                     ...current,
                     phase: 'publish_submitted',
                     publish_confirmation: 'consumed',
-                    updated_at: consumption.consumed_at
+                    updated_at: consumedAt
                 };
             });
         }
-        const claimed = await this.broker.claimOrRead(command);
-        if (context.snapshot.state === 'publish_armed') {
-            context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
-                publish_command_count: 1,
-                submit_delivered: true
-            });
-        }
-        if (!claimed.created) {
-            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command was already claimed');
-        }
-        return claimed.claim;
     }
     initialSnapshot(executionId, plan) {
         return {

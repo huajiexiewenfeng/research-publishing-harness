@@ -50,6 +50,9 @@ export declare class XArticleBrowserAdapter {
     }>;
     private nextLocked;
     claim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1>;
+    private claimLocked;
+    private assertClaimLifecycleActive;
+    private assertPendingClaimIdentity;
     report(input: XArticleBrowserReportInput): Promise<XArticleExecutionSnapshotV1>;
     private reportLocked;
     status(executionId: string): Promise<XArticleExecutionSnapshotV1>;
@@ -86,6 +89,8 @@ export declare class XArticleBrowserAdapter {
     private verifyStoredPublishConfirmation;
     private assertPreparedPublishReview;
     private claimPreparedPublish;
+    private readExactPublishConsumption;
+    private consumePublishCheckpoint;
     private initialSnapshot;
     private requireApproval;
     private requireObservation;

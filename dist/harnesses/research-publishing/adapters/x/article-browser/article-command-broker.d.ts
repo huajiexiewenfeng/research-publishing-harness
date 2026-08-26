@@ -117,6 +117,8 @@ export declare class XArticleCommandBroker {
     issue(input: IssueXArticleBrowserCommandInput, commandIdOverride?: string): Promise<XArticleBrowserCommandV1>;
     claim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1>;
     claimOrRead(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimResult>;
+    readExistingClaim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1>;
+    private assertStoredCommand;
     private commandPath;
     private claimPath;
     private assertId;

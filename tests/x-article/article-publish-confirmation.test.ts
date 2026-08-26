@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import type { XArticleBrowserCommandV1 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import {
   computeXArticlePageRevision,
   type XArticleBrowserObservation
@@ -12,6 +13,10 @@ import {
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import {
+  createXArticleMaterializationPlan,
+  type XArticleMaterializationCheckpointV1
+} from '../../harnesses/research-publishing/core/x-article-materialization.js';
 import {
   createXArticlePublishConfirmation,
   verifyXArticlePublishConfirmation,
@@ -172,6 +177,85 @@ async function preparedConfirmationFixture(executionId: string) {
     state: 'confirmation_pending', publish_command_count: 0
   });
   return { store, adapter, executionId: execution.execution_id, preview };
+}
+
+async function pendingDraftClaimFixture(executionId: string) {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-claim-')));
+  const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => executionId,
+    eventId: (() => { let n = 0; return () => `${executionId}_event_${++n}`; })(),
+    commandId: (() => { let n = 0; return () => `${executionId}_command_${++n}`; })(),
+    now: () => new Date('2026-08-26T00:10:00.000Z')
+  });
+  await adapter.prepare(adapterPlan, capabilities);
+  const command = (await adapter.next(executionId)).command!;
+  return { store, adapter, executionId, command };
+}
+
+async function expectCancellationClaimBarrier(
+  store: WorkspaceStore,
+  adapter: XArticleBrowserAdapter,
+  executionId: string,
+  command: XArticleBrowserCommandV1
+): Promise<void> {
+  const withLock = store.withLock.bind(store);
+  let enteredResolve!: () => void;
+  let releaseResolve!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+  const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+  let pauseFirstAdapterLock = true;
+  store.withLock = (path, operation) => withLock(path, async () => {
+    if (path.endsWith('/adapter-execution.lock') && pauseFirstAdapterLock) {
+      pauseFirstAdapterLock = false;
+      enteredResolve();
+      await release;
+    }
+    return operation();
+  });
+
+  const cancelling = adapter.cancelBeforePublish(executionId);
+  await entered;
+  await expect(adapter.claim(command)).rejects.toMatchObject({ code: 'EXECUTION_BUSY' });
+  releaseResolve();
+  await expect(cancelling).resolves.toMatchObject({ state: 'cancelled_before_publish' });
+  await expect(adapter.claim(command)).rejects.toMatchObject({ code: 'COMMAND_REPLAY_REJECTED' });
+}
+
+async function expectConcurrentClaimBarrier(
+  store: WorkspaceStore,
+  adapter: XArticleBrowserAdapter,
+  command: XArticleBrowserCommandV1
+): Promise<void> {
+  const withLock = store.withLock.bind(store);
+  let enteredResolve!: () => void;
+  let releaseResolve!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredResolve = resolve; });
+  const release = new Promise<void>((resolve) => { releaseResolve = resolve; });
+  let pauseFirstAdapterLock = true;
+  let adapterLockCalls = 0;
+  store.withLock = (path, operation) => {
+    if (path.endsWith('/adapter-execution.lock')) {
+      adapterLockCalls += 1;
+    }
+    return withLock(path, async () => {
+      if (path.endsWith('/adapter-execution.lock') && pauseFirstAdapterLock) {
+        pauseFirstAdapterLock = false;
+        enteredResolve();
+        await release;
+      }
+      return operation();
+    });
+  };
+
+  const first = adapter.claim(command);
+  const settledBeforeLock = Promise.allSettled([first]).then(() => 'settled' as const);
+  const event = await Promise.race([entered.then(() => 'entered' as const), settledBeforeLock]);
+  expect(event).toBe('entered');
+  const second = adapter.claim(command);
+  await expect(second).rejects.toMatchObject({ code: 'EXECUTION_BUSY' });
+  releaseResolve();
+  await expect(first).resolves.toMatchObject({ command_id: command.command_id, claimed: true });
+  expect(adapterLockCalls).toBe(2);
 }
 
 function confirmationFor(executionId: string, previewRevision: `sha256:${string}`) {
@@ -368,6 +452,191 @@ describe('X Article Publish confirmation adapter gate', () => {
     await expect(adapter.status(executionId)).resolves.toMatchObject({
       state: 'publish_attempted', publish_command_count: 1
     });
+  });
+
+  it('never recreates or returns a submit authorization after the final claim artifact is deleted', async () => {
+    const { store, adapter, executionId, preview } = await preparedConfirmationFixture(
+      'execution_deleted_final_claim'
+    );
+    await adapter.confirmPublish(executionId, confirmationFor(executionId, preview.page_revision));
+    const command = await advanceToFinalCommand(adapter, executionId, store);
+    await adapter.claim(command);
+    const claimPath = `runs/${executionId}/x-article/browser/commands/${command.command_id}/claim.json`;
+    await store.removeFile(claimPath);
+
+    await expect(adapter.claim(command)).rejects.toMatchObject({ code: expect.any(String) });
+    expect(await store.exists(claimPath)).toBe(false);
+    await expect(adapter.status(executionId)).resolves.toMatchObject({
+      state: 'publish_attempted', publish_command_count: 1
+    });
+  });
+
+  it('never replaces or returns a submit authorization from a corrupt final claim artifact', async () => {
+    const { store, adapter, executionId, preview } = await preparedConfirmationFixture(
+      'execution_corrupt_final_claim'
+    );
+    await adapter.confirmPublish(executionId, confirmationFor(executionId, preview.page_revision));
+    const command = await advanceToFinalCommand(adapter, executionId, store);
+    await adapter.claim(command);
+    const claimPath = `runs/${executionId}/x-article/browser/commands/${command.command_id}/claim.json`;
+    await store.replaceAtomic(claimPath, { schema_version: 'tampered' });
+
+    await expect(adapter.claim(command)).rejects.toMatchObject({ code: expect.any(String) });
+    await expect(store.readJson(claimPath)).resolves.toEqual({ schema_version: 'tampered' });
+    await expect(adapter.status(executionId)).resolves.toMatchObject({
+      state: 'publish_attempted', publish_command_count: 1
+    });
+  });
+
+  it.each(['deleted', 'corrupt'] as const)(
+    'does not resurrect an %s armed confirmation artifact',
+    async (mutation) => {
+      const executionId = `execution_armed_confirmation_${mutation}`;
+      const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+      const confirmation = confirmationFor(executionId, preview.page_revision);
+      await adapter.confirmPublish(executionId, confirmation);
+      const path = `runs/${executionId}/x-article/browser/publish-confirmation.json`;
+      if (mutation === 'deleted') await store.removeFile(path);
+      else await store.replaceAtomic(path, { ...confirmation, confirmed_by: 'attacker' });
+
+      await expect(adapter.confirmPublish(executionId, confirmation))
+        .rejects.toMatchObject({ code: expect.any(String) });
+      if (mutation === 'deleted') expect(await store.exists(path)).toBe(false);
+      else await expect(store.readJson(path)).resolves.toMatchObject({ confirmed_by: 'attacker' });
+    }
+  );
+
+  it.each([
+    ['confirmation', 'deleted'], ['confirmation', 'corrupt'],
+    ['consumption', 'deleted'], ['consumption', 'corrupt']
+  ] as const)('does not resurrect a %s artifact after consumption when it is %s', async (artifact, mutation) => {
+    const executionId = `execution_consumed_${artifact}_${mutation}`;
+    const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+    await adapter.confirmPublish(executionId, confirmationFor(executionId, preview.page_revision));
+    const command = await advanceToFinalCommand(adapter, executionId, store);
+    await adapter.claim(command);
+    const name = artifact === 'confirmation'
+      ? 'publish-confirmation.json'
+      : 'publish-confirmation-consumption.json';
+    const path = `runs/${executionId}/x-article/browser/${name}`;
+    if (mutation === 'deleted') await store.removeFile(path);
+    else await store.replaceAtomic(path, { schema_version: 'tampered' });
+
+    await expect(adapter.claim(command)).rejects.toMatchObject({ code: expect.any(String) });
+    if (mutation === 'deleted') expect(await store.exists(path)).toBe(false);
+    else await expect(store.readJson(path)).resolves.toEqual({ schema_version: 'tampered' });
+  });
+
+  it.each(['missing', 'corrupt', 'tampered'] as const)(
+    'fails confirmation when the immutable adapter plan is %s',
+    async (mutation) => {
+      const executionId = `execution_plan_${mutation}`;
+      const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+      const planPath = `runs/${executionId}/x-article/browser/plan.json`;
+      if (mutation === 'missing') await store.removeFile(planPath);
+      else if (mutation === 'corrupt') await store.replaceAtomic(planPath, 'not a plan');
+      else await store.replaceAtomic(planPath, { ...adapterPlan, plan_id: 'plan_foreign' });
+
+      await expect(adapter.confirmPublish(
+        executionId,
+        confirmationFor(executionId, preview.page_revision)
+      )).rejects.toMatchObject({ code: expect.any(String) });
+      expect(await store.exists(
+        `runs/${executionId}/x-article/browser/publish-confirmation.json`
+      )).toBe(false);
+    }
+  );
+
+  it('rejects coordinated context and materialization replacement against immutable plan authority', async () => {
+    const executionId = 'execution_coordinated_plan_replacement';
+    const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+    const alteredPlan = createXArticlePublicationPlan({
+      planId: adapterPlan.plan_id,
+      runId: adapterPlan.run_id,
+      targetAccount: adapterPlan.intent.target_account,
+      articlePackage: { ...adapterPlan.intent.article_package, digest: DIGEST_B },
+      document: adapterPlan.intent.document,
+      visuals: adapterPlan.intent.visuals,
+      plannedAt: '2026-08-26T00:00:01.000Z',
+      provenance: { coordinated: 'replacement' }
+    });
+    const alteredMaterialization = createXArticleMaterializationPlan({
+      execution_id: executionId,
+      publication_plan: alteredPlan,
+      import_template: createXArticleImportTemplate(alteredPlan.intent.document),
+      strategy: 'rich_text_anchor_import/v1'
+    });
+    const contextPath = `runs/${executionId}/x-article/browser/adapter-context.json`;
+    const materializationPath = `runs/${executionId}/x-article/browser/materialization-plan.json`;
+    const checkpointPath = `runs/${executionId}/x-article/browser/materialization-checkpoint.json`;
+    const context = await store.readJson<Record<string, unknown>>(contextPath);
+    const checkpoint = await store.readJson<XArticleMaterializationCheckpointV1>(checkpointPath);
+    await store.replaceAtomic(contextPath, {
+      ...context, plan: alteredPlan, materialization_plan: alteredMaterialization
+    });
+    await store.replaceAtomic(materializationPath, alteredMaterialization);
+    await store.replaceAtomic(checkpointPath, {
+      ...checkpoint, materialization_digest: alteredMaterialization.materialization_digest
+    });
+    const confirmationBody = Object.fromEntries(Object.entries(
+      confirmationFor(executionId, preview.page_revision)
+    ).filter(([key]) => !['schema_version', 'scope', 'confirmation_digest'].includes(key)));
+    const alteredConfirmation = createXArticlePublishConfirmation({
+      ...confirmationBody,
+      plan_digest: alteredPlan.plan_digest as `sha256:${string}`
+    } as CreateXArticlePublishConfirmationInput);
+
+    await expect(adapter.confirmPublish(executionId, alteredConfirmation))
+      .rejects.toMatchObject({ code: expect.any(String) });
+  });
+
+  it('revalidates immutable plan authority again during final consumption', async () => {
+    const executionId = 'execution_claim_plan_missing';
+    const { store, adapter, preview } = await preparedConfirmationFixture(executionId);
+    await adapter.confirmPublish(executionId, confirmationFor(executionId, preview.page_revision));
+    const command = await advanceToFinalCommand(adapter, executionId, store);
+    await store.removeFile(`runs/${executionId}/x-article/browser/plan.json`);
+
+    await expect(adapter.claim(command)).rejects.toMatchObject({ code: expect.any(String) });
+    expect(await store.exists(
+      `runs/${executionId}/x-article/browser/publish-confirmation-consumption.json`
+    )).toBe(false);
+  });
+
+  it('serializes Draft claims with cancellation and rejects cancelled pending envelopes', async () => {
+    const fixture = await pendingDraftClaimFixture('execution_draft_cancel_claim');
+    await expectCancellationClaimBarrier(
+      fixture.store, fixture.adapter, fixture.executionId, fixture.command
+    );
+  });
+
+  it('serializes Publish review claims with cancellation and rejects cancelled pending envelopes', async () => {
+    const fixture = await preparedConfirmationFixture('execution_review_cancel_claim');
+    await fixture.adapter.confirmPublish(
+      fixture.executionId,
+      confirmationFor(fixture.executionId, fixture.preview.page_revision)
+    );
+    const command = (await fixture.adapter.next(fixture.executionId)).command!;
+    expect(command.kind).toBe('open_publish_review');
+    await expectCancellationClaimBarrier(
+      fixture.store, fixture.adapter, fixture.executionId, command
+    );
+  });
+
+  it('serializes concurrent Draft claims through the adapter execution lock', async () => {
+    const fixture = await pendingDraftClaimFixture('execution_draft_concurrent_claim');
+    await expectConcurrentClaimBarrier(fixture.store, fixture.adapter, fixture.command);
+  });
+
+  it('serializes concurrent Publish review claims through the adapter execution lock', async () => {
+    const fixture = await preparedConfirmationFixture('execution_review_concurrent_claim');
+    await fixture.adapter.confirmPublish(
+      fixture.executionId,
+      confirmationFor(fixture.executionId, fixture.preview.page_revision)
+    );
+    const command = (await fixture.adapter.next(fixture.executionId)).command!;
+    expect(command.kind).toBe('open_publish_review');
+    await expectConcurrentClaimBarrier(fixture.store, fixture.adapter, command);
   });
 
   it.each([

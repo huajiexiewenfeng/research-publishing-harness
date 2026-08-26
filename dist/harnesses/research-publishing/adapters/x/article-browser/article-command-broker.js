@@ -41,10 +41,7 @@ export class XArticleCommandBroker {
         return result.claim;
     }
     async claimOrRead(command) {
-        const stored = await this.store.readJson(this.commandPath(command));
-        if (sha256(stored) !== sha256(command)) {
-            throw new HarnessError('CONTRACT_INVALID', 'X Article command differs from its persisted envelope');
-        }
+        await this.assertStoredCommand(command);
         const claim = {
             schema_version: '1.0', execution_id: command.execution_id,
             command_id: command.command_id, claimed: true, claimed_at: this.now().toISOString()
@@ -54,19 +51,30 @@ export class XArticleCommandBroker {
         }
         catch (error) {
             if (error instanceof HarnessError && error.code === 'ARTIFACT_EXISTS') {
-                const existing = await this.store.readJson(this.claimPath(command));
-                if (existing.schema_version !== '1.0'
-                    || existing.execution_id !== command.execution_id
-                    || existing.command_id !== command.command_id
-                    || existing.claimed !== true
-                    || !Number.isFinite(Date.parse(existing.claimed_at))) {
-                    throw new HarnessError('CONTRACT_INVALID', 'persisted X Article command claim changed');
-                }
+                const existing = await this.readExistingClaim(command);
                 return { claim: existing, created: false };
             }
             throw error;
         }
         return { claim, created: true };
+    }
+    async readExistingClaim(command) {
+        await this.assertStoredCommand(command);
+        const existing = await this.store.readJson(this.claimPath(command));
+        if (existing.schema_version !== '1.0'
+            || existing.execution_id !== command.execution_id
+            || existing.command_id !== command.command_id
+            || existing.claimed !== true
+            || !Number.isFinite(Date.parse(existing.claimed_at))) {
+            throw new HarnessError('CONTRACT_INVALID', 'persisted X Article command claim changed');
+        }
+        return existing;
+    }
+    async assertStoredCommand(command) {
+        const stored = await this.store.readJson(this.commandPath(command));
+        if (sha256(stored) !== sha256(command)) {
+            throw new HarnessError('CONTRACT_INVALID', 'X Article command differs from its persisted envelope');
+        }
     }
     commandPath(command) {
         this.assertId(command.execution_id);
