@@ -1,32 +1,132 @@
+import { isDeepStrictEqual } from 'node:util';
 import { HarnessError } from './errors.js';
 import { validateContract } from './schema-validator.js';
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+function snapshot(value) {
+    return structuredClone(value);
+}
 export class XArticleMaterializationStore {
     store;
     constructor(store) {
         this.store = store;
     }
     async create(plan, checkpoint) {
-        const validatedPlan = validateContract('x-article-materialization-plan', plan);
-        this.assertSafeExecutionId(validatedPlan.execution_id);
-        const validatedCheckpoint = validateContract('x-article-materialization-checkpoint', checkpoint);
-        this.assertCheckpointMatchesPlan(validatedCheckpoint, validatedPlan);
+        const detachedPlan = snapshot(plan);
+        const detachedCheckpoint = snapshot(checkpoint);
+        const requestedExecutionId = detachedPlan.execution_id;
+        const validatedPlan = validateContract('x-article-materialization-plan', detachedPlan);
+        this.assertSafeExecutionId(requestedExecutionId);
+        const validatedCheckpoint = validateContract('x-article-materialization-checkpoint', detachedCheckpoint);
+        this.assertCheckpointMatchesPlan(validatedCheckpoint, validatedPlan, requestedExecutionId);
         if (validatedCheckpoint.revision !== 0) {
             throw this.conflict('initial materialization checkpoint revision must be zero');
         }
-        return this.store.withLock(this.lockPath(validatedPlan.execution_id), async () => {
-            await this.store.writeNew(this.planPath(validatedPlan.execution_id), validatedPlan);
-            await this.store.writeNew(this.checkpointPath(validatedPlan.execution_id), validatedCheckpoint);
-            return validatedCheckpoint;
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+            const planPath = this.planPath(requestedExecutionId);
+            const checkpointPath = this.checkpointPath(requestedExecutionId);
+            const [planExists, checkpointExists] = await Promise.all([
+                this.store.exists(planPath),
+                this.store.exists(checkpointPath)
+            ]);
+            if (planExists && checkpointExists) {
+                throw this.conflict('materialization plan and checkpoint already exist');
+            }
+            if (!planExists && !checkpointExists) {
+                await this.store.writeNew(planPath, validatedPlan);
+                await this.store.writeNew(checkpointPath, validatedCheckpoint);
+            }
+            else if (planExists) {
+                const existingPlan = await this.readArtifact(planPath, 'x-article-materialization-plan', 'materialization plan');
+                if (!isDeepStrictEqual(existingPlan, validatedPlan)) {
+                    throw this.conflict('incomplete materialization plan does not match retry input');
+                }
+                await this.store.writeNew(checkpointPath, validatedCheckpoint);
+            }
+            else {
+                const existingCheckpoint = await this.readArtifact(checkpointPath, 'x-article-materialization-checkpoint', 'materialization checkpoint');
+                if (!isDeepStrictEqual(existingCheckpoint, validatedCheckpoint)) {
+                    throw this.conflict('incomplete materialization checkpoint does not match retry input');
+                }
+                await this.store.writeNew(planPath, validatedPlan);
+            }
+            return snapshot(validatedCheckpoint);
         });
     }
     async readCheckpoint(executionId) {
-        this.assertSafeExecutionId(executionId);
+        const requestedExecutionId = executionId;
+        this.assertSafeExecutionId(requestedExecutionId);
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => snapshot((await this.readStateUnlocked(requestedExecutionId)).checkpoint));
+    }
+    async updateCheckpoint(executionId, expectedRevision, update) {
+        const requestedExecutionId = executionId;
+        this.assertSafeExecutionId(requestedExecutionId);
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+            const { plan, checkpoint: current } = await this.readStateUnlocked(requestedExecutionId);
+            if (current.revision !== expectedRevision) {
+                throw this.conflict('materialization checkpoint revision changed');
+            }
+            const detachedUpdate = snapshot(update(snapshot(current)));
+            const next = validateContract('x-article-materialization-checkpoint', { ...detachedUpdate, revision: current.revision + 1 });
+            this.assertCheckpointMatchesPlan(next, plan, requestedExecutionId);
+            const persisted = snapshot(next);
+            await this.store.replaceAtomic(this.checkpointPath(requestedExecutionId), persisted);
+            return snapshot(persisted);
+        });
+    }
+    async appendProgress(progress) {
+        const detachedProgress = snapshot(progress);
+        const validated = validateContract('x-article-materialization-progress', detachedProgress);
+        const requestedExecutionId = validated.execution_id;
+        this.assertSafeExecutionId(requestedExecutionId);
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+            await this.readStateUnlocked(requestedExecutionId);
+            const persisted = snapshot(validated);
+            await this.store.appendLine(this.progressPath(requestedExecutionId), JSON.stringify(persisted));
+            return snapshot(persisted);
+        });
+    }
+    async readProgress(executionId) {
+        const requestedExecutionId = executionId;
+        this.assertSafeExecutionId(requestedExecutionId);
+        return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+            await this.readStateUnlocked(requestedExecutionId);
+            const path = this.progressPath(requestedExecutionId);
+            if (!(await this.store.exists(path)))
+                return [];
+            const content = await this.store.readText(path);
+            if (!content.endsWith('\n')) {
+                throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger must end with a newline');
+            }
+            const lines = content.split('\n');
+            lines.pop();
+            if (lines.some((line) => line.length === 0)) {
+                throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger contains a blank record');
+            }
+            return lines.map((line) => {
+                let value;
+                try {
+                    value = JSON.parse(line);
+                }
+                catch {
+                    throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger contains invalid JSON');
+                }
+                const entry = validateContract('x-article-materialization-progress', value);
+                if (entry.execution_id !== requestedExecutionId) {
+                    throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger contains a foreign execution entry');
+                }
+                return entry;
+            });
+        });
+    }
+    async readStateUnlocked(executionId) {
+        const plan = await this.readArtifact(this.planPath(executionId), 'x-article-materialization-plan', 'materialization plan');
+        const checkpoint = await this.readArtifact(this.checkpointPath(executionId), 'x-article-materialization-checkpoint', 'materialization checkpoint');
+        this.assertCheckpointMatchesPlan(checkpoint, plan, executionId);
+        return { plan, checkpoint };
+    }
+    async readArtifact(path, contract, label) {
         try {
-            const plan = validateContract('x-article-materialization-plan', await this.store.readJson(this.planPath(executionId)));
-            const checkpoint = validateContract('x-article-materialization-checkpoint', await this.store.readJson(this.checkpointPath(executionId)));
-            this.assertCheckpointMatchesPlan(checkpoint, plan);
-            return checkpoint;
+            return validateContract(contract, await this.store.readJson(path));
         }
         catch (error) {
             if (error instanceof HarnessError) {
@@ -39,59 +139,10 @@ export class XArticleMaterializationStore {
             else if (!(error instanceof SyntaxError)) {
                 throw error;
             }
-            throw this.conflict('materialization checkpoint is missing or corrupt', error);
+            throw this.conflict(`${label} is missing or corrupt`, error);
         }
     }
-    async updateCheckpoint(executionId, expectedRevision, update) {
-        this.assertSafeExecutionId(executionId);
-        return this.store.withLock(this.lockPath(executionId), async () => {
-            const current = await this.readCheckpoint(executionId);
-            if (current.revision !== expectedRevision) {
-                throw this.conflict('materialization checkpoint revision changed');
-            }
-            const next = validateContract('x-article-materialization-checkpoint', { ...update(current), revision: current.revision + 1 });
-            const plan = validateContract('x-article-materialization-plan', await this.store.readJson(this.planPath(executionId)));
-            this.assertCheckpointMatchesPlan(next, plan);
-            await this.store.replaceAtomic(this.checkpointPath(executionId), next);
-            return next;
-        });
-    }
-    async appendProgress(progress) {
-        const validated = validateContract('x-article-materialization-progress', progress);
-        this.assertSafeExecutionId(validated.execution_id);
-        return this.store.withLock(this.lockPath(validated.execution_id), async () => {
-            await this.readCheckpoint(validated.execution_id);
-            await this.store.appendLine(this.progressPath(validated.execution_id), JSON.stringify(validated));
-            return validated;
-        });
-    }
-    async readProgress(executionId) {
-        this.assertSafeExecutionId(executionId);
-        return this.store.withLock(this.lockPath(executionId), async () => {
-            await this.readCheckpoint(executionId);
-            const path = this.progressPath(executionId);
-            if (!(await this.store.exists(path)))
-                return [];
-            return (await this.store.readText(path))
-                .split('\n')
-                .filter((line) => line.length > 0)
-                .map((line) => {
-                let value;
-                try {
-                    value = JSON.parse(line);
-                }
-                catch {
-                    throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger contains invalid JSON');
-                }
-                const entry = validateContract('x-article-materialization-progress', value);
-                if (entry.execution_id !== executionId) {
-                    throw new HarnessError('CONTRACT_INVALID', 'X Article materialization progress ledger contains a foreign execution entry');
-                }
-                return entry;
-            });
-        });
-    }
-    assertCheckpointMatchesPlan(checkpoint, plan) {
+    assertCheckpointMatchesPlan(checkpoint, plan, requestedExecutionId) {
         const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
             && checkpoint.media.every((media, index) => {
                 const anchor = plan.visual_anchors[index];
@@ -101,7 +152,9 @@ export class XArticleMaterializationStore {
                     && media.block_ordinal === anchor.block_ordinal
                     && media.asset_digest === anchor.asset_digest;
             });
-        if (checkpoint.execution_id !== plan.execution_id
+        if (plan.execution_id !== requestedExecutionId
+            || checkpoint.execution_id !== requestedExecutionId
+            || checkpoint.execution_id !== plan.execution_id
             || checkpoint.materialization_digest !== plan.materialization_digest
             || !mediaMatches) {
             throw this.conflict('materialization checkpoint does not match its locked plan');

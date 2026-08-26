@@ -1,5 +1,8 @@
+import { isDeepStrictEqual } from 'node:util';
+
 import { HarnessError } from './errors.js';
 import { validateContract } from './schema-validator.js';
+import type { ContractName } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 import type {
   XArticleMaterializationCheckpointV1,
@@ -11,6 +14,11 @@ export type UpdateCheckpoint = (
   current: XArticleMaterializationCheckpointV1
 ) => XArticleMaterializationCheckpointV1;
 
+/**
+ * Operations sharing an execution lock are fail-busy: a simultaneous loser rejects with
+ * EXECUTION_BUSY. A later sequential checkpoint update with a stale revision rejects with
+ * ARTICLE_CHECKPOINT_CONFLICT.
+ */
 export interface XArticleMaterializationStoreApi {
   create(
     plan: XArticleMaterializationPlanV1,
@@ -28,6 +36,15 @@ export interface XArticleMaterializationStoreApi {
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
+interface MaterializationState {
+  readonly plan: XArticleMaterializationPlanV1;
+  readonly checkpoint: XArticleMaterializationCheckpointV1;
+}
+
+function snapshot<T>(value: T): T {
+  return structuredClone(value);
+}
+
 export class XArticleMaterializationStore implements XArticleMaterializationStoreApi {
   constructor(private readonly store: WorkspaceStore) {}
 
@@ -35,43 +52,188 @@ export class XArticleMaterializationStore implements XArticleMaterializationStor
     plan: XArticleMaterializationPlanV1,
     checkpoint: XArticleMaterializationCheckpointV1
   ): Promise<XArticleMaterializationCheckpointV1> {
+    const detachedPlan = snapshot(plan);
+    const detachedCheckpoint = snapshot(checkpoint);
+    const requestedExecutionId = detachedPlan.execution_id;
     const validatedPlan = validateContract<XArticleMaterializationPlanV1>(
       'x-article-materialization-plan',
-      plan
+      detachedPlan
     );
-    this.assertSafeExecutionId(validatedPlan.execution_id);
+    this.assertSafeExecutionId(requestedExecutionId);
     const validatedCheckpoint = validateContract<XArticleMaterializationCheckpointV1>(
       'x-article-materialization-checkpoint',
-      checkpoint
+      detachedCheckpoint
     );
-    this.assertCheckpointMatchesPlan(validatedCheckpoint, validatedPlan);
+    this.assertCheckpointMatchesPlan(
+      validatedCheckpoint,
+      validatedPlan,
+      requestedExecutionId
+    );
     if (validatedCheckpoint.revision !== 0) {
       throw this.conflict('initial materialization checkpoint revision must be zero');
     }
 
-    return this.store.withLock(this.lockPath(validatedPlan.execution_id), async () => {
-      await this.store.writeNew(this.planPath(validatedPlan.execution_id), validatedPlan);
-      await this.store.writeNew(
-        this.checkpointPath(validatedPlan.execution_id),
-        validatedCheckpoint
-      );
-      return validatedCheckpoint;
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+      const planPath = this.planPath(requestedExecutionId);
+      const checkpointPath = this.checkpointPath(requestedExecutionId);
+      const [planExists, checkpointExists] = await Promise.all([
+        this.store.exists(planPath),
+        this.store.exists(checkpointPath)
+      ]);
+
+      if (planExists && checkpointExists) {
+        throw this.conflict('materialization plan and checkpoint already exist');
+      }
+      if (!planExists && !checkpointExists) {
+        await this.store.writeNew(planPath, validatedPlan);
+        await this.store.writeNew(checkpointPath, validatedCheckpoint);
+      } else if (planExists) {
+        const existingPlan = await this.readArtifact<XArticleMaterializationPlanV1>(
+          planPath,
+          'x-article-materialization-plan',
+          'materialization plan'
+        );
+        if (!isDeepStrictEqual(existingPlan, validatedPlan)) {
+          throw this.conflict('incomplete materialization plan does not match retry input');
+        }
+        await this.store.writeNew(checkpointPath, validatedCheckpoint);
+      } else {
+        const existingCheckpoint = await this.readArtifact<XArticleMaterializationCheckpointV1>(
+          checkpointPath,
+          'x-article-materialization-checkpoint',
+          'materialization checkpoint'
+        );
+        if (!isDeepStrictEqual(existingCheckpoint, validatedCheckpoint)) {
+          throw this.conflict('incomplete materialization checkpoint does not match retry input');
+        }
+        await this.store.writeNew(planPath, validatedPlan);
+      }
+      return snapshot(validatedCheckpoint);
     });
   }
 
   async readCheckpoint(executionId: string): Promise<XArticleMaterializationCheckpointV1> {
-    this.assertSafeExecutionId(executionId);
-    try {
-      const plan = validateContract<XArticleMaterializationPlanV1>(
-        'x-article-materialization-plan',
-        await this.store.readJson<unknown>(this.planPath(executionId))
-      );
-      const checkpoint = validateContract<XArticleMaterializationCheckpointV1>(
+    const requestedExecutionId = executionId;
+    this.assertSafeExecutionId(requestedExecutionId);
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () =>
+      snapshot((await this.readStateUnlocked(requestedExecutionId)).checkpoint)
+    );
+  }
+
+  async updateCheckpoint(
+    executionId: string,
+    expectedRevision: number,
+    update: UpdateCheckpoint
+  ): Promise<XArticleMaterializationCheckpointV1> {
+    const requestedExecutionId = executionId;
+    this.assertSafeExecutionId(requestedExecutionId);
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+      const { plan, checkpoint: current } = await this.readStateUnlocked(requestedExecutionId);
+      if (current.revision !== expectedRevision) {
+        throw this.conflict('materialization checkpoint revision changed');
+      }
+      const detachedUpdate = snapshot(update(snapshot(current)));
+      const next = validateContract<XArticleMaterializationCheckpointV1>(
         'x-article-materialization-checkpoint',
-        await this.store.readJson<unknown>(this.checkpointPath(executionId))
+        { ...detachedUpdate, revision: current.revision + 1 }
       );
-      this.assertCheckpointMatchesPlan(checkpoint, plan);
-      return checkpoint;
+      this.assertCheckpointMatchesPlan(next, plan, requestedExecutionId);
+      const persisted = snapshot(next);
+      await this.store.replaceAtomic(this.checkpointPath(requestedExecutionId), persisted);
+      return snapshot(persisted);
+    });
+  }
+
+  async appendProgress(progress: XArticleStageProgressV1): Promise<XArticleStageProgressV1> {
+    const detachedProgress = snapshot(progress);
+    const validated = validateContract<XArticleStageProgressV1>(
+      'x-article-materialization-progress',
+      detachedProgress
+    );
+    const requestedExecutionId = validated.execution_id;
+    this.assertSafeExecutionId(requestedExecutionId);
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+      await this.readStateUnlocked(requestedExecutionId);
+      const persisted = snapshot(validated);
+      await this.store.appendLine(
+        this.progressPath(requestedExecutionId),
+        JSON.stringify(persisted)
+      );
+      return snapshot(persisted);
+    });
+  }
+
+  async readProgress(executionId: string): Promise<readonly XArticleStageProgressV1[]> {
+    const requestedExecutionId = executionId;
+    this.assertSafeExecutionId(requestedExecutionId);
+    return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
+      await this.readStateUnlocked(requestedExecutionId);
+      const path = this.progressPath(requestedExecutionId);
+      if (!(await this.store.exists(path))) return [];
+
+      const content = await this.store.readText(path);
+      if (!content.endsWith('\n')) {
+        throw new HarnessError(
+          'CONTRACT_INVALID',
+          'X Article materialization progress ledger must end with a newline'
+        );
+      }
+      const lines = content.split('\n');
+      lines.pop();
+      if (lines.some((line) => line.length === 0)) {
+        throw new HarnessError(
+          'CONTRACT_INVALID',
+          'X Article materialization progress ledger contains a blank record'
+        );
+      }
+
+      return lines.map((line) => {
+        let value: unknown;
+        try {
+          value = JSON.parse(line) as unknown;
+        } catch {
+          throw new HarnessError(
+            'CONTRACT_INVALID',
+            'X Article materialization progress ledger contains invalid JSON'
+          );
+        }
+        const entry = validateContract<XArticleStageProgressV1>(
+          'x-article-materialization-progress',
+          value
+        );
+        if (entry.execution_id !== requestedExecutionId) {
+            throw new HarnessError(
+              'CONTRACT_INVALID',
+              'X Article materialization progress ledger contains a foreign execution entry'
+            );
+        }
+        return entry;
+      });
+    });
+  }
+
+  private async readStateUnlocked(executionId: string): Promise<MaterializationState> {
+    const plan = await this.readArtifact<XArticleMaterializationPlanV1>(
+      this.planPath(executionId),
+      'x-article-materialization-plan',
+      'materialization plan'
+    );
+    const checkpoint = await this.readArtifact<XArticleMaterializationCheckpointV1>(
+      this.checkpointPath(executionId),
+      'x-article-materialization-checkpoint',
+      'materialization checkpoint'
+    );
+    this.assertCheckpointMatchesPlan(checkpoint, plan, executionId);
+    return { plan, checkpoint };
+  }
+
+  private async readArtifact<T>(
+    path: string,
+    contract: ContractName,
+    label: string
+  ): Promise<T> {
+    try {
+      return validateContract<T>(contract, await this.store.readJson<unknown>(path));
     } catch (error) {
       if (error instanceof HarnessError) {
         if (error.code === 'ARTICLE_CHECKPOINT_CONFLICT') throw error;
@@ -81,89 +243,14 @@ export class XArticleMaterializationStore implements XArticleMaterializationStor
       } else if (!(error instanceof SyntaxError)) {
         throw error;
       }
-      throw this.conflict('materialization checkpoint is missing or corrupt', error);
+      throw this.conflict(`${label} is missing or corrupt`, error);
     }
-  }
-
-  async updateCheckpoint(
-    executionId: string,
-    expectedRevision: number,
-    update: UpdateCheckpoint
-  ): Promise<XArticleMaterializationCheckpointV1> {
-    this.assertSafeExecutionId(executionId);
-    return this.store.withLock(this.lockPath(executionId), async () => {
-      const current = await this.readCheckpoint(executionId);
-      if (current.revision !== expectedRevision) {
-        throw this.conflict('materialization checkpoint revision changed');
-      }
-      const next = validateContract<XArticleMaterializationCheckpointV1>(
-        'x-article-materialization-checkpoint',
-        { ...update(current), revision: current.revision + 1 }
-      );
-      const plan = validateContract<XArticleMaterializationPlanV1>(
-        'x-article-materialization-plan',
-        await this.store.readJson<unknown>(this.planPath(executionId))
-      );
-      this.assertCheckpointMatchesPlan(next, plan);
-      await this.store.replaceAtomic(this.checkpointPath(executionId), next);
-      return next;
-    });
-  }
-
-  async appendProgress(progress: XArticleStageProgressV1): Promise<XArticleStageProgressV1> {
-    const validated = validateContract<XArticleStageProgressV1>(
-      'x-article-materialization-progress',
-      progress
-    );
-    this.assertSafeExecutionId(validated.execution_id);
-    return this.store.withLock(this.lockPath(validated.execution_id), async () => {
-      await this.readCheckpoint(validated.execution_id);
-      await this.store.appendLine(
-        this.progressPath(validated.execution_id),
-        JSON.stringify(validated)
-      );
-      return validated;
-    });
-  }
-
-  async readProgress(executionId: string): Promise<readonly XArticleStageProgressV1[]> {
-    this.assertSafeExecutionId(executionId);
-    return this.store.withLock(this.lockPath(executionId), async () => {
-      await this.readCheckpoint(executionId);
-      const path = this.progressPath(executionId);
-      if (!(await this.store.exists(path))) return [];
-
-      return (await this.store.readText(path))
-        .split('\n')
-        .filter((line) => line.length > 0)
-        .map((line) => {
-          let value: unknown;
-          try {
-            value = JSON.parse(line) as unknown;
-          } catch {
-            throw new HarnessError(
-              'CONTRACT_INVALID',
-              'X Article materialization progress ledger contains invalid JSON'
-            );
-          }
-          const entry = validateContract<XArticleStageProgressV1>(
-            'x-article-materialization-progress',
-            value
-          );
-          if (entry.execution_id !== executionId) {
-            throw new HarnessError(
-              'CONTRACT_INVALID',
-              'X Article materialization progress ledger contains a foreign execution entry'
-            );
-          }
-          return entry;
-        });
-    });
   }
 
   private assertCheckpointMatchesPlan(
     checkpoint: XArticleMaterializationCheckpointV1,
-    plan: XArticleMaterializationPlanV1
+    plan: XArticleMaterializationPlanV1,
+    requestedExecutionId: string
   ): void {
     const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
       && checkpoint.media.every((media, index) => {
@@ -175,7 +262,9 @@ export class XArticleMaterializationStore implements XArticleMaterializationStor
           && media.asset_digest === anchor.asset_digest;
       });
     if (
-      checkpoint.execution_id !== plan.execution_id
+      plan.execution_id !== requestedExecutionId
+      || checkpoint.execution_id !== requestedExecutionId
+      || checkpoint.execution_id !== plan.execution_id
       || checkpoint.materialization_digest !== plan.materialization_digest
       || !mediaMatches
     ) {

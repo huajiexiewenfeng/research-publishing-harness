@@ -1,6 +1,11 @@
 import type { WorkspaceStore } from './workspace-store.js';
 import type { XArticleMaterializationCheckpointV1, XArticleMaterializationPlanV1, XArticleStageProgressV1 } from './x-article-materialization.js';
 export type UpdateCheckpoint = (current: XArticleMaterializationCheckpointV1) => XArticleMaterializationCheckpointV1;
+/**
+ * Operations sharing an execution lock are fail-busy: a simultaneous loser rejects with
+ * EXECUTION_BUSY. A later sequential checkpoint update with a stale revision rejects with
+ * ARTICLE_CHECKPOINT_CONFLICT.
+ */
 export interface XArticleMaterializationStoreApi {
     create(plan: XArticleMaterializationPlanV1, checkpoint: XArticleMaterializationCheckpointV1): Promise<XArticleMaterializationCheckpointV1>;
     readCheckpoint(executionId: string): Promise<XArticleMaterializationCheckpointV1>;
@@ -16,6 +21,8 @@ export declare class XArticleMaterializationStore implements XArticleMaterializa
     updateCheckpoint(executionId: string, expectedRevision: number, update: UpdateCheckpoint): Promise<XArticleMaterializationCheckpointV1>;
     appendProgress(progress: XArticleStageProgressV1): Promise<XArticleStageProgressV1>;
     readProgress(executionId: string): Promise<readonly XArticleStageProgressV1[]>;
+    private readStateUnlocked;
+    private readArtifact;
     private assertCheckpointMatchesPlan;
     private assertSafeExecutionId;
     private prefix;
