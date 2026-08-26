@@ -101,6 +101,10 @@ export interface XArticleCommandClaimV1 {
     readonly claimed: true;
     readonly claimed_at: string;
 }
+export interface XArticleCommandClaimResult {
+    readonly claim: XArticleCommandClaimV1;
+    readonly created: boolean;
+}
 interface XArticleCommandBrokerOptions {
     readonly commandId?: () => string;
     readonly now?: () => Date;
@@ -112,6 +116,7 @@ export declare class XArticleCommandBroker {
     constructor(store: WorkspaceStore, options?: XArticleCommandBrokerOptions);
     issue(input: IssueXArticleBrowserCommandInput, commandIdOverride?: string): Promise<XArticleBrowserCommandV1>;
     claim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1>;
+    claimOrRead(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimResult>;
     private commandPath;
     private claimPath;
     private assertId;

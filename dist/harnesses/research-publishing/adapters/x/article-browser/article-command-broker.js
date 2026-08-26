@@ -34,6 +34,13 @@ export class XArticleCommandBroker {
         return command;
     }
     async claim(command) {
+        const result = await this.claimOrRead(command);
+        if (!result.created) {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article command was already claimed');
+        }
+        return result.claim;
+    }
+    async claimOrRead(command) {
         const stored = await this.store.readJson(this.commandPath(command));
         if (sha256(stored) !== sha256(command)) {
             throw new HarnessError('CONTRACT_INVALID', 'X Article command differs from its persisted envelope');
@@ -47,11 +54,19 @@ export class XArticleCommandBroker {
         }
         catch (error) {
             if (error instanceof HarnessError && error.code === 'ARTIFACT_EXISTS') {
-                throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article command was already claimed');
+                const existing = await this.store.readJson(this.claimPath(command));
+                if (existing.schema_version !== '1.0'
+                    || existing.execution_id !== command.execution_id
+                    || existing.command_id !== command.command_id
+                    || existing.claimed !== true
+                    || !Number.isFinite(Date.parse(existing.claimed_at))) {
+                    throw new HarnessError('CONTRACT_INVALID', 'persisted X Article command claim changed');
+                }
+                return { claim: existing, created: false };
             }
             throw error;
         }
-        return claim;
+        return { claim, created: true };
     }
     commandPath(command) {
         this.assertId(command.execution_id);

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-publishing.local/x-article-publish-confirmation.schema.json",
+  "title": "X Article Publish Confirmation V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "confirmation_id", "execution_id", "draft_id",
+    "target_account", "audience", "scope", "plan_digest", "document_digest",
+    "preview_revision", "asset_digests", "confirmed_by", "confirmed_at",
+    "confirmation_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-publish-confirmation/v1" },
+    "confirmation_id": { "$ref": "#/$defs/safe_id" },
+    "execution_id": { "$ref": "#/$defs/safe_id" },
+    "draft_id": { "type": "string", "minLength": 1 },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "audience": { "const": "everyone" },
+    "scope": { "const": "publish_article_once" },
+    "plan_digest": { "$ref": "#/$defs/digest" },
+    "document_digest": { "$ref": "#/$defs/digest" },
+    "preview_revision": { "$ref": "#/$defs/digest" },
+    "asset_digests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/digest" }
+    },
+    "confirmed_by": { "type": "string", "minLength": 1 },
+    "confirmed_at": { "type": "string", "format": "date-time" },
+    "confirmation_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "safe_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

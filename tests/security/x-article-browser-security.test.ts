@@ -54,6 +54,25 @@ function importCommand(
 }
 
 describe('X Article Browser security', () => {
+  it('rejects malformed and extensible Publish confirmations at the contract boundary', () => {
+    const confirmation = {
+      schema_version: 'x-article-publish-confirmation/v1',
+      confirmation_id: 'confirmation_secure', execution_id: 'execution_secure',
+      draft_id: '2090731994279755776', target_account: '@Glen56121', audience: 'everyone',
+      scope: 'publish_article_once', plan_digest: DIGEST_A, document_digest: DIGEST_B,
+      preview_revision: DIGEST_A, asset_digests: [DIGEST_B], confirmed_by: 'human',
+      confirmed_at: '2026-08-26T00:10:00.000Z', confirmation_digest: DIGEST_A
+    };
+
+    expect(validateContract('x-article-publish-confirmation', confirmation)).toEqual(confirmation);
+    expect(() => validateContract('x-article-publish-confirmation', {
+      ...confirmation, confirmation_digest: 'sha256:short'
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+    expect(() => validateContract('x-article-publish-confirmation', {
+      ...confirmation, extra_submit: true
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
   it('rejects an unsafe Package root even when passed as a typed Plan', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-security-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

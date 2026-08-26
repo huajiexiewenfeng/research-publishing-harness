@@ -39,7 +39,7 @@ const TRANSITIONS: Readonly<Record<XArticleExecutionState, readonly XArticleExec
   content_verified: ['preview_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   materialization_reconciling: ['confirmation_pending', 'materialization_blocked', 'pre_publish_failed', 'cancelled_before_publish'],
   materialization_blocked: ['cancelled_before_publish'],
-  confirmation_pending: ['cancelled_before_publish'],
+  confirmation_pending: ['publish_armed', 'cancelled_before_publish'],
   preview_verified: ['publish_armed', 'pre_publish_failed', 'cancelled_before_publish'],
   publish_armed: ['publish_attempted', 'pre_publish_failed', 'cancelled_before_publish'],
   publish_attempted: ['outcome_resolving'],

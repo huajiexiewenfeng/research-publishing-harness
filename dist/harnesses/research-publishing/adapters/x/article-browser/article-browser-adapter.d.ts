@@ -1,6 +1,7 @@
 import { type ResearchTerminalNotifier } from '../../../core/research-terminal-hooks.js';
 import { type XArticleExecutionSnapshotV1 } from '../../../core/x-article-execution.js';
 import { type XArticleApprovalV1 } from '../../../core/x-article-approval.js';
+import { type XArticlePublishConfirmationV1 } from '../../../core/x-article-publish-confirmation.js';
 import { type XArticlePublicationPlanV1 } from '../../../core/x-article-publication-plan.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import { type XArticleBrowserObservation } from './article-browser-protocol.js';
@@ -52,6 +53,8 @@ export declare class XArticleBrowserAdapter {
     report(input: XArticleBrowserReportInput): Promise<XArticleExecutionSnapshotV1>;
     private reportLocked;
     status(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    confirmPublish(executionId: string, confirmation: XArticlePublishConfirmationV1): Promise<XArticleExecutionSnapshotV1>;
+    private confirmPublishLocked;
     resumeVerification(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     resumeEditor(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     private resumeEditorLocked;
@@ -79,12 +82,18 @@ export declare class XArticleBrowserAdapter {
     private finalizeProjectedReport;
     private recoverBrokerPersistedCommand;
     private verifyPreparedCapabilities;
+    private assertPreparedConfirmationEvidence;
+    private verifyStoredPublishConfirmation;
+    private assertPreparedPublishReview;
+    private claimPreparedPublish;
     private initialSnapshot;
     private requireApproval;
     private requireObservation;
     private readContext;
     private writeContext;
     private prefix;
+    private publishConfirmationPath;
+    private publishConfirmationConsumptionPath;
     private ensureExactArtifact;
     private withExecutionLock;
     private commandPath;

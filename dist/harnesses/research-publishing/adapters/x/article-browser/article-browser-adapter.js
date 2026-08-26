@@ -5,6 +5,7 @@ import { HarnessError } from '../../../core/errors.js';
 import { notifyTerminalSafely } from '../../../core/research-terminal-hooks.js';
 import { createXArticleExecutionEvent, transitionXArticleExecution } from '../../../core/x-article-execution.js';
 import { verifyXArticleApproval } from '../../../core/x-article-approval.js';
+import { verifyXArticlePublishConfirmation } from '../../../core/x-article-publish-confirmation.js';
 import { assertXArticlePublicationPlan } from '../../../core/x-article-publication-plan.js';
 import { createInitialXArticleMaterializationCheckpoint, createXArticleMaterializationPlan } from '../../../core/x-article-materialization.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
@@ -64,7 +65,7 @@ export class XArticleBrowserAdapter {
             execution_mode: 'materialization_v3_2', materialization_plan: materializationPlan,
             import_strategy: 'bulk_document', bulk_import_issued: false, snapshot,
             latest_observation: null, editor_revision: null, preview_revision: null,
-            latest_editor_observation_id: null,
+            latest_editor_observation_id: null, latest_preview_observation_id: null,
             pending_command: null, pending_issue: null, last_projected_report: null,
             submit_delivered: false, needs_editor_observation: false
         };
@@ -112,7 +113,7 @@ export class XArticleBrowserAdapter {
             import_strategy: importStrategy, snapshot,
             bulk_import_issued: false,
             latest_observation: null, editor_revision: null, preview_revision: null,
-            latest_editor_observation_id: null,
+            latest_editor_observation_id: null, latest_preview_observation_id: null,
             pending_command: null, pending_issue: null, last_projected_report: null,
             submit_delivered: false, needs_editor_observation: false
         };
@@ -236,7 +237,33 @@ export class XArticleBrowserAdapter {
                 payload: { kind: 'open_publish_review', target_ref: this.contract.detectControl(observation, 'publish').ref }
             });
         }
-        if (state === 'preview_verified' || state === 'publish_armed') {
+        if (state === 'publish_armed' && context.execution_mode === 'materialization_v3_2') {
+            await this.verifyStoredPublishConfirmation(context, ['armed']);
+            const observation = this.requireObservation(context);
+            if (observation.preview !== null) {
+                return this.issue(context, {
+                    execution_id: executionId, run_id: context.plan.run_id,
+                    draft_id: context.snapshot.draft_id,
+                    kind: 'open_publish_review', purpose: 'open_publish_review',
+                    expected_page_revision: observation.page_revision,
+                    allowed_origin: 'https://x.com', side_effect: 'write',
+                    payload: {
+                        kind: 'open_publish_review',
+                        target_ref: this.contract.detectControl(observation, 'publish').ref
+                    }
+                });
+            }
+            const review = await this.assertPreparedPublishReview(context, observation);
+            return this.issue(context, {
+                execution_id: executionId, run_id: context.plan.run_id,
+                draft_id: context.snapshot.draft_id,
+                kind: 'publish_article_once', purpose: 'publish_article_once',
+                expected_page_revision: observation.page_revision,
+                allowed_origin: 'https://x.com', side_effect: 'submit',
+                payload: { kind: 'publish_article_once', target_ref: review.final_publish_ref }
+            }, `publish_${executionId}`);
+        }
+        if (state === 'preview_verified' || (state === 'publish_armed' && context.execution_mode === 'legacy_preapproved')) {
             const observation = this.requireObservation(context);
             const review = this.contract.detectPublishReview(observation);
             if (review.draft_id !== context.snapshot.draft_id || review.audience !== 'everyone' || review.final_publish_ref === null) {
@@ -274,7 +301,15 @@ export class XArticleBrowserAdapter {
         return { snapshot: context.snapshot, command: null };
     }
     async claim(command) {
-        return this.broker.claim(command);
+        if (command.kind !== 'publish_article_once' || command.side_effect !== 'submit') {
+            return this.broker.claim(command);
+        }
+        return this.withExecutionLock(command.execution_id, async () => {
+            const context = await this.readContext(command.execution_id);
+            if (context.execution_mode === 'legacy_preapproved')
+                return this.broker.claim(command);
+            return this.claimPreparedPublish(context, command);
+        });
     }
     async report(input) {
         return this.withExecutionLock(input.command.execution_id, () => this.reportLocked(input));
@@ -387,6 +422,9 @@ export class XArticleBrowserAdapter {
             latest_editor_observation_id: input.observation.editor === null
                 ? context.latest_editor_observation_id
                 : input.observation.observation_id,
+            latest_preview_observation_id: input.observation.preview === null
+                ? context.latest_preview_observation_id
+                : input.observation.observation_id,
             preview_revision: input.observation.preview === null
                 ? context.preview_revision
                 : input.observation.page_revision,
@@ -413,6 +451,72 @@ export class XArticleBrowserAdapter {
     }
     async status(executionId) {
         return (await this.readContext(executionId)).snapshot;
+    }
+    async confirmPublish(executionId, confirmation) {
+        const detachedConfirmation = structuredClone(confirmation);
+        return this.withExecutionLock(executionId, () => this.confirmPublishLocked(executionId, detachedConfirmation));
+    }
+    async confirmPublishLocked(executionId, confirmation) {
+        let context = await this.readContext(executionId);
+        if (context.execution_mode !== 'materialization_v3_2'
+            || (context.snapshot.state !== 'confirmation_pending'
+                && context.snapshot.state !== 'publish_armed')
+            || context.snapshot.draft_id === null
+            || context.snapshot.publish_command_count !== 0
+            || context.submit_delivered
+            || context.pending_command !== null
+            || context.pending_issue !== null) {
+            throw new HarnessError('STATE_TRANSITION_INVALID', `X Article Publish cannot be confirmed from ${context.snapshot.state}`);
+        }
+        const evidence = await this.assertPreparedConfirmationEvidence(context, context.snapshot.state === 'confirmation_pending'
+            ? ['absent', 'armed']
+            : ['armed']);
+        if (context.snapshot.state === 'confirmation_pending'
+            && (context.snapshot.latest_observation_id !== evidence.preview.observation_id
+                || context.latest_observation === null
+                || context.latest_observation.observation_id !== evidence.preview.observation_id
+                || sha256(context.latest_observation) !== sha256(evidence.preview))) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'X Article confirmation must bind the latest durable verified Preview');
+        }
+        if (context.snapshot.state === 'confirmation_pending'
+            && !((evidence.checkpoint.publish_confirmation === 'absent'
+                && evidence.checkpoint.phase === 'preview_verified')
+                || (evidence.checkpoint.publish_confirmation === 'armed'
+                    && evidence.checkpoint.phase === 'human_confirmed'))) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'X Article confirmation checkpoint is not at the verified Preview boundary');
+        }
+        verifyXArticlePublishConfirmation(confirmation, {
+            execution_id: executionId,
+            draft_id: context.snapshot.draft_id,
+            target_account: context.plan.intent.target_account,
+            audience: 'everyone',
+            plan_digest: context.plan.plan_digest,
+            document_digest: evidence.materializationPlan.document_digest,
+            preview_revision: evidence.preview.page_revision,
+            asset_digests: context.plan.intent.visuals.map((item) => item.asset.digest),
+            confirmed_at_not_before: evidence.preview.observed_at,
+            confirmed_at_not_after: this.now().toISOString()
+        });
+        await this.ensureExactArtifact(this.publishConfirmationPath(executionId), confirmation);
+        if (evidence.checkpoint.publish_confirmation === 'absent') {
+            await this.materializationStore.updateCheckpoint(executionId, evidence.checkpoint.revision, (current) => {
+                if (current.phase !== 'preview_verified' || current.publish_confirmation !== 'absent') {
+                    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'X Article confirmation checkpoint changed before arming');
+                }
+                return {
+                    ...current,
+                    phase: 'human_confirmed',
+                    publish_confirmation: 'armed',
+                    updated_at: confirmation.confirmed_at
+                };
+            });
+        }
+        if (context.snapshot.state === 'publish_armed')
+            return context.snapshot;
+        context = await this.transition(context, 'publish_armed', 'article_publish_confirmed', {
+            attempt_id: this.attemptId()
+        });
+        return context.snapshot;
     }
     async resumeVerification(executionId) {
         let context = await this.readContext(executionId);
@@ -562,7 +666,12 @@ export class XArticleBrowserAdapter {
     }
     async cancelBeforePublishLocked(executionId) {
         let context = await this.readContext(executionId);
-        if (context.snapshot.publish_command_count > 0 || context.snapshot.state === 'publish_attempted') {
+        const confirmationConsumed = context.execution_mode === 'materialization_v3_2'
+            && (await this.store.exists(this.publishConfirmationConsumptionPath(executionId))
+                || (await this.materializationStore.readCheckpoint(executionId)).publish_confirmation === 'consumed');
+        if (context.snapshot.publish_command_count > 0
+            || context.snapshot.state === 'publish_attempted'
+            || confirmationConsumed) {
             throw new HarnessError('STATE_TRANSITION_INVALID', 'X Article execution cannot be cancelled after Publish');
         }
         if (context.pending_command !== null || context.pending_issue !== null) {
@@ -787,115 +896,16 @@ export class XArticleBrowserAdapter {
         return context;
     }
     async reconcilePreparedPreview(context, observation) {
-        const preview = observation.preview;
-        const materializationPlan = await this.readBoundMaterializationPlan(context);
-        const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-        let durableEditor = null;
-        if (context.latest_editor_observation_id !== null) {
-            try {
-                durableEditor = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/observations/${context.latest_editor_observation_id}.json`);
-            }
-            catch {
-                durableEditor = null;
-            }
+        let checkpoint;
+        try {
+            checkpoint = (await this.assertPreparedConfirmationEvidence(context, ['absent']))
+                .checkpoint;
         }
-        let durableEditorCoherent = false;
-        if (durableEditor !== null) {
-            try {
-                const durableBody = Object.fromEntries(Object.entries(durableEditor).filter(([key]) => key !== 'page_revision'));
-                const durablePage = this.contract.detectPage(durableEditor);
-                this.contract.detectEditor(durableEditor);
-                const reconciliationCheckpoint = checkpoint.phase === 'preview_verified'
-                    ? { ...checkpoint, phase: 'draft_reconciled' }
-                    : checkpoint;
-                const reconciliation = reconcileXArticleDraft({
-                    plan: materializationPlan,
-                    checkpoint: reconciliationCheckpoint,
-                    document: context.plan.intent.document,
-                    observation: durableEditor
-                });
-                durableEditorCoherent = durableEditor.page_revision === computeXArticlePageRevision(durableBody)
-                    && durableEditor.execution_id === context.snapshot.execution_id
-                    && durableEditor.account_handle === context.plan.intent.target_account
-                    && durablePage.kind === 'article_editor'
-                    && durablePage.draft_id === context.snapshot.draft_id
-                    && (reconciliation.kind === 'exact' || reconciliation.kind === 'semantically_equivalent');
-            }
-            catch {
-                durableEditorCoherent = false;
-            }
-        }
-        const expected = context.plan.intent.document;
-        const actual = preview === null ? null : {
-            schema_version: '1.0',
-            title: preview.title,
-            cover_asset_id: preview.visuals.find((visual) => visual.kind === 'cover')?.asset_id ?? null,
-            blocks: preview.blocks
-        };
-        const expectedVisuals = context.plan.intent.visuals.map((binding) => {
-            const isCover = binding.placement.kind === 'cover';
-            const blockOrdinal = isCover ? null : binding.placement.block_ordinal;
-            return {
-                asset_id: binding.asset.asset_id,
-                kind: isCover ? 'cover' : 'inline',
-                block_ordinal: blockOrdinal,
-                ref: isCover
-                    ? durableEditor?.editor?.visuals.find((visual) => visual.kind === 'cover')?.ref ?? null
-                    : checkpoint.media.find((entry) => entry.block_ordinal === blockOrdinal)
-                        ?.observed_media_ref ?? null,
-                alt_text: isCover && this.contract.media_alt_capabilities.cover === 'unobservable'
-                    ? null
-                    : binding.asset.alt_text,
-                status: 'uploaded',
-                owned_by_execution: true
-            };
-        });
-        const observedVisuals = (preview?.visuals ?? []).map((visual) => ({
-            asset_id: visual.asset_id,
-            kind: visual.kind,
-            block_ordinal: visual.block_ordinal,
-            ref: visual.ref,
-            alt_text: visual.kind === 'cover'
-                && this.contract.media_alt_capabilities.cover === 'unobservable'
-                ? null
-                : visual.alt_text,
-            status: visual.status,
-            owned_by_execution: visual.owned_by_execution
-        }));
-        const observationBody = Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision'));
-        const mediaRefs = checkpoint.media.map((entry) => entry.observed_media_ref);
-        const gateInvalid = preview === null
-            || context.snapshot.draft_id === null
-            || observation.page_revision !== computeXArticlePageRevision(observationBody)
-            || observation.execution_id !== context.snapshot.execution_id
-            || observation.account_handle !== context.plan.intent.target_account
-            || observation.page_kind !== 'article_preview'
-            || preview.draft_id !== context.snapshot.draft_id
-            || sha256(actual) !== sha256(expected)
-            || sha256(observedVisuals) !== sha256(expectedVisuals)
-            || (checkpoint.phase !== 'draft_reconciled' && checkpoint.phase !== 'preview_verified')
-            || checkpoint.body.status !== 'verified'
-            || checkpoint.body.observed_digest !== materializationPlan.import_template_digest
-            || checkpoint.media.length !== materializationPlan.visual_anchors.length
-            || checkpoint.media.some((entry, index) => entry.status !== 'completed'
-                || entry.observed_media_ref === null
-                || entry.observed_context_digest !== materializationPlan.visual_anchors[index]?.context_digest
-                || entry.asset_id !== materializationPlan.visual_anchors[index]?.asset_id
-                || entry.asset_digest !== materializationPlan.visual_anchors[index]?.asset_digest)
-            || new Set(mediaRefs).size !== mediaRefs.length
-            || checkpoint.publish_confirmation !== 'absent'
-            || checkpoint.last_editor_revision === null
-            || context.editor_revision !== checkpoint.last_editor_revision
-            || durableEditor === null
-            || !durableEditorCoherent
-            || durableEditor.execution_id !== context.snapshot.execution_id
-            || durableEditor.account_handle !== context.plan.intent.target_account
-            || durableEditor.page_kind !== 'article_editor'
-            || durableEditor.editor?.draft_id !== context.snapshot.draft_id
-            || durableEditor.page_revision !== checkpoint.last_editor_revision;
-        if (gateInvalid) {
+        catch {
+            checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
             return this.blockMaterialization(context, checkpoint, {
-                kind: 'unverifiable', reasons: ['prepared Preview gate lacks coherent durable reconciliation evidence']
+                kind: 'unverifiable',
+                reasons: ['prepared Preview gate lacks coherent durable reconciliation evidence']
             });
         }
         if (checkpoint.phase !== 'preview_verified') {
@@ -1212,7 +1222,8 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('ARTICLE_BULK_IMPORT_REQUIRED', 'prepared X Article materialization requires the complete bulk-import capability set');
         }
         const required = [
-            'observe_article_page', 'create_article_draft', 'open_article_preview'
+            'observe_article_page', 'create_article_draft', 'open_article_preview',
+            'open_publish_review', 'publish_article_once'
         ];
         if (plan.intent.visuals.some((visual) => visual.placement.kind === 'cover')) {
             required.push('upload_article_cover');
@@ -1222,6 +1233,276 @@ export class XArticleBrowserAdapter {
             || required.some((capability) => !manifest.capabilities.includes(capability))) {
             throw new HarnessError('ARTICLE_MATERIALIZATION_CAPABILITY_MISMATCH', 'Chrome Host lacks a required prepared X Article materialization capability');
         }
+    }
+    async assertPreparedConfirmationEvidence(context, allowedConfirmationStates) {
+        const materializationPlan = await this.readBoundMaterializationPlan(context);
+        const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        const previewObservationId = context.latest_preview_observation_id;
+        const editorObservationId = context.latest_editor_observation_id;
+        let preview = null;
+        let editor = null;
+        if (previewObservationId !== null && previewObservationId !== undefined) {
+            try {
+                preview = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/observations/${previewObservationId}.json`);
+            }
+            catch {
+                preview = null;
+            }
+        }
+        if (editorObservationId !== null) {
+            try {
+                editor = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/observations/${editorObservationId}.json`);
+            }
+            catch {
+                editor = null;
+            }
+        }
+        let coherentEditor = false;
+        if (editor !== null) {
+            try {
+                const editorBody = Object.fromEntries(Object.entries(editor).filter(([key]) => key !== 'page_revision'));
+                const editorPage = this.contract.detectPage(editor);
+                this.contract.detectEditor(editor);
+                const reconciliation = reconcileXArticleDraft({
+                    plan: materializationPlan,
+                    checkpoint: {
+                        ...checkpoint,
+                        phase: 'draft_reconciled',
+                        publish_confirmation: 'absent'
+                    },
+                    document: context.plan.intent.document,
+                    observation: editor
+                });
+                coherentEditor = editor.page_revision === computeXArticlePageRevision(editorBody)
+                    && editor.execution_id === context.snapshot.execution_id
+                    && editor.account_handle === materializationPlan.target_account
+                    && editor.page_kind === 'article_editor'
+                    && editorPage.kind === 'article_editor'
+                    && editorPage.draft_id === context.snapshot.draft_id
+                    && (reconciliation.kind === 'exact'
+                        || reconciliation.kind === 'semantically_equivalent');
+            }
+            catch {
+                coherentEditor = false;
+            }
+        }
+        let previewCoherent = false;
+        if (preview !== null) {
+            try {
+                const previewBody = Object.fromEntries(Object.entries(preview).filter(([key]) => key !== 'page_revision'));
+                const previewPage = this.contract.detectPage(preview);
+                const observedPreview = this.contract.detectPreview(preview);
+                const expectedDocument = context.plan.intent.document;
+                const actualDocument = {
+                    schema_version: '1.0',
+                    title: observedPreview.title,
+                    cover_asset_id: observedPreview.visuals.find((visual) => visual.kind === 'cover')?.asset_id ?? null,
+                    blocks: observedPreview.blocks
+                };
+                const expectedVisuals = context.plan.intent.visuals.map((binding) => {
+                    const isCover = binding.placement.kind === 'cover';
+                    const blockOrdinal = isCover ? null : binding.placement.block_ordinal;
+                    return {
+                        asset_id: binding.asset.asset_id,
+                        kind: isCover ? 'cover' : 'inline',
+                        block_ordinal: blockOrdinal,
+                        ref: isCover
+                            ? editor?.editor?.visuals.find((visual) => visual.kind === 'cover')?.ref ?? null
+                            : checkpoint.media.find((entry) => entry.block_ordinal === blockOrdinal)
+                                ?.observed_media_ref ?? null,
+                        alt_text: isCover && this.contract.media_alt_capabilities.cover === 'unobservable'
+                            ? null
+                            : binding.asset.alt_text,
+                        status: 'uploaded',
+                        owned_by_execution: true
+                    };
+                });
+                const observedVisuals = observedPreview.visuals.map((visual) => ({
+                    asset_id: visual.asset_id,
+                    kind: visual.kind,
+                    block_ordinal: visual.block_ordinal,
+                    ref: visual.ref,
+                    alt_text: visual.kind === 'cover'
+                        && this.contract.media_alt_capabilities.cover === 'unobservable'
+                        ? null
+                        : visual.alt_text,
+                    status: visual.status,
+                    owned_by_execution: visual.owned_by_execution
+                }));
+                previewCoherent = preview.page_revision === computeXArticlePageRevision(previewBody)
+                    && preview.execution_id === context.snapshot.execution_id
+                    && preview.account_handle === materializationPlan.target_account
+                    && preview.page_kind === 'article_preview'
+                    && previewPage.kind === 'article_preview'
+                    && observedPreview.draft_id === context.snapshot.draft_id
+                    && sha256(actualDocument) === sha256(expectedDocument)
+                    && sha256(observedVisuals) === sha256(expectedVisuals);
+            }
+            catch {
+                previewCoherent = false;
+            }
+        }
+        const phaseMatches = (checkpoint.publish_confirmation === 'absent'
+            && (checkpoint.phase === 'draft_reconciled' || checkpoint.phase === 'preview_verified'))
+            || (checkpoint.publish_confirmation === 'armed' && checkpoint.phase === 'human_confirmed')
+            || (checkpoint.publish_confirmation === 'consumed' && checkpoint.phase === 'publish_submitted');
+        const mediaRefs = checkpoint.media.map((entry) => entry.observed_media_ref);
+        const contextPreviewMatches = preview !== null
+            && context.preview_revision === preview.page_revision
+            && (context.latest_observation?.observation_id !== preview.observation_id
+                || sha256(context.latest_observation) === sha256(preview));
+        const gateInvalid = context.execution_mode !== 'materialization_v3_2'
+            || context.snapshot.draft_id === null
+            || context.snapshot.execution_id !== materializationPlan.execution_id
+            || checkpoint.execution_id !== context.snapshot.execution_id
+            || checkpoint.draft_id !== context.snapshot.draft_id
+            || checkpoint.materialization_digest !== materializationPlan.materialization_digest
+            || !allowedConfirmationStates.includes(checkpoint.publish_confirmation)
+            || !phaseMatches
+            || checkpoint.body.status !== 'verified'
+            || checkpoint.body.observed_digest !== materializationPlan.import_template_digest
+            || checkpoint.media.length !== materializationPlan.visual_anchors.length
+            || checkpoint.media.some((entry, index) => entry.status !== 'completed'
+                || entry.observed_media_ref === null
+                || entry.observed_context_digest !== materializationPlan.visual_anchors[index]?.context_digest
+                || entry.asset_id !== materializationPlan.visual_anchors[index]?.asset_id
+                || entry.asset_digest !== materializationPlan.visual_anchors[index]?.asset_digest)
+            || new Set(mediaRefs).size !== mediaRefs.length
+            || checkpoint.last_editor_revision === null
+            || context.editor_revision !== checkpoint.last_editor_revision
+            || editor === null
+            || !coherentEditor
+            || editor.page_revision !== checkpoint.last_editor_revision
+            || preview === null
+            || !previewCoherent
+            || !contextPreviewMatches;
+        if (gateInvalid || preview === null) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'X Article Publish confirmation lacks coherent durable Preview and Editor evidence');
+        }
+        return { materializationPlan, checkpoint, preview };
+    }
+    async verifyStoredPublishConfirmation(context, allowedConfirmationStates) {
+        const evidence = await this.assertPreparedConfirmationEvidence(context, allowedConfirmationStates);
+        let confirmation;
+        try {
+            confirmation = await this.store.readJson(this.publishConfirmationPath(context.snapshot.execution_id));
+        }
+        catch (error) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'X Article Publish confirmation artifact is missing or unreadable', error);
+        }
+        verifyXArticlePublishConfirmation(confirmation, {
+            execution_id: context.snapshot.execution_id,
+            draft_id: context.snapshot.draft_id,
+            target_account: context.plan.intent.target_account,
+            audience: 'everyone',
+            plan_digest: context.plan.plan_digest,
+            document_digest: evidence.materializationPlan.document_digest,
+            preview_revision: evidence.preview.page_revision,
+            asset_digests: context.plan.intent.visuals.map((item) => item.asset.digest),
+            confirmed_at_not_before: evidence.preview.observed_at,
+            confirmed_at_not_after: this.now().toISOString()
+        });
+        return { confirmation, evidence };
+    }
+    async assertPreparedPublishReview(context, observation) {
+        let durable;
+        try {
+            durable = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/observations/${observation.observation_id}.json`);
+        }
+        catch (error) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'durable X Article Publish review is missing', error);
+        }
+        const body = Object.fromEntries(Object.entries(durable).filter(([key]) => key !== 'page_revision'));
+        const review = this.contract.detectPublishReview(durable);
+        if (sha256(durable) !== sha256(observation)
+            || durable.page_revision !== computeXArticlePageRevision(body)
+            || durable.execution_id !== context.snapshot.execution_id
+            || durable.account_handle !== context.plan.intent.target_account
+            || durable.page_kind !== 'publish_review'
+            || review.draft_id !== context.snapshot.draft_id
+            || review.audience !== 'everyone'
+            || review.final_publish_ref === null) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'X Article Publish review differs from the confirmed publication');
+        }
+        return review;
+    }
+    async claimPreparedPublish(context, command) {
+        if (context.snapshot.state === 'cancelled_before_publish'
+            || (context.snapshot.state !== 'publish_armed'
+                && context.snapshot.state !== 'publish_attempted')) {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command is not armed for this execution');
+        }
+        if (context.pending_command === null
+            || sha256(context.pending_command) !== sha256(command)
+            || command.execution_id !== context.snapshot.execution_id
+            || command.run_id !== context.plan.run_id
+            || command.draft_id !== context.snapshot.draft_id
+            || command.kind !== 'publish_article_once'
+            || command.purpose !== 'publish_article_once'
+            || command.side_effect !== 'submit'
+            || command.payload.kind !== 'publish_article_once') {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish claim does not match the exact armed command');
+        }
+        const verified = await this.verifyStoredPublishConfirmation(context, context.snapshot.state === 'publish_attempted' ? ['consumed'] : ['armed', 'consumed']);
+        const review = await this.assertPreparedPublishReview(context, this.requireObservation(context));
+        if (command.expected_page_revision !== context.latest_observation?.page_revision
+            || command.payload.target_ref !== review.final_publish_ref) {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command is stale for the durable Publish review');
+        }
+        const consumptionBody = {
+            schema_version: 'x-article-publish-confirmation-consumption/v1',
+            execution_id: context.snapshot.execution_id,
+            draft_id: context.snapshot.draft_id,
+            confirmation_id: verified.confirmation.confirmation_id,
+            confirmation_digest: verified.confirmation.confirmation_digest,
+            command_id: command.command_id,
+            command_digest: sha256(command),
+            consumed_at: this.now().toISOString()
+        };
+        const consumptionPath = this.publishConfirmationConsumptionPath(context.snapshot.execution_id);
+        let consumption;
+        if (await this.store.exists(consumptionPath)) {
+            consumption = await this.store.readJson(consumptionPath);
+            const { consumption_digest: persistedDigest, ...persistedBody } = consumption;
+            const stablePersisted = { ...persistedBody, consumed_at: null };
+            const stableExpected = { ...consumptionBody, consumed_at: null };
+            if (persistedDigest !== sha256(persistedBody)
+                || !isDeepStrictEqual(stablePersisted, stableExpected)
+                || !Number.isFinite(Date.parse(consumption.consumed_at))) {
+                throw new HarnessError('CONTRACT_INVALID', 'X Article Publish confirmation consumption changed or belongs to another command');
+            }
+        }
+        else {
+            consumption = {
+                ...consumptionBody,
+                consumption_digest: sha256(consumptionBody)
+            };
+            await this.store.writeNew(consumptionPath, consumption);
+        }
+        if (verified.evidence.checkpoint.publish_confirmation === 'armed') {
+            await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, verified.evidence.checkpoint.revision, (current) => {
+                if (current.phase !== 'human_confirmed' || current.publish_confirmation !== 'armed') {
+                    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'X Article Publish confirmation checkpoint changed before consumption');
+                }
+                return {
+                    ...current,
+                    phase: 'publish_submitted',
+                    publish_confirmation: 'consumed',
+                    updated_at: consumption.consumed_at
+                };
+            });
+        }
+        const claimed = await this.broker.claimOrRead(command);
+        if (context.snapshot.state === 'publish_armed') {
+            context = await this.transition(context, 'publish_attempted', 'article_publish_command_claimed', {
+                publish_command_count: 1,
+                submit_delivered: true
+            });
+        }
+        if (!claimed.created) {
+            throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article Publish command was already claimed');
+        }
+        return claimed.claim;
     }
     initialSnapshot(executionId, plan) {
         return {
@@ -1253,6 +1534,12 @@ export class XArticleBrowserAdapter {
     prefix(executionId) {
         this.assertId(executionId);
         return `runs/${executionId}/x-article/browser`;
+    }
+    publishConfirmationPath(executionId) {
+        return `${this.prefix(executionId)}/publish-confirmation.json`;
+    }
+    publishConfirmationConsumptionPath(executionId) {
+        return `${this.prefix(executionId)}/publish-confirmation-consumption.json`;
     }
     async ensureExactArtifact(path, expected) {
         if (await this.store.exists(path)) {

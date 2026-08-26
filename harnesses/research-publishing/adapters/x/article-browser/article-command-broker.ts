@@ -96,6 +96,11 @@ export interface XArticleCommandClaimV1 {
   readonly claimed_at: string;
 }
 
+export interface XArticleCommandClaimResult {
+  readonly claim: XArticleCommandClaimV1;
+  readonly created: boolean;
+}
+
 interface XArticleCommandBrokerOptions {
   readonly commandId?: () => string;
   readonly now?: () => Date;
@@ -140,6 +145,14 @@ export class XArticleCommandBroker {
   }
 
   async claim(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1> {
+    const result = await this.claimOrRead(command);
+    if (!result.created) {
+      throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article command was already claimed');
+    }
+    return result.claim;
+  }
+
+  async claimOrRead(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimResult> {
     const stored = await this.store.readJson<XArticleBrowserCommandV1>(this.commandPath(command));
     if (sha256(stored) !== sha256(command)) {
       throw new HarnessError('CONTRACT_INVALID', 'X Article command differs from its persisted envelope');
@@ -152,11 +165,21 @@ export class XArticleCommandBroker {
       await this.store.writeNew(this.claimPath(command), claim);
     } catch (error) {
       if (error instanceof HarnessError && error.code === 'ARTIFACT_EXISTS') {
-        throw new HarnessError('COMMAND_REPLAY_REJECTED', 'X Article command was already claimed');
+        const existing = await this.store.readJson<XArticleCommandClaimV1>(this.claimPath(command));
+        if (
+          existing.schema_version !== '1.0'
+          || existing.execution_id !== command.execution_id
+          || existing.command_id !== command.command_id
+          || existing.claimed !== true
+          || !Number.isFinite(Date.parse(existing.claimed_at))
+        ) {
+          throw new HarnessError('CONTRACT_INVALID', 'persisted X Article command claim changed');
+        }
+        return { claim: existing, created: false };
       }
       throw error;
     }
-    return claim;
+    return { claim, created: true };
   }
 
   private commandPath(command: Pick<XArticleBrowserCommandV1, 'execution_id' | 'command_id'>): string {
