@@ -3,8 +3,10 @@
 ## Status
 
 - flow_id: `x-article-v3-2-cover-progress-receipt`
-- status: verified; independent review still required
+- status: COMPLETE / APPROVED
 - base: `3577ba0f7aa9acafa2981ab8a1b87d98889d81d1`
+- fix commit: `8a84bec602e916baee46fd780dbabbc0cda98a9d`
+- independent review: APPROVED with no findings; 150 focused tests, Task9 history/authority, typecheck, direct-dist parity, and manifest/Task10 isolation verified
 - date: 2026-08-27
 
 ## Symptom and Root Cause
@@ -63,9 +65,9 @@ A prepared V3.2 execution with a locked cover correctly issued `upload_article_c
 | plan | done | Validation-only cover input with exact locked callers | 2026-08-27 |
 | development | done | Core, adapter, Task9 reconstruction, direct dist | 2026-08-27 |
 | testing | done | RED→GREEN plus focused, adjacent, build, and full gates | 2026-08-27 |
-| archive | active | Commit and independent review handoff pending | 2026-08-27 |
+| archive | done | Independent reviewer approved `8a84bec` with no findings | 2026-08-27 |
 
 ## Residual Risk
 
 - The known offline acceptance baseline remains outside this fix and Task10 owns its Browser Host companion gate.
-- This report does not self-approve the change; the committed patch still requires independent review.
+- Independent review found no remaining cover-progress receipt issues.
