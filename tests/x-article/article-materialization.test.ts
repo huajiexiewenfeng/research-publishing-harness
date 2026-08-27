@@ -87,15 +87,20 @@ const publicationPlan = createXArticlePublicationPlan({
 
 const importTemplate = createXArticleImportTemplate(document);
 
-function existingDraftObservation(observationId = 'observation_existing_body') {
+function existingDraftObservation(
+  observationId = 'observation_existing_body',
+  executionId = 'source_execution',
+  commandId = 'source_command',
+  observedAt = '2026-08-27T05:56:04.000Z'
+) {
   const body = {
     schema_version: '1.0' as const,
     observation_id: observationId,
-    execution_id: 'source_execution',
-    command_id: 'source_command',
+    execution_id: executionId,
+    command_id: commandId,
     origin: 'https://x.com' as const,
     canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
-    observed_at: '2026-08-27T05:56:04.000Z',
+    observed_at: observedAt,
     account_handle: publicationPlan.intent.target_account,
     page_kind: 'article_editor' as const,
     controls: [],
@@ -117,6 +122,15 @@ function existingDraftObservation(observationId = 'observation_existing_body') {
     public_article: null
   };
   return { ...body, page_revision: computeXArticlePageRevision(body) };
+}
+
+function freshExistingDraftObservation(executionId: string, commandId = 'command_adopt_existing') {
+  return existingDraftObservation(
+    'observation_existing_body_fresh',
+    executionId,
+    commandId,
+    '2026-08-27T06:00:00.000Z'
+  );
 }
 
 const existingDraftBinding = createXArticleExistingDraftBinding({
@@ -254,7 +268,7 @@ describe('X Article materialization contracts', () => {
       strategy: 'rich_text_anchor_import/v1',
       draft_binding: existingDraftBinding
     });
-    const observation = existingDraftObservation('observation_existing_body_fresh');
+    const observation = freshExistingDraftObservation(plan.execution_id);
     const checkpoint = createAdoptedXArticleMaterializationCheckpoint({
       plan,
       publication_plan: publicationPlan,
@@ -296,6 +310,21 @@ describe('X Article materialization contracts', () => {
     });
   });
 
+  it('rejects creating a V3.2 initial checkpoint from an existing-Draft Plan', () => {
+    const plan = createXArticleMaterializationPlan({
+      execution_id: 'execution_existing_initial',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+
+    expect(() => createInitialXArticleMaterializationCheckpoint({
+      plan,
+      updated_at: '2026-08-27T06:00:00.000Z'
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_DRAFT_CONFLICT' }));
+  });
+
   it('rejects an adopted checkpoint with a foreign Draft observation', () => {
     const plan = createXArticleMaterializationPlan({
       execution_id: 'execution_foreign_observation',
@@ -304,7 +333,7 @@ describe('X Article materialization contracts', () => {
       strategy: 'rich_text_anchor_import/v1',
       draft_binding: existingDraftBinding
     });
-    const observed = existingDraftObservation();
+    const observed = freshExistingDraftObservation(plan.execution_id);
     const body = {
       ...observed,
       canonical_url: 'https://x.com/compose/articles/edit/2092851979932647425',
@@ -356,6 +385,91 @@ describe('X Article materialization contracts', () => {
       ...adoptedPlan,
       strategy: 'block_materialization/v1' as const
     };
+
+    expect(() => validateContract('x-article-materialization-plan', {
+      ...body,
+      materialization_digest: sha256(Object.fromEntries(
+        Object.entries(body).filter(([key]) => key !== 'materialization_digest')
+      ))
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it.each([
+    {
+      case: 'replayed source observation',
+      plan_execution_id: 'source_execution',
+      error_code: 'ARTICLE_DRAFT_CONFLICT',
+      observation: () => existingDraftObservation()
+    },
+    {
+      case: 'forged page revision',
+      plan_execution_id: 'execution_forged_revision',
+      error_code: 'ARTICLE_DRAFT_CONFLICT',
+      observation: () => ({
+        ...freshExistingDraftObservation('execution_forged_revision'),
+        page_revision: digest('0')
+      })
+    },
+    {
+      case: 'time-reversed observation',
+      plan_execution_id: 'execution_reversed_observation',
+      error_code: 'ARTICLE_DRAFT_CONFLICT',
+      observation: () => existingDraftObservation(
+        'observation_time_reversed',
+        'execution_reversed_observation',
+        'command_time_reversed',
+        existingDraftBinding.observed_at
+      )
+    },
+    {
+      case: 'foreign execution identity',
+      plan_execution_id: 'execution_current_identity',
+      error_code: 'ARTICLE_DRAFT_CONFLICT',
+      observation: () => freshExistingDraftObservation('execution_foreign_identity')
+    },
+    {
+      case: 'malformed command identity',
+      plan_execution_id: 'execution_command_identity',
+      error_code: 'CONTRACT_INVALID',
+      observation: () => freshExistingDraftObservation('execution_command_identity', '')
+    }
+  ])('rejects a $case when adopting an existing Draft', ({ plan_execution_id, observation, error_code }) => {
+    const plan = createXArticleMaterializationPlan({
+      execution_id: plan_execution_id,
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+
+    expect(() => createAdoptedXArticleMaterializationCheckpoint({
+      plan,
+      publication_plan: publicationPlan,
+      observation: observation(),
+      updated_at: '2026-08-27T06:01:00.000Z'
+    })).toThrowError(expect.objectContaining({ code: error_code }));
+  });
+
+  it.each([
+    ['account', { expected_account: '@Foreign' }],
+    ['document', { expected_document_digest: digest('0') }],
+    ['template', { expected_import_template_digest: digest('1') }]
+  ])('rejects a re-digested inner binding with %s identity drift', (_kind, override) => {
+    const adoptedPlan = createXArticleMaterializationPlan({
+      execution_id: 'execution_inner_binding_drift',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+    const bindingBody = { ...existingDraftBinding, ...override };
+    const binding = {
+      ...bindingBody,
+      binding_digest: sha256(Object.fromEntries(
+        Object.entries(bindingBody).filter(([key]) => key !== 'binding_digest')
+      ))
+    };
+    const body = { ...adoptedPlan, draft_binding: binding };
 
     expect(() => validateContract('x-article-materialization-plan', {
       ...body,

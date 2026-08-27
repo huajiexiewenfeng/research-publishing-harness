@@ -3,6 +3,45 @@
   "$id": "rph://contracts/x-article-materialization-checkpoint/v1",
   "title": "X Article Materialization Checkpoint V1",
   "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": { "draft_origin": { "const": "adopted_existing" } },
+        "required": ["draft_origin"]
+      },
+      "then": {
+        "properties": {
+          "draft_id": { "type": "string" },
+          "source_execution_id": { "type": "null" },
+          "phase": { "enum": ["body_verified", "media_materializing", "draft_reconciled", "preview_verified", "human_confirmed", "publish_submitted", "public_verified", "blocked"] },
+          "body": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "adopted_verified" },
+              "observed_digest": { "$ref": "#/$defs/digest" }
+            }
+          },
+          "last_editor_revision": { "$ref": "#/$defs/digest" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "draft_origin": { "const": "created_new" } },
+        "required": ["draft_origin"]
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "status": { "not": { "const": "adopted_verified" } }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false,
   "required": [
     "schema_version",

@@ -4,6 +4,7 @@ import { HarnessError } from './errors.js';
 import { validateContract } from './schema-validator.js';
 import { assertXArticlePublicationPlan } from './x-article-publication-plan.js';
 import { verifyXArticleExistingDraftBinding } from './x-article-existing-draft-binding.js';
+import { computeXArticlePageRevision } from '../adapters/x/article-browser/article-browser-protocol.js';
 const MATERIALIZATION_BUDGET = {
     fixed_seconds: 180,
     per_inline_visual_seconds: 60,
@@ -117,9 +118,27 @@ function initialCheckpointBody(plan, updatedAt) {
         updated_at: updatedAt
     };
 }
+function assertFreshAdoptedDraftObservation(plan, binding, observation) {
+    const observed = validateContract('x-article-browser-observation', structuredClone(observation));
+    const { page_revision: _pageRevision, ...revisionBody } = observed;
+    const observedAt = Date.parse(observed.observed_at);
+    const boundAt = Date.parse(binding.observed_at);
+    if (observed.page_revision !== computeXArticlePageRevision(revisionBody)
+        || sha256(observed) === binding.source_observation_digest
+        || !Number.isFinite(observedAt)
+        || !Number.isFinite(boundAt)
+        || observedAt <= boundAt
+        || observed.execution_id !== plan.execution_id) {
+        throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft adoption requires a fresh matching editor observation');
+    }
+    return observed;
+}
 export function createInitialXArticleMaterializationCheckpoint(input) {
-    validateContract('x-article-materialization-plan', input.plan);
-    return validateContract('x-article-materialization-checkpoint', initialCheckpointBody(input.plan, input.updated_at));
+    const plan = validateContract('x-article-materialization-plan', input.plan);
+    if (plan.draft_binding !== null) {
+        throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft Plan requires an adopted checkpoint');
+    }
+    return validateContract('x-article-materialization-checkpoint', initialCheckpointBody(plan, input.updated_at));
 }
 export function createAdoptedXArticleMaterializationCheckpoint(input) {
     const plan = validateContract('x-article-materialization-plan', structuredClone(input.plan));
@@ -129,7 +148,8 @@ export function createAdoptedXArticleMaterializationCheckpoint(input) {
         || plan.publication_plan_digest !== input.publication_plan.plan_digest) {
         throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent or foreign');
     }
-    verifyXArticleExistingDraftBinding(plan.draft_binding, input.publication_plan, input.observation);
+    const observation = assertFreshAdoptedDraftObservation(plan, plan.draft_binding, input.observation);
+    verifyXArticleExistingDraftBinding(plan.draft_binding, input.publication_plan, observation);
     return validateContract('x-article-materialization-checkpoint', {
         ...initialCheckpointBody(plan, input.updated_at),
         draft_id: plan.draft_binding.draft_id,
@@ -137,7 +157,7 @@ export function createAdoptedXArticleMaterializationCheckpoint(input) {
         source_execution_id: null,
         phase: 'body_verified',
         body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
-        last_editor_revision: input.observation.page_revision
+        last_editor_revision: observation.page_revision
     });
 }
 export function createXArticleStageProgress(input) {

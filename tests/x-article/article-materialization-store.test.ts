@@ -78,6 +78,55 @@ function checkpoint(
   };
 }
 
+function adoptedPlan(executionId: string): XArticleMaterializationPlanV1 {
+  const legacyPlan = plan(executionId, true);
+  const bindingBody = {
+    schema_version: 'x-article-existing-draft-binding/v1' as const,
+    mode: 'adopt_existing' as const,
+    draft_id: '2092851979932647424',
+    expected_account: legacyPlan.target_account,
+    expected_editor_revision: digest('a'),
+    expected_title_digest: digest('b'),
+    expected_document_digest: legacyPlan.document_digest,
+    expected_import_template_digest: legacyPlan.import_template_digest,
+    expected_anchor_manifest_digest: digest('c'),
+    expected_cover_count: 0 as const,
+    expected_inline_media_count: 0 as const,
+    source_observation_digest: digest('d'),
+    observed_at: '2026-08-27T05:56:04.000Z'
+  };
+  const binding = { ...bindingBody, binding_digest: sha256(bindingBody) };
+  const body = {
+    ...legacyPlan,
+    draft_binding: binding,
+    expected_command_ceiling: 4 + legacyPlan.visual_anchors.length,
+    expected_observation_ceiling: 3 + legacyPlan.visual_anchors.length
+  };
+  return {
+    ...body,
+    materialization_digest: sha256(Object.fromEntries(
+      Object.entries(body).filter(([key]) => key !== 'materialization_digest')
+    ))
+  };
+}
+
+function adoptedCheckpoint(
+  materializationPlan: XArticleMaterializationPlanV1
+): XArticleMaterializationCheckpointV1 {
+  if (materializationPlan.draft_binding === null) throw new Error('test requires an adopted Plan');
+  return {
+    ...checkpoint(materializationPlan),
+    draft_id: materializationPlan.draft_binding.draft_id,
+    draft_origin: 'adopted_existing',
+    phase: 'body_verified',
+    body: {
+      status: 'adopted_verified',
+      observed_digest: materializationPlan.import_template_digest
+    },
+    last_editor_revision: digest('e')
+  };
+}
+
 function progress(
   override: Partial<Parameters<typeof createXArticleStageProgress>[0]> = {}
 ) {
@@ -104,6 +153,36 @@ async function fixture() {
 }
 
 describe('XArticleMaterializationStore', () => {
+  it('round-trips an adopted checkpoint and rejects forged adopted state', async () => {
+    const { store } = await fixture();
+    const materializationPlan = adoptedPlan('execution_adopted_round_trip');
+    const adopted = adoptedCheckpoint(materializationPlan);
+
+    await expect(store.create(materializationPlan, adopted)).resolves.toEqual(adopted);
+    await expect(store.readCheckpoint(materializationPlan.execution_id)).resolves.toEqual(adopted);
+
+    const illegalPlan = adoptedPlan('execution_adopted_forged');
+    const illegal = {
+      ...adoptedCheckpoint(illegalPlan),
+      phase: 'body_imported' as const,
+      body: {
+        status: 'verified' as const,
+        observed_digest: illegalPlan.import_template_digest
+      }
+    };
+    await expect(store.create(illegalPlan, illegal)).rejects.toMatchObject({
+      code: 'CONTRACT_INVALID'
+    });
+
+    await expect(store.updateCheckpoint(materializationPlan.execution_id, 0, (current) => ({
+      ...current,
+      draft_origin: 'created_new',
+      phase: 'body_imported',
+      body: { status: 'verified', observed_digest: materializationPlan.import_template_digest },
+      updated_at: '2026-08-27T06:02:00.000Z'
+    }))).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
   it('reads the validated persisted plan bound to the requested execution', async () => {
     const { workspace, store } = await fixture();
     const materializationPlan = plan('execution_read_plan');

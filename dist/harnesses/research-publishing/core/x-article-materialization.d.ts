@@ -1,7 +1,7 @@
 import { type XArticleImportTemplateV1 } from '../adapters/x/article-browser/article-import-template.js';
 import { type XArticlePublicationPlanV1 } from './x-article-publication-plan.js';
 import { type XArticleExistingDraftBindingV1 } from './x-article-existing-draft-binding.js';
-import type { XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
+import { type XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
 export type XArticleMaterializationStrategy = 'rich_text_anchor_import/v1' | 'block_materialization/v1';
 export interface XArticleMaterializationPlanV1 {
     readonly schema_version: 'x-article-materialization-plan/v1';

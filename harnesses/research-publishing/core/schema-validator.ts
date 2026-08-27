@@ -52,7 +52,8 @@ ajv.addKeyword({
 
     try {
       const visualAnchors = Reflect.get(value, 'visual_anchors');
-      const existingDraft = Reflect.get(value, 'draft_binding') !== null;
+      const draftBinding = Reflect.get(value, 'draft_binding');
+      const existingDraft = draftBinding !== null;
       const commandCeiling = Reflect.get(value, 'expected_command_ceiling');
       const observationCeiling = Reflect.get(value, 'expected_observation_ceiling');
       const materializationDigest = Reflect.get(value, 'materialization_digest');
@@ -63,6 +64,21 @@ ajv.addKeyword({
         || typeof materializationDigest !== 'string'
       ) {
         return false;
+      }
+
+      if (existingDraft) {
+        if (typeof draftBinding !== 'object' || draftBinding === null) return false;
+        const bindingBody = Object.fromEntries(
+          Object.entries(draftBinding).filter(([key]) => key !== 'binding_digest')
+        );
+        if (
+          Reflect.get(draftBinding, 'binding_digest') !== sha256(bindingBody)
+          || Reflect.get(draftBinding, 'expected_account') !== Reflect.get(value, 'target_account')
+          || Reflect.get(draftBinding, 'expected_document_digest') !== Reflect.get(value, 'document_digest')
+          || Reflect.get(draftBinding, 'expected_import_template_digest') !== Reflect.get(value, 'import_template_digest')
+        ) {
+          return false;
+        }
       }
 
       const body = Object.fromEntries(

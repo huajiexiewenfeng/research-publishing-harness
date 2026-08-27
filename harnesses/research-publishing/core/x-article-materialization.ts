@@ -13,7 +13,10 @@ import {
   verifyXArticleExistingDraftBinding,
   type XArticleExistingDraftBindingV1
 } from './x-article-existing-draft-binding.js';
-import type { XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
+import {
+  computeXArticlePageRevision,
+  type XArticleBrowserObservation
+} from '../adapters/x/article-browser/article-browser-protocol.js';
 
 export type XArticleMaterializationStrategy =
   | 'rich_text_anchor_import/v1'
@@ -369,13 +372,50 @@ function initialCheckpointBody(
   };
 }
 
+function assertFreshAdoptedDraftObservation(
+  plan: XArticleMaterializationPlanV1,
+  binding: XArticleExistingDraftBindingV1,
+  observation: XArticleBrowserObservation
+): XArticleBrowserObservation {
+  const observed = validateContract<XArticleBrowserObservation>(
+    'x-article-browser-observation',
+    structuredClone(observation)
+  );
+  const { page_revision: _pageRevision, ...revisionBody } = observed;
+  const observedAt = Date.parse(observed.observed_at);
+  const boundAt = Date.parse(binding.observed_at);
+  if (
+    observed.page_revision !== computeXArticlePageRevision(revisionBody)
+    || sha256(observed) === binding.source_observation_digest
+    || !Number.isFinite(observedAt)
+    || !Number.isFinite(boundAt)
+    || observedAt <= boundAt
+    || observed.execution_id !== plan.execution_id
+  ) {
+    throw new HarnessError(
+      'ARTICLE_DRAFT_CONFLICT',
+      'existing Draft adoption requires a fresh matching editor observation'
+    );
+  }
+  return observed;
+}
+
 export function createInitialXArticleMaterializationCheckpoint(
   input: CreateInitialXArticleMaterializationCheckpointInput
 ): XArticleMaterializationCheckpointV1 {
-  validateContract<XArticleMaterializationPlanV1>('x-article-materialization-plan', input.plan);
+  const plan = validateContract<XArticleMaterializationPlanV1>(
+    'x-article-materialization-plan',
+    input.plan
+  );
+  if (plan.draft_binding !== null) {
+    throw new HarnessError(
+      'ARTICLE_DRAFT_CONFLICT',
+      'existing Draft Plan requires an adopted checkpoint'
+    );
+  }
   return validateContract<XArticleMaterializationCheckpointV1>(
     'x-article-materialization-checkpoint',
-    initialCheckpointBody(input.plan, input.updated_at)
+    initialCheckpointBody(plan, input.updated_at)
   );
 }
 
@@ -394,10 +434,15 @@ export function createAdoptedXArticleMaterializationCheckpoint(
   ) {
     throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent or foreign');
   }
+  const observation = assertFreshAdoptedDraftObservation(
+    plan,
+    plan.draft_binding,
+    input.observation
+  );
   verifyXArticleExistingDraftBinding(
     plan.draft_binding,
     input.publication_plan,
-    input.observation
+    observation
   );
   return validateContract<XArticleMaterializationCheckpointV1>(
     'x-article-materialization-checkpoint',
@@ -408,7 +453,7 @@ export function createAdoptedXArticleMaterializationCheckpoint(
       source_execution_id: null,
       phase: 'body_verified',
       body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
-      last_editor_revision: input.observation.page_revision
+      last_editor_revision: observation.page_revision
     }
   );
 }
