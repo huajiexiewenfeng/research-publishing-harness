@@ -479,6 +479,7 @@ export class XArticleBrowserAdapter {
                     throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
                 }
             }
+            context = await this.recoverPreBindingAdoptionRejectionContext(context);
             if (context.pending_command?.command_id === input.command.command_id
                 || context.pending_issue?.command_id === input.command.command_id) {
                 context = await this.finalizeProjectedReport(context, input.command.command_id, reportDigest);
@@ -1641,6 +1642,38 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adoption rejection event differs from blocked context');
         }
         return event.event_type === 'article_adoption_rejected';
+    }
+    async recoverPreBindingAdoptionRejectionContext(context) {
+        if (context.execution_mode !== 'media_completion_v3_3'
+            || context.materialization_plan === null
+            || context.materialization_plan.draft_binding === null
+            || context.snapshot.state !== 'preflight')
+            return context;
+        const sequence = context.snapshot.sequence + 1;
+        const eventPath = `${this.prefix(context.snapshot.execution_id)}/events/${String(sequence).padStart(6, '0')}.json`;
+        if (!await this.store.exists(eventPath))
+            return context;
+        const event = await this.store.readJson(eventPath);
+        if (event.execution_id !== context.snapshot.execution_id
+            || event.sequence !== sequence
+            || event.event_type !== 'article_adoption_rejected'
+            || event.previous_state !== 'preflight'
+            || event.next_state !== 'materialization_blocked'
+            || event.draft_id !== context.snapshot.draft_id
+            || event.command_id !== null) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'persisted adoption rejection event differs from preflight context');
+        }
+        const repaired = {
+            ...context,
+            snapshot: {
+                ...context.snapshot,
+                state: 'materialization_blocked',
+                sequence,
+                updated_at: event.occurred_at
+            }
+        };
+        await this.writeContext(repaired);
+        return repaired;
     }
     isPreparedReportActive(context) {
         return this.isPreparedMaterializationMode(context)

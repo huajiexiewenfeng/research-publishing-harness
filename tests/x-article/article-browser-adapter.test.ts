@@ -1231,6 +1231,75 @@ describe('XArticleBrowserAdapter', () => {
     }
   );
 
+  it('repairs a persisted account-rejection event when its blocked context write crashes before projection replay', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-account-rejection-context-crash-')));
+    const executionId = 'execution_existing_media_account_rejection_context_crash';
+    const base = new XArticleWeb2026_08Contract();
+    const contract: XArticlePageContract = {
+      id: base.id, version: base.version, media_alt_capabilities: base.media_alt_capabilities,
+      detectPage: base.detectPage.bind(base),
+      detectAccount: () => ({ handle: '@ForeignAccount' }),
+      detectEditor: base.detectEditor.bind(base),
+      readEditorImportState: base.readEditorImportState.bind(base),
+      readEditorDocument: base.readEditorDocument.bind(base),
+      detectPreview: base.detectPreview.bind(base),
+      detectPublishReview: base.detectPublishReview.bind(base),
+      detectPublicArticle: base.detectPublicArticle.bind(base),
+      detectControl: base.detectControl.bind(base)
+    };
+    const adapter = new XArticleBrowserAdapter(store, contract, {
+      executionId: () => executionId,
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_account_context_crash', 'source_command_account_context_crash', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const navigating = await adapter.next(execution.execution_id);
+    const input = {
+      command: navigating.command!, status: 'success' as const,
+      observation: freshBodyCompleteObservation(execution.execution_id, navigating.command!.command_id, '2026-08-21T09:00:00.000Z')
+    };
+    await adapter.claim(input.command);
+    await adapter.report(input);
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({ state: 'preflight', sequence: 1 });
+    const replaceAtomic = store.replaceAtomic.bind(store);
+    let failBlockedContext = true;
+    store.replaceAtomic = async (path, value) => {
+      if (failBlockedContext) {
+        failBlockedContext = false;
+        throw new Error('injected adoption rejection context crash');
+      }
+      return replaceAtomic(path, value);
+    };
+
+    await expect(adapter.next(execution.execution_id)).rejects.toThrow('injected adoption rejection context crash');
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+    )).resolves.toMatchObject({ event_type: 'article_adoption_rejected' });
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({ state: 'preflight', sequence: 1 });
+
+    const replay = new XArticleBrowserAdapter(store, contract, {
+      executionId: () => executionId,
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const rejectionEventPath = `runs/${execution.execution_id}/x-article/browser/events/000002.json`;
+    const rejectionEvent = await store.readJson<Record<string, unknown>>(rejectionEventPath);
+    await store.replaceAtomic(rejectionEventPath, { ...rejectionEvent, execution_id: 'foreign_execution' });
+    await expect(replay.report(input)).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+    await store.replaceAtomic(rejectionEventPath, rejectionEvent);
+    await expect(replay.report(input)).resolves.toMatchObject({ state: 'materialization_blocked', sequence: 2 });
+    await expect(replay.status(execution.execution_id)).resolves.toMatchObject({ state: 'materialization_blocked', sequence: 2 });
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000003.json`
+    )).rejects.toThrow();
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`))
+      .resolves.toBe(false);
+  });
+
   it('reconciles adopted cover and inline media without opening Preview or publishing', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-complete-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

@@ -94,6 +94,7 @@ export declare class XArticleBrowserAdapter {
     private isPreparedMaterializationMode;
     private hasMaterializationCheckpoint;
     private hasDurablePreBindingAdoptionRejection;
+    private recoverPreBindingAdoptionRejectionContext;
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
     private readBoundMaterializationStart;
