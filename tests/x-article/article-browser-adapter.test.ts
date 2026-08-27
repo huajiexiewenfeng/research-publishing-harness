@@ -10,6 +10,7 @@ import {
   type XArticleBrowserObservation
 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
+import type { XArticlePageContract } from '../../harnesses/research-publishing/adapters/x/article-browser/article-page-contract.js';
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
@@ -927,6 +928,77 @@ describe('XArticleBrowserAdapter', () => {
       'create_article_draft', 'set_article_title', 'import_article_document',
       'insert_article_block', 'open_article_preview', 'open_publish_review', 'publish_article_once'
     ]));
+  });
+
+  it('replays an identical adopted-Draft preflight report without duplicate projection side effects', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-preflight-replay-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_preflight_replay',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_preflight_replay', 'source_command_preflight_replay', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const input = {
+      command: next.command!, status: 'success' as const,
+      observation: freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z')
+    };
+    await adapter.claim(input.command);
+    const first = await adapter.report(input);
+    const projectionPath = `runs/${execution.execution_id}/x-article/browser/report-projections/${input.command.command_id}.json`;
+    const firstProjection = await store.readJson<Record<string, unknown>>(projectionPath);
+
+    await expect(adapter.report(input)).resolves.toEqual(first);
+    await expect(store.readJson<Record<string, unknown>>(projectionPath)).resolves.toEqual(firstProjection);
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_reconciling' }, command: { kind: 'upload_article_cover' }
+    });
+  });
+
+  it('rethrows a non-Harness preflight page error without persisting report side effects', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-preflight-sentinel-')));
+    const base = new XArticleWeb2026_08Contract();
+    const sentinel = new Error('sentinel detectPage failure');
+    const contract: XArticlePageContract = {
+      id: base.id, version: base.version, media_alt_capabilities: base.media_alt_capabilities,
+      detectPage: () => { throw sentinel; },
+      detectAccount: base.detectAccount.bind(base),
+      detectEditor: base.detectEditor.bind(base),
+      readEditorImportState: base.readEditorImportState.bind(base),
+      readEditorDocument: base.readEditorDocument.bind(base),
+      detectPreview: base.detectPreview.bind(base),
+      detectPublishReview: base.detectPublishReview.bind(base),
+      detectPublicArticle: base.detectPublicArticle.bind(base),
+      detectControl: base.detectControl.bind(base)
+    };
+    const adapter = new XArticleBrowserAdapter(store, contract, {
+      executionId: () => 'execution_existing_media_preflight_sentinel',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_preflight_sentinel', 'source_command_preflight_sentinel', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const input = {
+      command: next.command!, status: 'success' as const,
+      observation: freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z')
+    };
+    await adapter.claim(input.command);
+
+    await expect(adapter.report(input)).rejects.toBe(sentinel);
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
+      state: 'preflight', sequence: 1, latest_observation_id: null
+    });
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/reports/${input.command.command_id}.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/observations/${input.observation.observation_id}.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/events/000002.json`)).resolves.toBe(false);
   });
 
   it.each(['body_verified', 'media_materializing'] as const)(

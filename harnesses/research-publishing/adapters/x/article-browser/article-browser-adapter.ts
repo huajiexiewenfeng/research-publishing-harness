@@ -820,10 +820,40 @@ export class XArticleBrowserAdapter {
         input.observation
       );
     }
+    const reconcileUncertainMaterialization = input.observation !== null
+      && this.isPreparedMaterializationMode(context)
+      && this.isMaterializationEffect(input.command)
+      && (input.observation.editor !== null || input.observation.preview !== null);
+    if (
+      input.observation !== null
+      && (input.status === 'success' || reconcileUncertainMaterialization)
+    ) {
+      try {
+        this.contract.detectPage(input.observation);
+      } catch (error) {
+        if (!(error instanceof HarnessError)) throw error;
+        if (
+          context.execution_mode === 'media_completion_v3_3'
+          && context.snapshot.state === 'preflight'
+        ) {
+          await this.persistMaterializationReportEvidence(reportPath, input);
+          context = await this.rejectAdoption(context, error);
+          return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
+        }
+        if (!this.isPreparedMaterializationMode(context)) throw error;
+        const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        context = await this.blockMaterialization(context, checkpoint, {
+          kind: 'unverifiable', reasons: ['reported page contract is malformed']
+        });
+        return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
+      }
+    }
     let materializationReport: MaterializationReportEvidenceV1 | null = null;
-    if (this.hasMaterializationCheckpoint(context)) {
+    if (this.isPreparedMaterializationMode(context)) {
       materializationReport = await this.persistMaterializationReportEvidence(reportPath, input);
-      await this.recordMaterializationProgress(context, materializationReport);
+      if (this.hasMaterializationCheckpoint(context)) {
+        await this.recordMaterializationProgress(context, materializationReport);
+      }
     } else {
       await this.ensureExactArtifact(reportPath, input);
     }
@@ -841,10 +871,6 @@ export class XArticleBrowserAdapter {
         reportDigest
       )).snapshot;
     }
-    const reconcileUncertainMaterialization = input.observation !== null
-      && this.isPreparedMaterializationMode(context)
-      && this.isMaterializationEffect(input.command)
-      && (input.observation.editor !== null || input.observation.preview !== null);
     if (
       input.observation === null
       || (input.status !== 'success' && !reconcileUncertainMaterialization)
@@ -885,24 +911,6 @@ export class XArticleBrowserAdapter {
         )).snapshot;
       }
       throw new HarnessError('CONTRACT_INVALID', 'X Article observation does not belong to its command');
-    }
-    try {
-      this.contract.detectPage(input.observation);
-    } catch (error) {
-      if (
-        context.execution_mode === 'media_completion_v3_3'
-        && context.snapshot.state === 'preflight'
-        && error instanceof HarnessError
-      ) {
-        context = await this.rejectAdoption(context, error);
-        return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
-      }
-      if (!this.isPreparedMaterializationMode(context)) throw error;
-      const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-      context = await this.blockMaterialization(context, checkpoint, {
-        kind: 'unverifiable', reasons: ['reported page contract is malformed']
-      });
-      return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
     }
     await this.ensureExactArtifact(
       `${this.prefix(input.command.execution_id)}/observations/${input.observation.observation_id}.json`,
