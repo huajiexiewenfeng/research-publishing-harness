@@ -1290,8 +1290,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-materialization-v3-2.md",
-      "sha256": "79fce7d0ddecdcc0cfe679998d400d8ae73d758da03cd34d4f6679e213d1a7a0",
-      "bytes": 9889
+      "sha256": "5157aab279c0b91a59ca7dd0f5daf2de86d96ffac904cb83d3576048c5f20541",
+      "bytes": 17523
     },
     {
       "path": "skills/x-publishing-copilot/scp.yml",
@@ -1305,8 +1305,8 @@
     },
     {
       "path": "tools/acceptance.ts",
-      "sha256": "e01fc088a4f4c4e2bac446c4ea4d2f1275d8e260d061d351de633269f18883ad",
-      "bytes": 61090
+      "sha256": "2701ce5e836ac8ff1cf9c01fd8c0f7a0391e840a2b251090382703c9908ef6c9",
+      "bytes": 131425
     },
     {
       "path": "tools/build-manifest.ts",
