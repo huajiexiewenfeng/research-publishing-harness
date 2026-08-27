@@ -2490,6 +2490,87 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toMatchObject({ state: 'cancelled_before_publish', publish_command_count: 0 });
   });
 
+  it.each(['created', 'preflight'] as const)(
+    'cancels a V3.3 adopted Draft without a checkpoint from %s',
+    async (stage) => {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-existing-media-cancel-${stage}-`)));
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => `execution_existing_media_cancel_${stage}`,
+        now: () => new Date('2026-08-21T09:00:00.000Z')
+      });
+      const execution = await adapter.prepareExistingDraftMedia(
+        coverInlinePlan,
+        existingBodyCompleteObservation(`source_cancel_${stage}`, `source_command_cancel_${stage}`, '2026-08-21T08:59:00.000Z'),
+        coverBulkCapabilities
+      );
+      if (stage === 'preflight') await adapter.next(execution.execution_id);
+
+      await expect(adapter.cancelBeforePublish(execution.execution_id)).resolves.toMatchObject({
+        state: 'cancelled_before_publish', publish_command_count: 0
+      });
+      await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+        .resolves.toBe(false);
+    }
+  );
+
+  it('cancels a rejected V3.3 adoption without a checkpoint', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-cancel-rejected-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_cancel_rejected',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_cancel_rejected', 'source_command_cancel_rejected', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const foreign = observed(execution.execution_id, next.command!.command_id, {
+      ...freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z'),
+      account_handle: '@ForeignAccount'
+    });
+    await reportSuccess(adapter, execution.execution_id, next.command, foreign);
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_blocked' }, command: null
+    });
+
+    await expect(adapter.cancelBeforePublish(execution.execution_id)).resolves.toMatchObject({
+      state: 'cancelled_before_publish', publish_command_count: 0
+    });
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+      .resolves.toBe(false);
+  });
+
+  it('fails closed when cancellation finds a malformed prepared checkpoint', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-malformed-checkpoint-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cancel_malformed_checkpoint',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    await store.replaceAtomic(
+      `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`, {}
+    );
+
+    await expect(adapter.cancelBeforePublish(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
+  it('fails closed when cancellation finds a plan-only prepared persistence gap', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-plan-only-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cancel_plan_only',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const checkpointPath = `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`;
+    const exists = store.exists.bind(store);
+    store.exists = async (path) => path === checkpointPath ? false : exists(path);
+
+    await expect(adapter.cancelBeforePublish(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
   it('coordinates prepared cancellation through the adapter execution lock', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-lock-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

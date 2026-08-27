@@ -67,6 +67,7 @@ export declare class XArticleBrowserAdapter {
     refreshApproval(executionId: string, approval: XArticleApprovalV1): Promise<XArticleExecutionSnapshotV1>;
     cancelBeforePublish(executionId: string): Promise<XArticleExecutionSnapshotV1>;
     private cancelBeforePublishLocked;
+    private readCancellationCheckpoint;
     private nextPublicVerification;
     private nextEditorCommand;
     private nextMaterializationCommand;

@@ -878,9 +878,10 @@ export class XArticleBrowserAdapter {
     }
     async cancelBeforePublishLocked(executionId) {
         let context = await this.readContext(executionId);
+        const checkpoint = await this.readCancellationCheckpoint(context);
         const confirmationConsumed = this.isPreparedMaterializationMode(context)
             && (await this.store.exists(this.publishConfirmationConsumptionPath(executionId))
-                || (await this.materializationStore.readCheckpoint(executionId)).publish_confirmation === 'consumed');
+                || checkpoint?.publish_confirmation === 'consumed');
         if (context.snapshot.publish_command_count > 0
             || context.snapshot.state === 'publish_attempted'
             || confirmationConsumed) {
@@ -891,6 +892,19 @@ export class XArticleBrowserAdapter {
         }
         context = await this.transition(context, 'cancelled_before_publish', 'article_cancelled_before_publish');
         return context.snapshot;
+    }
+    async readCancellationCheckpoint(context) {
+        if (!this.isPreparedMaterializationMode(context))
+            return null;
+        const checkpointPath = `${this.prefix(context.snapshot.execution_id)}/materialization-checkpoint.json`;
+        if (await this.store.exists(checkpointPath)) {
+            return this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        }
+        const planPath = `${this.prefix(context.snapshot.execution_id)}/materialization-plan.json`;
+        if (await this.store.exists(planPath)) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization plan is missing its checkpoint');
+        }
+        return null;
     }
     async nextPublicVerification(context) {
         const article = context.latest_observation?.public_article ?? null;
