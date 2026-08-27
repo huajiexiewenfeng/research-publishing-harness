@@ -75,13 +75,86 @@ For one prepared execution:
 
 ## Complete claimed Draft transactions
 
-`import_article_document` is one semantic transaction. Verify an empty titled target Draft with no body blocks, visuals, anchors, or unknown content; focus the claimed body target; paste the exact structured template once; wait at most 45 seconds for editor stability and at most 30 seconds for autosave; then read one normalized import projection. Success requires the exact template/source digests, ordered unresolved anchors, `has_unknown_content=false`, and `autosave_state=saved`. It uploads no image and performs no Publish.
+The checks below are live checks against the selected explicit Chrome binding. A prior smoke, fixture, screenshot, log, or remembered page state is not evidence for the current command. Record a checklist result only from the current page and the exact immutable command, claim, locked publication Plan, materialization Plan, and Package.
 
-`replace_article_visual_anchor` is one semantic transaction for one asset. Verify exactly one claimed anchor, Package containment, a regular non-symlink file, Package/asset digest, MIME, ordinal, context, and no completed target media; select only that payload asset; wait at most 60 seconds for media readiness; move the media to the claimed block ordinal if X grouped it elsewhere; write and read back the exact inline Alt; remove the anchor; and wait at most 30 seconds for autosave. The single observation must show the anchor absent, one execution-owned uploaded inline visual at the approved ordinal, exact Alt/context, and saved autosave state.
+### Body import checks
+
+`import_article_document` is one semantic transaction. Immediately before focusing the body target or pasting, all of these preconditions must be true:
+
+- `origin = https://x.com`: the active URL origin equals both `command.allowed_origin` and the observation contract origin.
+- `account = Plan target`: the current account equals `materialization_plan.target_account` and the publication Plan target.
+- `URL Draft ID = command Draft ID`: the numeric Draft ID parsed from the active editor URL equals non-null `command.draft_id` and `editor.draft_id`.
+- `page revision = command expected revision`: the freshly normalized current-page revision equals non-null `command.expected_page_revision`.
+- `title = approved title`: `editor.title` equals the title locked by the publication Plan.
+- `body blocks = 0`: `editor.blocks.length` is zero.
+- `inline visuals = 0`: no `editor.visuals` entry has `kind=inline`.
+- `unknown content = false`: `editor.has_unknown_content=false`, and `editor.import_state=null`.
+- `command claim exists`: the persisted claim has the same `execution_id` and `command_id` as the exact pending `import_article_document` command and says `claimed=true`.
+- The command payload is exact: `payload.kind=import_article_document`; `payload.target_ref` is the body target; `payload.package_root` and `payload.package_digest` equal the locked Package; `payload.template.source_document_digest` equals `materialization_plan.document_digest`; `payload.template.template_digest` equals `materialization_plan.import_template_digest`; and `command.payload_digest` is the digest of that unchanged payload.
+
+If any precondition is false or cannot be observed uniquely, do not focus, paste, type, upload, or otherwise mutate the Draft. Report the claimed command truthfully and stop for adapter reconciliation.
+
+When every precondition passes, focus only `payload.target_ref`, paste `payload.template` exactly once, wait at most 45 seconds for editor stability and at most 30 seconds for autosave, then capture one normalized post-transaction observation. `status=success` is permitted only when:
+
+- observation, execution, command, origin, account, Draft, and freshly computed `page_revision` are mutually consistent;
+- `editor.import_state.template_digest` equals `payload.template.template_digest` and `materialization_plan.import_template_digest`;
+- `editor.import_state.source_document_digest` equals `payload.template.source_document_digest` and `materialization_plan.document_digest`;
+- `editor.import_state.unresolved_anchors` exactly equals `payload.template.anchors` in its original order, and those identities/ordinals correspond to the ordered `materialization_plan.visual_anchors`;
+- `editor.visuals` contains no inline visual, `editor.has_unknown_content=false`, and `editor.autosave_state=saved`.
+
+The transaction uploads no image, issues no second paste, and performs no Publish.
+
+### Image replacement checks
+
+`replace_article_visual_anchor` is one semantic transaction for one asset. Repeat the origin, account, URL Draft ID, page-revision, title, and exact-claim checks immediately before opening a picker or selecting a file. Then require all of these image preconditions:
+
+- `one target anchor`: `editor.import_state.unresolved_anchors` contains exactly one entry matching every field of `command.payload.anchor`; duplicate, missing, reordered, or otherwise ambiguous matches fail closed.
+- The command anchor and asset equal one ordered `materialization_plan.visual_anchors` entry: `anchor_id`, `asset_id`, `block_ordinal`, `asset.digest=asset_digest`, `asset.alt_text=alt_text`, and the planned `context_digest`; `payload.package_digest` equals the locked Package digest.
+- The file resolved from the locked Package root plus `payload.asset.relative_path` remains inside that Package, is a regular non-symlink file, has the exact `payload.asset.digest`, and has the declared `payload.asset.mime_type`. Re-resolve containment and recompute the digest immediately before upload.
+- There is no completed target media: no existing `editor.visuals` entry already claims this execution-owned asset at the target ordinal, and no duplicate or ambiguous media could be mistaken for it.
+
+Select only that Package-contained file. Wait at most 60 seconds for media readiness; if X groups it elsewhere, move that exact execution-owned media to `payload.anchor.block_ordinal`; set and read back exactly `payload.asset.alt_text`; remove only the claimed anchor; wait at most 30 seconds for autosave; then capture one normalized post-transaction observation. `status=success` is permitted only when:
+
+- the target anchor is absent, while every remaining unresolved anchor preserves the exact planned suffix order;
+- exactly one `editor.visuals` entry has `asset_id=payload.asset.asset_id`, `kind=inline`, `block_ordinal=payload.anchor.block_ordinal`, `alt_text=payload.asset.alt_text`, `status=uploaded`, and `owned_by_execution=true`;
+- the normalized blocks surrounding that ordinal and the claimed anchor recompute the exact `materialization_plan.visual_anchors[].context_digest`; do not invent a `context_digest` property in the observation or adapter report;
+- `editor.has_unknown_content=false` and `editor.autosave_state=saved`.
+
+Any timeout, partial effect, unknown effect, disconnect, or revision drift ends the bounded transaction. Emit the due progress first, capture the best single normalized observation, and report `transient_failure`, `uncertain`, or `rejected` as truthful. Do not retry locally. Recovery starts only through `resume-editor`, followed by a new `next` and newly claimed observe/reconcile transaction; it never reimports a body that may already exist.
+
+## Structured failure record and recovery rules
+
+The Host may render one operator-facing failure record beside the exact adapter report. This record is not a new contract, is not an `x-article-browser-observation/1.0`, and must never be added to the exact `{command,status,observation}` JSON accepted by `x-article browser report`:
+
+```json
+{
+  "stage": "replace_article_visual_anchor",
+  "asset_id": "bottom-up-extraction",
+  "elapsed_seconds": 61,
+  "waiting_for": "x_media_processing",
+  "observed_effect": "partial",
+  "safe_next_action": "report_and_reconcile",
+  "retry_authorized": false
+}
+```
+
+Use the claimed command purpose for `stage`, its payload asset ID or `null` for `asset_id`, the bounded-wait clock for `elapsed_seconds`, the current wait reason or `null` for `waiting_for`, and the existing progress value `none | partial | complete | unknown` for `observed_effect`. The result is deterministic:
+
+| Failure | Adapter report | `safe_next_action` | `retry_authorized` |
+|---|---|---|---|
+| page drift: current normalized revision differs from `expected_page_revision` | `rejected`, with the best trustworthy observation | `report_and_reconcile` | `false` |
+| anchor ambiguity: the claimed anchor is missing, duplicated, reordered, or not unique | `rejected`, with the best trustworthy observation | `report_and_reconcile` | `false` |
+| upload uncertainty: a chooser/upload/media-processing effect may have occurred but one exact completed visual cannot be proved | `uncertain`, with the best trustworthy observation or `null` | `report_and_reconcile` | `false` |
+| autosave failure: `autosave_state=failed` after a mutation | `transient_failure`; use `uncertain` instead if the resulting content cannot be trusted | `report_and_reconcile` | `false` |
+| Chrome disconnect: the binding is lost during a claimed transaction | `uncertain` when any effect may have occurred; only a provable pre-effect disconnect is `transient_failure` | `report_and_reconcile` | `false` |
+| Preview mismatch: Preview differs from the locked title, document, visuals, Alt, order, account, Draft, audience, or revision | `rejected`, with the normalized Preview observation | `report_and_reconcile` | `false` |
+| Publish outcome unknown: a separately authorized Publish effect may have occurred but its outcome is not observable | `uncertain`, with the best trustworthy observation or `null` | `report_and_wait_for_read_only_command` | `false` |
+
+`retry_authorized` is always `false` in a failure record. Time passing, a still-visible button, the old claim, a local refresh, or an operator guess never changes it. After the report, stop. Only a later exact adapter command returned by `next` and successfully claimed may authorize its own stated action. A read-only reconcile command may observe; it does not authorize repeating an import, upload, Preview mutation, or Publish.
+
+These live checklists are Draft-only: they authorize zero `publish_article_once` commands, zero Publish clicks, and zero deletion or cleanup of diagnostic Drafts. Preserve uncertain external state, never fabricate live evidence, and never claim a check passed unless it was observed in the current explicit Chrome session.
 
 For `open_article_preview`, wait at most 45 seconds and report one normalized Preview observation. Never enter Preview with any unresolved anchor, unknown content, duplicate body/image, unverified inline Alt, or unsaved Editor state.
-
-A timeout, partial effect, unknown effect, disconnect, or revision drift ends the bounded transaction. Emit the due progress first, capture the best single normalized observation, and report `transient_failure`, `uncertain`, or `rejected` as truthful. Do not retry locally. Recovery starts only through `resume-editor`, followed by a new `next` and claimed observe/reconcile transaction; it never reimports a body that may already exist.
 
 ## Preview confirmation boundary
 
