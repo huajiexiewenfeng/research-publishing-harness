@@ -8,7 +8,8 @@ import { createXArticleExecutionEvent, transitionXArticleExecution } from '../..
 import { verifyXArticleApproval } from '../../../core/x-article-approval.js';
 import { verifyXArticlePublishConfirmation } from '../../../core/x-article-publish-confirmation.js';
 import { assertXArticlePublicationPlan } from '../../../core/x-article-publication-plan.js';
-import { createInitialXArticleMaterializationCheckpoint, createSupersedingXArticleMaterializationReceipt, createXArticleMaterializationReceipt, createXArticleMaterializationStartEvidence, createXArticleMaterializationPlan, createXArticleStageProgress, verifyXArticleMaterializationStartEvidence } from '../../../core/x-article-materialization.js';
+import { createInitialXArticleMaterializationCheckpoint, createAdoptedXArticleMaterializationCheckpoint, createSupersedingXArticleMaterializationReceipt, createXArticleMaterializationReceipt, createXArticleMaterializationStartEvidence, createXArticleMaterializationPlan, createXArticleStageProgress, verifyXArticleMaterializationStartEvidence } from '../../../core/x-article-materialization.js';
+import { createXArticleExistingDraftBinding, verifyXArticleExistingDraftBinding } from '../../../core/x-article-existing-draft-binding.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
 import { computeXArticleElapsedSeconds, computeXArticlePageRevision } from './article-browser-protocol.js';
 import { reconcileXArticleDraft } from './article-draft-reconciler.js';
@@ -49,22 +50,33 @@ export class XArticleBrowserAdapter {
         this.assertId(executionId);
         return this.withExecutionLock(executionId, () => this.prepareLocked(plan, capabilities, executionId));
     }
-    async prepareLocked(plan, capabilities, executionId) {
+    async prepareExistingDraftMedia(plan, sourceObservation, capabilities) {
+        assertXArticlePublicationPlan(plan);
+        this.verifyPreparedCapabilities(plan, capabilities);
+        const binding = createXArticleExistingDraftBinding({ publication_plan: plan, observation: sourceObservation });
+        const executionId = this.executionId();
+        this.assertId(executionId);
+        return this.withExecutionLock(executionId, () => this.prepareLocked(plan, capabilities, executionId, {
+            execution_mode: 'media_completion_v3_3',
+            draft_binding: binding
+        }));
+    }
+    async prepareLocked(plan, capabilities, executionId, adopted = null) {
         const materializationPlan = createXArticleMaterializationPlan({
             execution_id: executionId,
             publication_plan: plan,
             import_template: createXArticleImportTemplate(plan.intent.document),
-            strategy: 'rich_text_anchor_import/v1'
+            strategy: 'rich_text_anchor_import/v1',
+            draft_binding: adopted?.draft_binding ?? null
         });
         const startEvidence = await this.resolveMaterializationStart(materializationPlan);
         const snapshot = this.initialSnapshot(executionId, plan, startEvidence.started_at);
-        const checkpoint = createInitialXArticleMaterializationCheckpoint({
-            plan: materializationPlan,
-            updated_at: startEvidence.started_at
-        });
+        const checkpoint = adopted === null
+            ? createInitialXArticleMaterializationCheckpoint({ plan: materializationPlan, updated_at: startEvidence.started_at })
+            : null;
         const context = {
             schema_version: '1.0', plan, approval: null, capabilities,
-            execution_mode: 'materialization_v3_2', materialization_plan: materializationPlan,
+            execution_mode: adopted?.execution_mode ?? 'materialization_v3_2', materialization_plan: materializationPlan,
             import_strategy: 'bulk_document', bulk_import_issued: false, snapshot,
             latest_observation: null, editor_revision: null, preview_revision: null,
             latest_editor_observation_id: null, latest_preview_observation_id: null,
@@ -84,7 +96,7 @@ export class XArticleBrowserAdapter {
                 throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization retry differs from durable state');
             }
         }
-        else {
+        else if (checkpoint !== null) {
             await this.materializationStore.create(materializationPlan, checkpoint);
         }
         await this.ensureExactArtifact(`${this.prefix(executionId)}/plan.json`, plan);
@@ -92,7 +104,7 @@ export class XArticleBrowserAdapter {
         const contextPath = `${this.prefix(executionId)}/adapter-context.json`;
         if (await this.store.exists(contextPath)) {
             const existing = await this.readContext(executionId);
-            if (existing.execution_mode !== 'materialization_v3_2'
+            if (existing.execution_mode !== (adopted?.execution_mode ?? 'materialization_v3_2')
                 || !isDeepStrictEqual(existing.plan, plan)
                 || !isDeepStrictEqual(existing.capabilities, capabilities)
                 || !isDeepStrictEqual(existing.materialization_plan, materializationPlan)
@@ -225,7 +237,20 @@ export class XArticleBrowserAdapter {
         }
         const state = context.snapshot.state;
         if (state === 'created') {
-            context = await this.transition(context, 'preflight', 'preflight_started');
+            const adopted = context.execution_mode === 'media_completion_v3_3';
+            context = await this.transition(context, 'preflight', adopted ? 'article_adoption_observing' : 'preflight_started');
+            if (adopted) {
+                const draftId = context.materialization_plan?.draft_binding?.draft_id;
+                if (draftId === undefined) {
+                    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'existing Draft binding is absent');
+                }
+                return this.issue(context, {
+                    execution_id: executionId, run_id: context.plan.run_id, draft_id: draftId,
+                    kind: 'navigate', purpose: 'navigate_existing_article_draft',
+                    expected_page_revision: null, allowed_origin: 'https://x.com', side_effect: 'read',
+                    payload: { kind: 'navigate', url: `https://x.com/compose/articles/edit/${draftId}` }
+                });
+            }
             return this.issue(context, {
                 execution_id: executionId, run_id: context.plan.run_id, draft_id: null,
                 kind: 'observe_article_page', purpose: 'observe_articles_index',
@@ -239,11 +264,31 @@ export class XArticleBrowserAdapter {
             if (account.handle !== context.plan.intent.target_account) {
                 throw new HarnessError('X_ACCOUNT_MISMATCH', 'X Article account differs from the Plan target');
             }
+            if (context.execution_mode === 'media_completion_v3_3') {
+                const materializationPlan = context.materialization_plan;
+                if (materializationPlan === null) {
+                    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'existing Draft materialization plan is absent');
+                }
+                if (materializationPlan.draft_binding === null) {
+                    throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent');
+                }
+                verifyXArticleExistingDraftBinding(materializationPlan.draft_binding, context.plan, observation);
+                const checkpoint = createAdoptedXArticleMaterializationCheckpoint({
+                    plan: materializationPlan, publication_plan: context.plan, observation, updated_at: this.now().toISOString()
+                });
+                await this.materializationStore.create(materializationPlan, checkpoint);
+                context = await this.transition(context, 'account_verified', 'article_adoption_verified');
+                context = await this.transition(context, 'draft_created', 'article_draft_bound', {
+                    draft_id: materializationPlan.draft_binding.draft_id
+                });
+                context = await this.transition(context, 'materialization_reconciling', 'article_materialization_reconciling');
+                return this.nextMaterializationCommand(context, observation);
+            }
             const page = this.contract.detectPage(observation);
             if (page.kind !== 'articles_index') {
                 throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'new X Article publication must start from the Articles index');
             }
-            if (context.execution_mode === 'materialization_v3_2') {
+            if (this.isPreparedMaterializationMode(context)) {
                 const checkpoint = await this.materializationStore.readCheckpoint(executionId);
                 await this.materializationStore.updateCheckpoint(executionId, checkpoint.revision, (current) => ({
                     ...current,
@@ -269,7 +314,7 @@ export class XArticleBrowserAdapter {
             context = await this.transition(context, 'draft_created', 'article_draft_identity_captured', {
                 draft_id: page.draft_id
             });
-            if (context.execution_mode === 'materialization_v3_2') {
+            if (this.isPreparedMaterializationMode(context)) {
                 const checkpoint = await this.materializationStore.readCheckpoint(executionId);
                 await this.materializationStore.updateCheckpoint(executionId, checkpoint.revision, (current) => ({
                     ...current,
@@ -284,6 +329,8 @@ export class XArticleBrowserAdapter {
             context = await this.transition(context, 'content_filling', 'article_content_filling_started');
             return this.nextEditorCommand(context, observation);
         }
+        if (state === 'draft_reconciled')
+            return { snapshot: context.snapshot, command: null };
         if (state === 'materialization_reconciling') {
             if (context.needs_editor_observation)
                 return this.issueEditorObservation(context);
@@ -436,7 +483,7 @@ export class XArticleBrowserAdapter {
                 || projection.report_digest !== reportDigest) {
                 throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report projection changed');
             }
-            if (context.execution_mode === 'materialization_v3_2') {
+            if (this.isPreparedMaterializationMode(context)) {
                 const evidence = await this.readMaterializationReportEvidence(reportPath, input.command);
                 if (evidence.report_digest !== reportDigest) {
                     throw new HarnessError('CONTRACT_INVALID', 'replayed X Article report artifact changed');
@@ -478,7 +525,7 @@ export class XArticleBrowserAdapter {
             validateContract('x-article-browser-observation', input.observation);
         }
         let materializationReport = null;
-        if (context.execution_mode === 'materialization_v3_2') {
+        if (this.hasMaterializationCheckpoint(context)) {
             materializationReport = await this.persistMaterializationReportEvidence(reportPath, input);
             await this.recordMaterializationProgress(context, materializationReport);
         }
@@ -494,12 +541,12 @@ export class XArticleBrowserAdapter {
             return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
         }
         const reconcileUncertainMaterialization = input.observation !== null
-            && context.execution_mode === 'materialization_v3_2'
+            && this.isPreparedMaterializationMode(context)
             && this.isMaterializationEffect(input.command)
             && (input.observation.editor !== null || input.observation.preview !== null);
         if (input.observation === null
             || (input.status !== 'success' && !reconcileUncertainMaterialization)) {
-            if (context.execution_mode === 'materialization_v3_2'
+            if (this.isPreparedMaterializationMode(context)
                 && this.isMaterializationEffect(input.command)) {
                 context = { ...context, needs_editor_observation: true };
                 await this.writeContext(context);
@@ -532,7 +579,7 @@ export class XArticleBrowserAdapter {
             this.contract.detectPage(input.observation);
         }
         catch (error) {
-            if (context.execution_mode !== 'materialization_v3_2')
+            if (!this.isPreparedMaterializationMode(context))
                 throw error;
             const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
             context = await this.blockMaterialization(context, checkpoint, {
@@ -564,13 +611,13 @@ export class XArticleBrowserAdapter {
             }
         };
         await this.writeContext(context);
-        if (context.execution_mode === 'materialization_v3_2'
+        if (this.isPreparedMaterializationMode(context)
             && input.observation.editor !== null
             && context.snapshot.draft_id !== null
             && context.snapshot.state === 'materialization_reconciling') {
             context = await this.reconcileReportedEditor(context, input.observation);
         }
-        if (context.execution_mode === 'materialization_v3_2'
+        if (this.isPreparedMaterializationMode(context)
             && input.observation.preview !== null
             && context.snapshot.state === 'materialization_reconciling') {
             context = await this.reconcilePreparedPreview(context, input.observation);
@@ -674,7 +721,7 @@ export class XArticleBrowserAdapter {
     }
     async resumeEditorLocked(executionId) {
         let context = await this.readContext(executionId);
-        if (context.execution_mode === 'materialization_v3_2') {
+        if (this.isPreparedMaterializationMode(context)) {
             const materializationPlan = await this.readBoundMaterializationPlan(context);
             const checkpoint = await this.materializationStore.readCheckpoint(executionId);
             if (checkpoint.execution_id !== executionId
@@ -774,7 +821,7 @@ export class XArticleBrowserAdapter {
     }
     async refreshApproval(executionId, approval) {
         let context = await this.readContext(executionId);
-        if (context.execution_mode === 'materialization_v3_2') {
+        if (this.isPreparedMaterializationMode(context)) {
             throw new HarnessError('STATE_TRANSITION_INVALID', 'prepared X Article materialization cannot reuse legacy Approval refresh');
         }
         if (context.snapshot.publish_command_count !== 0 ||
@@ -809,7 +856,7 @@ export class XArticleBrowserAdapter {
     }
     async cancelBeforePublishLocked(executionId) {
         let context = await this.readContext(executionId);
-        const confirmationConsumed = context.execution_mode === 'materialization_v3_2'
+        const confirmationConsumed = this.isPreparedMaterializationMode(context)
             && (await this.store.exists(this.publishConfirmationConsumptionPath(executionId))
                 || (await this.materializationStore.readCheckpoint(executionId)).publish_confirmation === 'consumed');
         if (context.snapshot.publish_command_count > 0
@@ -844,7 +891,7 @@ export class XArticleBrowserAdapter {
             throw new HarnessError('ARTICLE_OUTCOME_UNKNOWN', 'X Article verification lacks editor or Preview evidence');
         }
         const verification = verifyPublicXArticle(context.plan, article, this.now());
-        if (context.execution_mode === 'materialization_v3_2') {
+        if (this.isPreparedMaterializationMode(context)) {
             await this.persistPublicMaterializationReceipt(context);
         }
         const status = verification.kind === 'full_match'
@@ -916,12 +963,7 @@ export class XArticleBrowserAdapter {
         }
         const persistedPlan = await this.readBoundMaterializationPlan(context);
         const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-        const reconciliation = reconcileXArticleDraft({
-            plan: persistedPlan,
-            checkpoint,
-            document: context.plan.intent.document,
-            observation
-        });
+        const reconciliation = this.reconcileMaterializationDraft(persistedPlan, checkpoint, context.plan.intent.document, observation);
         if (this.isOnlyMissingCover(reconciliation)) {
             const binding = context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'cover');
             if (binding === undefined || binding.asset.asset_id !== context.plan.intent.document.cover_asset_id) {
@@ -952,14 +994,25 @@ export class XArticleBrowserAdapter {
         const decision = nextMaterializationEditorDecision({
             plan: context.plan,
             materialization_plan: persistedPlan,
-            draft_id: context.snapshot.draft_id
+            draft_id: context.snapshot.draft_id,
+            completion_target: context.execution_mode === 'media_completion_v3_3'
+                ? 'draft_reconciled'
+                : 'preview'
         }, observation, reconciliation, this.contract);
         if (decision.kind === 'blocked') {
             context = await this.blockMaterialization(context, checkpoint, decision);
             return { snapshot: context.snapshot, command: null };
         }
-        if (decision.kind === 'complete')
+        if (decision.kind === 'complete') {
+            if (context.execution_mode !== 'media_completion_v3_3'
+                || checkpoint.phase !== 'draft_reconciled'
+                || checkpoint.publish_confirmation !== 'absent'
+                || context.snapshot.publish_command_count !== 0) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'Draft-only completion lacks reconciled media evidence');
+            }
+            context = await this.transition(context, 'draft_reconciled', 'article_draft_reconciled');
             return { snapshot: context.snapshot, command: null };
+        }
         this.assertPreparedCommandBinding(context, persistedPlan, decision.input);
         return this.issue(context, decision.input);
     }
@@ -1017,24 +1070,22 @@ export class XArticleBrowserAdapter {
             : media.some((entry) => entry.status === 'completed')
                 ? 'media_materializing'
                 : bodyObserved || checkpoint.body.status === 'verified'
-                    ? 'body_imported'
+                    ? checkpoint.body.status === 'adopted_verified' ? 'body_verified' : 'body_imported'
                     : checkpoint.phase;
         const candidate = {
             ...checkpoint,
             phase,
             body: bodyObserved
-                ? { status: 'verified', observed_digest: plan.import_template_digest }
+                ? {
+                    status: checkpoint.body.status === 'adopted_verified' ? 'adopted_verified' : 'verified',
+                    observed_digest: plan.import_template_digest
+                }
                 : checkpoint.body,
             media,
             last_editor_revision: observation.page_revision,
             updated_at: observation.observed_at
         };
-        const reconciliation = reconcileXArticleDraft({
-            plan,
-            checkpoint: candidate,
-            document: context.plan.intent.document,
-            observation
-        });
+        const reconciliation = this.reconcileMaterializationDraft(plan, candidate, context.plan.intent.document, observation);
         if ((reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
             && !this.isOnlyMissingCover(reconciliation)) {
             return this.blockMaterialization(context, checkpoint, reconciliation);
@@ -1045,6 +1096,12 @@ export class XArticleBrowserAdapter {
             await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, () => candidate);
         }
         return context;
+    }
+    reconcileMaterializationDraft(plan, checkpoint, document, observation) {
+        const reconciliationCheckpoint = checkpoint.body.status === 'adopted_verified'
+            ? { ...checkpoint, body: { status: 'verified', observed_digest: checkpoint.body.observed_digest } }
+            : checkpoint;
+        return reconcileXArticleDraft({ plan, checkpoint: reconciliationCheckpoint, document, observation });
     }
     async reconcilePreparedPreview(context, observation) {
         let checkpoint;
@@ -1436,15 +1493,23 @@ export class XArticleBrowserAdapter {
             || command.kind === 'upload_article_cover'
             || command.kind === 'open_article_preview';
     }
-    isPreparedReportActive(context) {
+    isPreparedMaterializationMode(context) {
         return context.execution_mode === 'materialization_v3_2'
+            || context.execution_mode === 'media_completion_v3_3';
+    }
+    hasMaterializationCheckpoint(context) {
+        return this.isPreparedMaterializationMode(context)
+            && !(context.execution_mode === 'media_completion_v3_3' && context.snapshot.state === 'preflight');
+    }
+    isPreparedReportActive(context) {
+        return this.isPreparedMaterializationMode(context)
             && [
                 'created', 'preflight', 'account_verified', 'draft_create_armed',
                 'draft_created', 'materialization_reconciling', 'pre_publish_failed'
             ].includes(context.snapshot.state);
     }
     async readBoundMaterializationPlan(context) {
-        if (context.execution_mode !== 'materialization_v3_2' || context.materialization_plan === null) {
+        if (!this.isPreparedMaterializationMode(context) || context.materialization_plan === null) {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared materialization plan is absent');
         }
         let durablePlan;
@@ -1461,7 +1526,8 @@ export class XArticleBrowserAdapter {
             execution_id: context.snapshot.execution_id,
             publication_plan: durablePlan,
             import_template: createXArticleImportTemplate(durablePlan.intent.document),
-            strategy: persisted.strategy
+            strategy: persisted.strategy,
+            draft_binding: persisted.draft_binding
         });
         if (!isDeepStrictEqual(durablePlan, context.plan)
             || durablePlan.plan_id !== context.snapshot.plan_id
@@ -1586,7 +1652,8 @@ export class XArticleBrowserAdapter {
     }
     async issue(context, input, deterministicId) {
         let checkpointRevision = null;
-        if (context.execution_mode === 'materialization_v3_2') {
+        if (this.isPreparedMaterializationMode(context)
+            && !(context.execution_mode === 'media_completion_v3_3' && context.snapshot.state === 'preflight')) {
             checkpointRevision = (await this.materializationStore.readCheckpoint(context.snapshot.execution_id)).revision;
         }
         const commandId = deterministicId ?? this.commandId();
@@ -1622,7 +1689,7 @@ export class XArticleBrowserAdapter {
             ...context,
             pending_command: command,
             needs_editor_observation: context.needs_editor_observation
-                || (context.execution_mode === 'materialization_v3_2' && this.isMaterializationEffect(command)),
+                || (this.isPreparedMaterializationMode(context) && this.isMaterializationEffect(command)),
             snapshot: {
                 ...context.snapshot,
                 latest_command_id: command.command_id,
@@ -1634,7 +1701,9 @@ export class XArticleBrowserAdapter {
     }
     async projectPendingIssueCheckpoint(context) {
         const intent = context.pending_issue;
-        if (context.execution_mode !== 'materialization_v3_2' || intent === null)
+        if (!this.isPreparedMaterializationMode(context)
+            || intent === null
+            || (context.execution_mode === 'media_completion_v3_3' && context.snapshot.state === 'preflight'))
             return;
         if (intent.input.execution_id !== context.snapshot.execution_id
             || intent.input_digest !== sha256(intent.input)) {

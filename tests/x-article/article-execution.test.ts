@@ -28,6 +28,11 @@ describe('X Article execution state machine', () => {
       .toBe('materialization_reconciling');
   });
 
+  it('stops adopted media completion at Draft reconciliation', () => {
+    expect(transitionXArticleExecution('materialization_reconciling', 'draft_reconciled'))
+      .toBe('draft_reconciled');
+  });
+
   it('fails closed when materialization cannot be reconciled', () => {
     expect(transitionXArticleExecution('materialization_reconciling', 'materialization_blocked'))
       .toBe('materialization_blocked');

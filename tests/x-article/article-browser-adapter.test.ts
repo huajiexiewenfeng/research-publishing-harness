@@ -15,6 +15,7 @@ import { approveXArticlePublication } from '../../harnesses/research-publishing/
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import { createXArticlePublishConfirmation } from '../../harnesses/research-publishing/core/x-article-publish-confirmation.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
+import { computeXArticleExistingDraftRevision } from '../../harnesses/research-publishing/core/x-article-existing-draft-binding.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
 const plan = createXArticlePublicationPlan({
@@ -93,6 +94,22 @@ const inlineApproval = approveXArticlePublication(
   inlinePlan, 'human:Glen56121', 3_600_000,
   new Date('2026-08-21T09:00:00.000Z'), () => 'approval_browser_inline'
 );
+const coverInlinePlan = createXArticlePublicationPlan({
+  planId: 'plan_browser_cover_inline', runId: 'run_browser_cover_inline', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/runtime/article_cover_inline', digest: `sha256:${'9'.repeat(64)}` },
+  document: {
+    schema_version: '1.0', title: 'Runtime boundary', cover_asset_id: coverAsset.asset_id,
+    blocks: [
+      ...plan.intent.document.blocks,
+      { kind: 'image', asset_id: inlineAsset.asset_id, alt_text: inlineAsset.alt_text }
+    ]
+  },
+  visuals: [
+    { asset: coverAsset, placement: { kind: 'cover' } },
+    { asset: inlineAsset, placement: { kind: 'block', block_ordinal: 2 } }
+  ],
+  plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
+});
 
 function observed(executionId: string, commandId: string, value: Record<string, unknown>) {
   const input = {
@@ -131,6 +148,36 @@ function editorObservation(
     canonical_url: 'https://x.com/compose/articles/edit/2090731994279755776',
     page_kind: 'article_editor', controls: editorControls, editor, ...overrides
   });
+}
+
+function existingBodyCompleteObservation(
+  executionId: string,
+  commandId: string,
+  observedAt = '2026-08-21T09:01:00.000Z'
+) {
+  const template = createXArticleImportTemplate(coverInlinePlan.intent.document);
+  return observed(executionId, commandId, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    page_kind: 'article_editor', controls: editorControls, observed_at: observedAt,
+    editor: {
+      draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+      blocks: coverInlinePlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+      visuals: [], has_unknown_content: false, autosave_state: 'saved',
+      import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors
+      }
+    }
+  });
+}
+
+function freshBodyCompleteObservation(
+  executionId: string,
+  commandId: string,
+  observedAt = '2026-08-21T09:02:00.000Z'
+) {
+  return existingBodyCompleteObservation(executionId, commandId, observedAt);
 }
 
 async function advancePreparedToImport(
@@ -844,6 +891,111 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toMatchObject({ execution_id: execution.execution_id, revision: 0, phase: 'preflight_pending' });
     await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/approval.json`))
       .resolves.toBe(false);
+  });
+
+  it('adopts a body-complete Draft and issues the first media command without rewriting content', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-')));
+    let tick = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media',
+      now: () => new Date([
+        '2026-08-21T09:00:00.000Z', '2026-08-21T09:00:30.000Z',
+        '2026-08-21T09:01:30.000Z', '2026-08-21T09:02:30.000Z'
+      ][Math.min(tick++, 3)]!)
+    });
+    const source = existingBodyCompleteObservation('execution_source_media', 'command_source_media');
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan, source, coverBulkCapabilities
+    );
+    const issued: string[] = [];
+
+    let next = await adapter.next(execution.execution_id);
+    issued.push(next.command!.kind);
+    expect(next.command).toMatchObject({
+      kind: 'navigate', draft_id: '2092851979932647424', side_effect: 'read',
+      payload: { kind: 'navigate', url: 'https://x.com/compose/articles/edit/2092851979932647424' }
+    });
+    const fresh = freshBodyCompleteObservation(execution.execution_id, next.command!.command_id);
+    expect(computeXArticleExistingDraftRevision(fresh)).toBe(computeXArticleExistingDraftRevision(source));
+    expect(fresh.page_revision).not.toBe(source.page_revision);
+    await reportSuccess(adapter, execution.execution_id, next.command, fresh);
+
+    next = await adapter.next(execution.execution_id);
+    issued.push(next.command!.kind);
+    expect(next.command?.kind).toBe('upload_article_cover');
+    expect(issued).not.toEqual(expect.arrayContaining([
+      'create_article_draft', 'set_article_title', 'import_article_document',
+      'insert_article_block', 'open_article_preview', 'open_publish_review', 'publish_article_once'
+    ]));
+  });
+
+  it('reconciles adopted cover and inline media without opening Preview or publishing', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-complete-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_complete',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation(
+        'execution_source_media_complete', 'command_source_media_complete', '2026-08-21T08:59:00.000Z'
+      ),
+      coverBulkCapabilities
+    );
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command,
+      freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z'));
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('upload_article_cover');
+    const template = createXArticleImportTemplate(coverInlinePlan.intent.document);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:00:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+          blocks: coverInlinePlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+          visuals: [{
+            ref: 'cover_existing_media', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          }], has_unknown_content: false, autosave_state: 'saved',
+          import_state: {
+            template_digest: template.template_digest, source_document_digest: template.source_document_digest,
+            unresolved_anchors: template.anchors
+          }
+        }
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('replace_article_visual_anchor');
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:00:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+          blocks: coverInlinePlan.intent.document.blocks,
+          visuals: [
+            {
+              ref: 'cover_existing_media', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+              alt_text: null, status: 'uploaded', owned_by_execution: true
+            },
+            {
+              ref: 'inline_existing_media', asset_id: inlineAsset.asset_id, kind: 'inline', block_ordinal: 2,
+              alt_text: inlineAsset.alt_text, status: 'uploaded', owned_by_execution: true
+            }
+          ], has_unknown_content: false, autosave_state: 'saved', import_state: null
+        }
+      }
+    ));
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'draft_reconciled', publish_command_count: 0 }, command: null
+    });
   });
 
   it('repairs exact prepare retries after context-first and store-first crashes', async () => {

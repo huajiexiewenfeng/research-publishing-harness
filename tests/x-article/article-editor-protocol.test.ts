@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest';
 
 import { XArticleCommandBroker } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
-import { nextArticleEditorDecision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.js';
+import {
+  nextArticleEditorDecision,
+  nextMaterializationEditorDecision
+} from '../../harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.js';
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
@@ -658,6 +661,20 @@ describe('X Article import observation contract', () => {
 
     expect(() => validateContract('x-article-browser-observation', observation))
       .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
+  it('completes Draft-only media reconciliation without opening Preview', () => {
+    expect(nextMaterializationEditorDecision(
+      {
+        plan,
+        materialization_plan: {} as never,
+        draft_id: draftId,
+        completion_target: 'draft_reconciled'
+      },
+      populatedArticleEditor,
+      { kind: 'exact', next_action: 'open_preview' },
+      contract
+    )).toEqual({ kind: 'complete' });
   });
 
   it('accepts an editor import state with ordered unique anchors', () => {

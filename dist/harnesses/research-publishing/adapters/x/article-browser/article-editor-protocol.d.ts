@@ -25,6 +25,7 @@ export interface XArticleMaterializationEditorContext {
     readonly plan: XArticlePublicationPlanV1;
     readonly materialization_plan: XArticleMaterializationPlanV1;
     readonly draft_id: string;
+    readonly completion_target: 'preview' | 'draft_reconciled';
 }
 export declare function nextMaterializationEditorDecision(context: XArticleMaterializationEditorContext, observation: XArticleBrowserObservation, reconciliation: XArticleDraftReconciliationV1, contract: XArticlePageContract): XArticleEditorDecision;
 export declare function nextArticleEditorDecision(context: XArticleEditorContext, observation: XArticleBrowserObservation, contract: XArticlePageContract): XArticleEditorDecision;

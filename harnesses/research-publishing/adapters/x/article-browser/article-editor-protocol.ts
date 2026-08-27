@@ -37,6 +37,7 @@ export interface XArticleMaterializationEditorContext {
   readonly plan: XArticlePublicationPlanV1;
   readonly materialization_plan: XArticleMaterializationPlanV1;
   readonly draft_id: string;
+  readonly completion_target: 'preview' | 'draft_reconciled';
 }
 
 export function nextMaterializationEditorDecision(
@@ -100,7 +101,9 @@ export function nextMaterializationEditorDecision(
       }
     );
   }
-  return command(context, observation, 'open_article_preview', 'open_article_preview', {
+  return context.completion_target === 'draft_reconciled'
+    ? { kind: 'complete' }
+    : command(context, observation, 'open_article_preview', 'open_article_preview', {
     kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
   });
 }

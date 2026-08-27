@@ -44,9 +44,11 @@ export function nextMaterializationEditorDecision(context, observation, reconcil
             asset: binding.asset
         });
     }
-    return command(context, observation, 'open_article_preview', 'open_article_preview', {
-        kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
-    });
+    return context.completion_target === 'draft_reconciled'
+        ? { kind: 'complete' }
+        : command(context, observation, 'open_article_preview', 'open_article_preview', {
+            kind: 'open_article_preview', target_ref: contract.detectControl(observation, 'preview').ref
+        });
 }
 export function nextArticleEditorDecision(context, observation, contract) {
     try {

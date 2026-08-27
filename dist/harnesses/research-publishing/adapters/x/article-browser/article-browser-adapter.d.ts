@@ -42,6 +42,7 @@ export declare class XArticleBrowserAdapter {
     private readonly materializationStore;
     constructor(store: WorkspaceStore, contract: XArticlePageContract, options?: XArticleBrowserAdapterOptions);
     prepare(plan: XArticlePublicationPlanV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
+    prepareExistingDraftMedia(plan: XArticlePublicationPlanV1, sourceObservation: XArticleBrowserObservation, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     private prepareLocked;
     private resolveMaterializationStart;
     private writeNewMaterializationStart;
@@ -70,6 +71,7 @@ export declare class XArticleBrowserAdapter {
     private nextEditorCommand;
     private nextMaterializationCommand;
     private reconcileReportedEditor;
+    private reconcileMaterializationDraft;
     private reconcilePreparedPreview;
     private issueEditorObservation;
     private recordMaterializationProgress;
@@ -83,6 +85,8 @@ export declare class XArticleBrowserAdapter {
     private persistPreviewMaterializationReceipt;
     private persistPublicMaterializationReceipt;
     private isMaterializationEffect;
+    private isPreparedMaterializationMode;
+    private hasMaterializationCheckpoint;
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
     private readBoundMaterializationStart;

@@ -12,6 +12,7 @@ export type XArticleExecutionState =
   | 'content_partially_verified'
   | 'content_verified'
   | 'materialization_reconciling'
+  | 'draft_reconciled'
   | 'materialization_blocked'
   | 'confirmation_pending'
   | 'preview_verified'
@@ -37,7 +38,8 @@ const TRANSITIONS: Readonly<Record<XArticleExecutionState, readonly XArticleExec
   content_filling: ['content_partially_verified', 'content_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   content_partially_verified: ['content_filling', 'content_verified', 'pre_publish_failed', 'cancelled_before_publish'],
   content_verified: ['preview_verified', 'pre_publish_failed', 'cancelled_before_publish'],
-  materialization_reconciling: ['confirmation_pending', 'materialization_blocked', 'pre_publish_failed', 'cancelled_before_publish'],
+  materialization_reconciling: ['draft_reconciled', 'confirmation_pending', 'materialization_blocked', 'pre_publish_failed', 'cancelled_before_publish'],
+  draft_reconciled: [],
   materialization_blocked: ['cancelled_before_publish'],
   confirmation_pending: ['publish_armed', 'cancelled_before_publish'],
   preview_verified: ['publish_armed', 'pre_publish_failed', 'cancelled_before_publish'],
