@@ -9,6 +9,11 @@ import {
   assertXArticlePublicationPlan,
   type XArticlePublicationPlanV1
 } from './x-article-publication-plan.js';
+import {
+  verifyXArticleExistingDraftBinding,
+  type XArticleExistingDraftBindingV1
+} from './x-article-existing-draft-binding.js';
+import type { XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
 
 export type XArticleMaterializationStrategy =
   | 'rich_text_anchor_import/v1'
@@ -22,6 +27,7 @@ export interface XArticleMaterializationPlanV1 {
   readonly strategy: XArticleMaterializationStrategy;
   readonly document_digest: `sha256:${string}`;
   readonly import_template_digest: `sha256:${string}`;
+  readonly draft_binding: XArticleExistingDraftBindingV1 | null;
   readonly visual_anchors: readonly XArticleMaterializationAnchorV1[];
   readonly expected_command_ceiling: number;
   readonly expected_observation_ceiling: number;
@@ -77,11 +83,13 @@ export interface XArticleMaterializationCheckpointV1 {
   readonly schema_version: 'x-article-materialization-checkpoint/v1';
   readonly execution_id: string;
   readonly draft_id: string | null;
+  readonly draft_origin: 'created_new' | 'adopted_existing';
+  readonly source_execution_id: string | null;
   readonly materialization_digest: `sha256:${string}`;
   readonly revision: number;
   readonly phase: XArticleMaterializationPhase;
   readonly body: {
-    readonly status: 'pending' | 'issued' | 'verified';
+    readonly status: 'pending' | 'issued' | 'verified' | 'adopted_verified';
     readonly observed_digest: `sha256:${string}` | null;
   };
   readonly media: readonly XArticleMediaCheckpointV1[];
@@ -140,10 +148,18 @@ export interface CreateXArticleMaterializationPlanInput {
   readonly publication_plan: XArticlePublicationPlanV1;
   readonly import_template: XArticleImportTemplateV1;
   readonly strategy: XArticleMaterializationStrategy;
+  readonly draft_binding?: XArticleExistingDraftBindingV1 | null;
 }
 
 export interface CreateInitialXArticleMaterializationCheckpointInput {
   readonly plan: XArticleMaterializationPlanV1;
+  readonly updated_at: string;
+}
+
+export interface CreateAdoptedXArticleMaterializationCheckpointInput {
+  readonly plan: XArticleMaterializationPlanV1;
+  readonly publication_plan: XArticlePublicationPlanV1;
+  readonly observation: XArticleBrowserObservation;
   readonly updated_at: string;
 }
 
@@ -252,6 +268,31 @@ function materializationAnchor(
   };
 }
 
+function assertDraftBindingMatchesPlan(
+  binding: XArticleExistingDraftBindingV1,
+  publicationPlan: XArticlePublicationPlanV1,
+  importTemplate: XArticleImportTemplateV1
+): void {
+  const bindingBody = Object.fromEntries(
+    Object.entries(binding).filter(([key]) => key !== 'binding_digest')
+  );
+  if (
+    binding.binding_digest !== sha256(bindingBody)
+    || binding.expected_account !== publicationPlan.intent.target_account
+    || binding.expected_title_digest !== sha256(publicationPlan.intent.document.title)
+    || binding.expected_document_digest !== importTemplate.source_document_digest
+    || binding.expected_import_template_digest !== importTemplate.template_digest
+    || binding.expected_anchor_manifest_digest !== sha256(importTemplate.anchors)
+    || binding.expected_cover_count !== 0
+    || binding.expected_inline_media_count !== 0
+  ) {
+    throw new HarnessError(
+      'ARTICLE_DRAFT_CONFLICT',
+      'existing Draft binding does not match the locked publication plan'
+    );
+  }
+}
+
 export function createXArticleMaterializationPlan(
   input: CreateXArticleMaterializationPlanInput
 ): XArticleMaterializationPlanV1 {
@@ -264,6 +305,21 @@ export function createXArticleMaterializationPlan(
   const visualAnchors = canonicalImportTemplate.anchors.map((_anchor, index) =>
     materializationAnchor(input.publication_plan, canonicalImportTemplate, index)
   );
+  const draftBinding = input.draft_binding ?? null;
+  if (draftBinding !== null) {
+    if (input.strategy !== 'rich_text_anchor_import/v1') {
+      throw new HarnessError(
+        'ARTICLE_DRAFT_CONFLICT',
+        'existing Draft binding requires rich-text anchor import'
+      );
+    }
+    assertDraftBindingMatchesPlan(
+      draftBinding,
+      input.publication_plan,
+      canonicalImportTemplate
+    );
+  }
+  const existingDraft = draftBinding !== null;
   const body = {
     schema_version: 'x-article-materialization-plan/v1' as const,
     execution_id: input.execution_id,
@@ -272,9 +328,10 @@ export function createXArticleMaterializationPlan(
     strategy: input.strategy,
     document_digest: canonicalImportTemplate.source_document_digest as `sha256:${string}`,
     import_template_digest: canonicalImportTemplate.template_digest as `sha256:${string}`,
+    draft_binding: draftBinding,
     visual_anchors: visualAnchors,
-    expected_command_ceiling: 12 + visualAnchors.length,
-    expected_observation_ceiling: 9 + visualAnchors.length,
+    expected_command_ceiling: (existingDraft ? 4 : 12) + visualAnchors.length,
+    expected_observation_ceiling: (existingDraft ? 3 : 9) + visualAnchors.length,
     budget: MATERIALIZATION_BUDGET
   };
   return validateContract<XArticleMaterializationPlanV1>('x-article-materialization-plan', {
@@ -283,32 +340,75 @@ export function createXArticleMaterializationPlan(
   });
 }
 
+function initialCheckpointBody(
+  plan: XArticleMaterializationPlanV1,
+  updatedAt: string
+) {
+  return {
+    schema_version: 'x-article-materialization-checkpoint/v1' as const,
+    execution_id: plan.execution_id,
+    draft_id: null,
+    draft_origin: 'created_new' as const,
+    source_execution_id: null,
+    materialization_digest: plan.materialization_digest,
+    revision: 0,
+    phase: 'preflight_pending' as const,
+    body: { status: 'pending' as const, observed_digest: null },
+    media: plan.visual_anchors.map((anchor) => ({
+      anchor_id: anchor.anchor_id,
+      asset_id: anchor.asset_id,
+      block_ordinal: anchor.block_ordinal,
+      asset_digest: anchor.asset_digest,
+      status: 'pending' as const,
+      observed_media_ref: null,
+      observed_context_digest: null
+    })),
+    last_editor_revision: null,
+    publish_confirmation: 'absent' as const,
+    updated_at: updatedAt
+  };
+}
+
 export function createInitialXArticleMaterializationCheckpoint(
   input: CreateInitialXArticleMaterializationCheckpointInput
 ): XArticleMaterializationCheckpointV1 {
   validateContract<XArticleMaterializationPlanV1>('x-article-materialization-plan', input.plan);
   return validateContract<XArticleMaterializationCheckpointV1>(
     'x-article-materialization-checkpoint',
+    initialCheckpointBody(input.plan, input.updated_at)
+  );
+}
+
+export function createAdoptedXArticleMaterializationCheckpoint(
+  input: CreateAdoptedXArticleMaterializationCheckpointInput
+): XArticleMaterializationCheckpointV1 {
+  const plan = validateContract<XArticleMaterializationPlanV1>(
+    'x-article-materialization-plan',
+    structuredClone(input.plan)
+  );
+  assertXArticlePublicationPlan(input.publication_plan);
+  if (
+    plan.draft_binding === null
+    || plan.strategy !== 'rich_text_anchor_import/v1'
+    || plan.publication_plan_digest !== input.publication_plan.plan_digest
+  ) {
+    throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent or foreign');
+  }
+  verifyXArticleExistingDraftBinding(
+    plan.draft_binding,
+    input.publication_plan,
+    input.observation
+  );
+  return validateContract<XArticleMaterializationCheckpointV1>(
+    'x-article-materialization-checkpoint',
     {
-      schema_version: 'x-article-materialization-checkpoint/v1',
-      execution_id: input.plan.execution_id,
-      draft_id: null,
-      materialization_digest: input.plan.materialization_digest,
-      revision: 0,
-      phase: 'preflight_pending',
-      body: { status: 'pending', observed_digest: null },
-      media: input.plan.visual_anchors.map((anchor) => ({
-        anchor_id: anchor.anchor_id,
-        asset_id: anchor.asset_id,
-        block_ordinal: anchor.block_ordinal,
-        asset_digest: anchor.asset_digest,
-        status: 'pending',
-        observed_media_ref: null,
-        observed_context_digest: null
-      })),
-      last_editor_revision: null,
-      publish_confirmation: 'absent',
-      updated_at: input.updated_at
+      ...initialCheckpointBody(plan, input.updated_at),
+      draft_id: plan.draft_binding.draft_id,
+      draft_origin: 'adopted_existing',
+      source_execution_id: null,
+      phase: 'body_verified',
+      body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
+      last_editor_revision: input.observation.page_revision
     }
   );
 }

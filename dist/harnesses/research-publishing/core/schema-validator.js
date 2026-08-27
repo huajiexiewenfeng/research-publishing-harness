@@ -43,12 +43,13 @@ ajv.addKeyword({
             return true;
         try {
             const visualAnchors = Reflect.get(value, 'visual_anchors');
+            const existingDraft = Reflect.get(value, 'draft_binding') !== null;
             const commandCeiling = Reflect.get(value, 'expected_command_ceiling');
             const observationCeiling = Reflect.get(value, 'expected_observation_ceiling');
             const materializationDigest = Reflect.get(value, 'materialization_digest');
             if (!Array.isArray(visualAnchors)
-                || commandCeiling !== 12 + visualAnchors.length
-                || observationCeiling !== 9 + visualAnchors.length
+                || commandCeiling !== (existingDraft ? 4 : 12) + visualAnchors.length
+                || observationCeiling !== (existingDraft ? 3 : 9) + visualAnchors.length
                 || typeof materializationDigest !== 'string') {
                 return false;
             }

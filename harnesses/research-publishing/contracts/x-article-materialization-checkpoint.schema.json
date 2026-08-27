@@ -8,6 +8,8 @@
     "schema_version",
     "execution_id",
     "draft_id",
+    "draft_origin",
+    "source_execution_id",
     "materialization_digest",
     "revision",
     "phase",
@@ -21,6 +23,8 @@
     "schema_version": { "const": "x-article-materialization-checkpoint/v1" },
     "execution_id": { "$ref": "#/$defs/identity" },
     "draft_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "draft_origin": { "enum": ["created_new", "adopted_existing"] },
+    "source_execution_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
     "materialization_digest": { "$ref": "#/$defs/digest" },
     "revision": { "type": "integer", "minimum": 0 },
     "phase": {
@@ -45,7 +49,7 @@
       "additionalProperties": false,
       "required": ["status", "observed_digest"],
       "properties": {
-        "status": { "enum": ["pending", "issued", "verified"] },
+        "status": { "enum": ["pending", "issued", "verified", "adopted_verified"] },
         "observed_digest": {
           "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
         }

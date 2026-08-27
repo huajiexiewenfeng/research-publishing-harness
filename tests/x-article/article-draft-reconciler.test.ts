@@ -41,6 +41,7 @@ const planBody = {
   strategy: 'rich_text_anchor_import/v1' as const,
   document_digest: sha256(document),
   import_template_digest: template.template_digest as `sha256:${string}`,
+  draft_binding: null,
   visual_anchors: template.anchors.map((anchor) => ({
     anchor_id: anchor.anchor_id,
     asset_id: anchor.asset_id,
@@ -67,6 +68,8 @@ function checkpoint(completedCount: number): XArticleMaterializationCheckpointV1
     schema_version: 'x-article-materialization-checkpoint/v1',
     execution_id: plan.execution_id,
     draft_id: '2090731994279755776',
+    draft_origin: 'created_new',
+    source_execution_id: null,
     materialization_digest: plan.materialization_digest,
     revision: completedCount + 1,
     phase: completedCount === plan.visual_anchors.length ? 'draft_reconciled' : 'media_materializing',
@@ -194,6 +197,7 @@ function materializationPlanFor(documentValue: XArticleDocumentV1): XArticleMate
     ...deepClone(planBody),
     document_digest: sha256(documentValue),
     import_template_digest: importTemplate.template_digest as `sha256:${string}`,
+    draft_binding: null,
     visual_anchors: importTemplate.anchors.map((anchor) => {
       const block = documentValue.blocks[anchor.block_ordinal - 1];
       if (block?.kind !== 'image') throw new Error('test fixture anchor is not an image');

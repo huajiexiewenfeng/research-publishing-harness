@@ -1,5 +1,7 @@
 import { type XArticleImportTemplateV1 } from '../adapters/x/article-browser/article-import-template.js';
 import { type XArticlePublicationPlanV1 } from './x-article-publication-plan.js';
+import { type XArticleExistingDraftBindingV1 } from './x-article-existing-draft-binding.js';
+import type { XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
 export type XArticleMaterializationStrategy = 'rich_text_anchor_import/v1' | 'block_materialization/v1';
 export interface XArticleMaterializationPlanV1 {
     readonly schema_version: 'x-article-materialization-plan/v1';
@@ -9,6 +11,7 @@ export interface XArticleMaterializationPlanV1 {
     readonly strategy: XArticleMaterializationStrategy;
     readonly document_digest: `sha256:${string}`;
     readonly import_template_digest: `sha256:${string}`;
+    readonly draft_binding: XArticleExistingDraftBindingV1 | null;
     readonly visual_anchors: readonly XArticleMaterializationAnchorV1[];
     readonly expected_command_ceiling: number;
     readonly expected_observation_ceiling: number;
@@ -41,11 +44,13 @@ export interface XArticleMaterializationCheckpointV1 {
     readonly schema_version: 'x-article-materialization-checkpoint/v1';
     readonly execution_id: string;
     readonly draft_id: string | null;
+    readonly draft_origin: 'created_new' | 'adopted_existing';
+    readonly source_execution_id: string | null;
     readonly materialization_digest: `sha256:${string}`;
     readonly revision: number;
     readonly phase: XArticleMaterializationPhase;
     readonly body: {
-        readonly status: 'pending' | 'issued' | 'verified';
+        readonly status: 'pending' | 'issued' | 'verified' | 'adopted_verified';
         readonly observed_digest: `sha256:${string}` | null;
     };
     readonly media: readonly XArticleMediaCheckpointV1[];
@@ -100,9 +105,16 @@ export interface CreateXArticleMaterializationPlanInput {
     readonly publication_plan: XArticlePublicationPlanV1;
     readonly import_template: XArticleImportTemplateV1;
     readonly strategy: XArticleMaterializationStrategy;
+    readonly draft_binding?: XArticleExistingDraftBindingV1 | null;
 }
 export interface CreateInitialXArticleMaterializationCheckpointInput {
     readonly plan: XArticleMaterializationPlanV1;
+    readonly updated_at: string;
+}
+export interface CreateAdoptedXArticleMaterializationCheckpointInput {
+    readonly plan: XArticleMaterializationPlanV1;
+    readonly publication_plan: XArticlePublicationPlanV1;
+    readonly observation: XArticleBrowserObservation;
     readonly updated_at: string;
 }
 export type CreateXArticleStageProgressInput = Omit<XArticleStageProgressV1, 'schema_version'>;
@@ -132,6 +144,7 @@ export interface CreateXArticleMaterializationStartEvidenceInput {
 }
 export declare function createXArticleMaterializationPlan(input: CreateXArticleMaterializationPlanInput): XArticleMaterializationPlanV1;
 export declare function createInitialXArticleMaterializationCheckpoint(input: CreateInitialXArticleMaterializationCheckpointInput): XArticleMaterializationCheckpointV1;
+export declare function createAdoptedXArticleMaterializationCheckpoint(input: CreateAdoptedXArticleMaterializationCheckpointInput): XArticleMaterializationCheckpointV1;
 export declare function createXArticleStageProgress(input: CreateXArticleStageProgressInput): XArticleStageProgressV1;
 export declare function createXArticleMaterializationStartEvidence(input: CreateXArticleMaterializationStartEvidenceInput): XArticleMaterializationStartEvidenceV1;
 export declare function verifyXArticleMaterializationStartEvidence(evidence: XArticleMaterializationStartEvidenceV1, plan: XArticleMaterializationPlanV1): XArticleMaterializationStartEvidenceV1;

@@ -4,12 +4,15 @@ import {
   createXArticleImportTemplate,
   type XArticleImportTemplateV1
 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
+import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import type {
   XArticleBlockV1,
   XArticleDocumentV1
 } from '../../harnesses/research-publishing/branches/x-article-harness/article-document.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import { createXArticleExistingDraftBinding } from '../../harnesses/research-publishing/core/x-article-existing-draft-binding.js';
 import {
+  createAdoptedXArticleMaterializationCheckpoint,
   createInitialXArticleMaterializationCheckpoint,
   createSupersedingXArticleMaterializationReceipt,
   createXArticleMaterializationReceipt,
@@ -83,6 +86,43 @@ const publicationPlan = createXArticlePublicationPlan({
 });
 
 const importTemplate = createXArticleImportTemplate(document);
+
+function existingDraftObservation(observationId = 'observation_existing_body') {
+  const body = {
+    schema_version: '1.0' as const,
+    observation_id: observationId,
+    execution_id: 'source_execution',
+    command_id: 'source_command',
+    origin: 'https://x.com' as const,
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    observed_at: '2026-08-27T05:56:04.000Z',
+    account_handle: publicationPlan.intent.target_account,
+    page_kind: 'article_editor' as const,
+    controls: [],
+    editor: {
+      draft_id: '2092851979932647424',
+      title: publicationPlan.intent.document.title,
+      blocks: publicationPlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+      visuals: [],
+      import_state: {
+        template_digest: importTemplate.template_digest,
+        source_document_digest: importTemplate.source_document_digest,
+        unresolved_anchors: importTemplate.anchors
+      },
+      has_unknown_content: false,
+      autosave_state: 'saved' as const
+    },
+    preview: null,
+    publish_review: null,
+    public_article: null
+  };
+  return { ...body, page_revision: computeXArticlePageRevision(body) };
+}
+
+const existingDraftBinding = createXArticleExistingDraftBinding({
+  publication_plan: publicationPlan,
+  observation: existingDraftObservation()
+});
 
 function materializationPlan() {
   return createXArticleMaterializationPlan({
@@ -184,6 +224,8 @@ describe('X Article materialization contracts', () => {
       schema_version: 'x-article-materialization-checkpoint/v1',
       execution_id: 'execution_v32',
       draft_id: null,
+      draft_origin: 'created_new',
+      source_execution_id: null,
       materialization_digest: plan.materialization_digest,
       revision: 0,
       phase: 'preflight_pending',
@@ -202,6 +244,125 @@ describe('X Article materialization contracts', () => {
       updated_at: '2026-08-26T08:01:00.000Z'
     });
     expect(validateContract('x-article-materialization-checkpoint', checkpoint)).toEqual(checkpoint);
+  });
+
+  it('creates an adopted-body checkpoint bound to the locked Draft snapshot', () => {
+    const plan = createXArticleMaterializationPlan({
+      execution_id: 'execution_existing_media',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+    const observation = existingDraftObservation('observation_existing_body_fresh');
+    const checkpoint = createAdoptedXArticleMaterializationCheckpoint({
+      plan,
+      publication_plan: publicationPlan,
+      observation,
+      updated_at: '2026-08-27T06:00:00.000Z'
+    });
+
+    expect(plan.draft_binding).toEqual(existingDraftBinding);
+    expect(checkpoint).toMatchObject({
+      draft_id: existingDraftBinding.draft_id,
+      draft_origin: 'adopted_existing',
+      source_execution_id: null,
+      phase: 'body_verified',
+      body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
+      last_editor_revision: observation.page_revision,
+      publish_confirmation: 'absent'
+    });
+    expect(checkpoint.media.every((entry) => entry.status === 'pending')).toBe(true);
+  });
+
+  it('preserves the V3.2 initial checkpoint for a null binding', () => {
+    const plan = createXArticleMaterializationPlan({
+      execution_id: 'execution_new_draft',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: null
+    });
+
+    expect(createInitialXArticleMaterializationCheckpoint({
+      plan,
+      updated_at: '2026-08-27T06:00:00.000Z'
+    })).toMatchObject({
+      draft_id: null,
+      draft_origin: 'created_new',
+      source_execution_id: null,
+      phase: 'preflight_pending',
+      body: { status: 'pending', observed_digest: null }
+    });
+  });
+
+  it('rejects an adopted checkpoint with a foreign Draft observation', () => {
+    const plan = createXArticleMaterializationPlan({
+      execution_id: 'execution_foreign_observation',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+    const observed = existingDraftObservation();
+    const body = {
+      ...observed,
+      canonical_url: 'https://x.com/compose/articles/edit/2092851979932647425',
+      editor: { ...observed.editor!, draft_id: '2092851979932647425' }
+    };
+    const foreignObservation = {
+      ...body,
+      page_revision: computeXArticlePageRevision(body)
+    };
+
+    expect(() => createAdoptedXArticleMaterializationCheckpoint({
+      plan,
+      publication_plan: publicationPlan,
+      observation: foreignObservation,
+      updated_at: '2026-08-27T06:00:00.000Z'
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_DRAFT_CONFLICT' }));
+  });
+
+  it.each([
+    {
+      case: 'binding digest changed',
+      strategy: 'rich_text_anchor_import/v1' as const,
+      draft_binding: { ...existingDraftBinding, binding_digest: digest('0') }
+    },
+    {
+      case: 'block materialization strategy',
+      strategy: 'block_materialization/v1' as const,
+      draft_binding: existingDraftBinding
+    }
+  ])('rejects a Draft binding with $case', ({ strategy, draft_binding }) => {
+    expect(() => createXArticleMaterializationPlan({
+      execution_id: 'execution_invalid_existing_draft',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy,
+      draft_binding
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_DRAFT_CONFLICT' }));
+  });
+
+  it('rejects an untrusted block-materialization Plan carrying a Draft binding', () => {
+    const adoptedPlan = createXArticleMaterializationPlan({
+      execution_id: 'execution_untrusted_existing_draft',
+      publication_plan: publicationPlan,
+      import_template: importTemplate,
+      strategy: 'rich_text_anchor_import/v1',
+      draft_binding: existingDraftBinding
+    });
+    const body = {
+      ...adoptedPlan,
+      strategy: 'block_materialization/v1' as const
+    };
+
+    expect(() => validateContract('x-article-materialization-plan', {
+      ...body,
+      materialization_digest: sha256(Object.fromEntries(
+        Object.entries(body).filter(([key]) => key !== 'materialization_digest')
+      ))
+    })).toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
   });
 
   it('records stage progress without consulting wall-clock time', () => {
@@ -311,6 +472,8 @@ function previewCheckpoint(
     schema_version: 'x-article-materialization-checkpoint/v1',
     execution_id: plan.execution_id,
     draft_id: 'draft_v32',
+    draft_origin: 'created_new',
+    source_execution_id: null,
     materialization_digest: plan.materialization_digest,
     revision: 7,
     phase: 'preview_verified',
