@@ -1,7 +1,7 @@
 # Bug Brief: created Draft shell is not fully materialized before body import
 
 - bug_id: `x-article-created-draft-revision-baseline-2026-08-27`
-- status: observation-normalizer fix offline-verified; fresh live smoke pending
+- status: observation-normalizer fix live-verified through body import; media, Preview, and Publish not executed
 - source: real Chrome Draft-only smoke
 - execution: `x_article_execution_8a739b6d-6a40-4316-af0b-f5c31b80d929`
 - draft_id: `2092793637604294656`
@@ -100,6 +100,20 @@ Write failing tests first for: rejection of `visual_anchor` inside canonical edi
 - `x-publishing-copilot` structure validation: `Skill is valid!`.
 - Manifest: two generations produced identical SHA-256 `AC7D19AB01A42C31664EA9DA51175630A344C6E5C4E2873F0B0BDC1153FD9A9C`, identical `52,783` bytes, and `253` files.
 - No Chrome, Draft, Preview, Publish, deletion, cleanup, or live report replay occurred during this fix. A fresh Draft-only smoke remains a separate explicit step.
+
+### 2026-08-27 fresh Draft-only live verification
+
+- execution: `x_article_execution_a2f1c834-3a45-4bb2-9800-d25890dc489b`
+- draft_id: `2092851979932647424`
+- target account: `@Glen56121`
+- exact title: `From Skill Memory to Shared Agent Knowledge`
+- the live editor rendered `111` Draft blocks; their text, heading/list/quote structure, marks, and links matched the locked Import Template with `0` mismatches
+- all three temporary visual markers were present exactly once and in planned order before normalization
+- `normalizeXArticleHostEditor` produced `77` canonical blocks, `3` ordered unresolved anchors, `0` visuals, and `autosave_state=saved`
+- the strict adapter report accepted the normalized observation; checkpoint phase is `body_imported`, body status is `verified`, and the observed body digest equals Import Template digest `sha256:f6043bb74f2d33eeac1d55705b7fc37f2202ff01e871c165d58ec86f646842c2`
+- all three media checkpoint entries remain `pending`; cover, image upload, Preview, Publish, deletion, and cleanup were not executed; `publish_command_count=0`
+- the live Draft tab was preserved for later continuation
+- the first Skill invocation resolved the machine-level `RESEARCH_PUBLISHING_HARNESS_CLI` override at `D:\tmp\github\research-publishing-harness\dist\...`, which is older than this worktree. The smoke then explicitly bound the Skill to this branch's verified `dist` CLI; no Harness gate was bypassed.
 
 ## Implementation
 
