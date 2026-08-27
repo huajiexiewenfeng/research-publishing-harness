@@ -314,6 +314,50 @@ async function coordinatedConcurrentNext(
 }
 
 describe('XArticleBrowserAdapter', () => {
+  it('binds the created Draft revision before importing its exact-titled bodyless shell', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-created-shell-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_created_shell_1',
+      eventId: (() => { let n = 0; return () => `event_created_shell_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_created_shell_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles', page_kind: 'articles_index',
+        controls: [{ ref: 'create', role: 'button', name: 'create', test_id: null, disabled: false }]
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    const createdDraft = editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: plan.intent.document.title,
+        blocks: [], visuals: [], import_state: null,
+        has_unknown_content: false, autosave_state: 'saved'
+      }
+    );
+    await reportSuccess(adapter, execution.execution_id, next.command, createdDraft);
+
+    const importing = await adapter.next(execution.execution_id);
+    expect(importing.command).toMatchObject({
+      kind: 'import_article_document',
+      expected_page_revision: createdDraft.page_revision
+    });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
+    )).resolves.toMatchObject({
+      draft_id: '2090731994279755776',
+      last_editor_revision: createdDraft.page_revision
+    });
+  });
+
   it('persists a deterministic Preview receipt from durable commands, observations, and progress', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-receipt-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -1732,7 +1776,7 @@ describe('XArticleBrowserAdapter', () => {
       `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
     )).resolves.toMatchObject({
       phase: 'blocked', body: { status: 'issued', observed_digest: null },
-      last_editor_revision: null
+      last_editor_revision: importing.command!.expected_page_revision
     });
     expect((await adapter.next(execution.execution_id)).command).toBeNull();
     await expect(adapter.resumeEditor(execution.execution_id))

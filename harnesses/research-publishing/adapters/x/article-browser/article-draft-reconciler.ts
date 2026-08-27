@@ -145,6 +145,15 @@ function isPreBodyEmptyShell(
   checkpoint: XArticleMaterializationCheckpointV1,
   editor: XArticleEditorObservation
 ): boolean {
+  return editorIsEmpty(editor)
+    && isPreBodyImportableShell(checkpoint, editor, '');
+}
+
+function isPreBodyImportableShell(
+  checkpoint: XArticleMaterializationCheckpointV1,
+  editor: XArticleEditorObservation,
+  approvedTitle: string
+): boolean {
   return (checkpoint.phase === 'draft_bound' || checkpoint.phase === 'article_shell_ready')
     && checkpoint.body.status === 'pending'
     && checkpoint.body.observed_digest === null
@@ -155,7 +164,11 @@ function isPreBodyEmptyShell(
     )
     && checkpoint.publish_confirmation === 'absent'
     && editor.autosave_state === 'saved'
-    && editorIsEmpty(editor);
+    && (editor.title.length === 0 || editor.title === approvedTitle)
+    && editor.blocks.length === 0
+    && editor.visuals.length === 0
+    && editor.import_state === null
+    && !editor.has_unknown_content;
 }
 
 function observationIdentityReasons(
@@ -338,7 +351,8 @@ function lifecycleReasons(
   checkpoint: XArticleMaterializationCheckpointV1,
   editor: XArticleEditorObservation,
   checkpointPrefix: number,
-  anchorCount: number
+  anchorCount: number,
+  importableShell: boolean
 ): readonly string[] {
   const reasons: string[] = [];
   if (editor.autosave_state !== 'saved') {
@@ -348,7 +362,7 @@ function lifecycleReasons(
     reasons.push('checkpoint publish confirmation is not absent during draft reconciliation');
   }
 
-  if (editorIsEmpty(editor)) {
+  if (importableShell) {
     if (checkpoint.phase !== 'draft_bound' && checkpoint.phase !== 'article_shell_ready') {
       reasons.push(`checkpoint phase ${checkpoint.phase} cannot import an empty editor body`);
     }
@@ -558,13 +572,14 @@ export function reconcileXArticleDraft(input: ReconcileXArticleDraftInput): XArt
     return { kind: 'unverifiable', reasons: ['checkpoint completed media is not an ordered prefix'] };
   }
 
-  const empty = editorIsEmpty(editor);
+  const empty = isPreBodyImportableShell(checkpoint, editor, document.title);
   const prefix = empty ? null : observedPrefix(editor, plan, document);
   const phaseReasons = lifecycleReasons(
     checkpoint,
     editor,
     checkpointPrefix,
-    plan.visual_anchors.length
+    plan.visual_anchors.length,
+    empty
   );
   if (phaseReasons.length > 0) return { kind: 'unverifiable', reasons: phaseReasons };
   if (empty) return { kind: 'empty', next_action: 'import_body' };

@@ -80,6 +80,10 @@ function observationWithoutRevision(observation) {
     return Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision'));
 }
 function isPreBodyEmptyShell(checkpoint, editor) {
+    return editorIsEmpty(editor)
+        && isPreBodyImportableShell(checkpoint, editor, '');
+}
+function isPreBodyImportableShell(checkpoint, editor, approvedTitle) {
     return (checkpoint.phase === 'draft_bound' || checkpoint.phase === 'article_shell_ready')
         && checkpoint.body.status === 'pending'
         && checkpoint.body.observed_digest === null
@@ -88,7 +92,11 @@ function isPreBodyEmptyShell(checkpoint, editor) {
             && media.observed_context_digest === null)
         && checkpoint.publish_confirmation === 'absent'
         && editor.autosave_state === 'saved'
-        && editorIsEmpty(editor);
+        && (editor.title.length === 0 || editor.title === approvedTitle)
+        && editor.blocks.length === 0
+        && editor.visuals.length === 0
+        && editor.import_state === null
+        && !editor.has_unknown_content;
 }
 function observationIdentityReasons(plan, checkpoint, observation) {
     const reasons = [];
@@ -251,7 +259,7 @@ function checkpointCompletedPrefix(checkpoint) {
     }
     return completedCount;
 }
-function lifecycleReasons(checkpoint, editor, checkpointPrefix, anchorCount) {
+function lifecycleReasons(checkpoint, editor, checkpointPrefix, anchorCount, importableShell) {
     const reasons = [];
     if (editor.autosave_state !== 'saved') {
         reasons.push(`editor autosave state is ${editor.autosave_state}`);
@@ -259,7 +267,7 @@ function lifecycleReasons(checkpoint, editor, checkpointPrefix, anchorCount) {
     if (checkpoint.publish_confirmation !== 'absent') {
         reasons.push('checkpoint publish confirmation is not absent during draft reconciliation');
     }
-    if (editorIsEmpty(editor)) {
+    if (importableShell) {
         if (checkpoint.phase !== 'draft_bound' && checkpoint.phase !== 'article_shell_ready') {
             reasons.push(`checkpoint phase ${checkpoint.phase} cannot import an empty editor body`);
         }
@@ -414,9 +422,9 @@ export function reconcileXArticleDraft(input) {
     if (checkpointPrefix === null) {
         return { kind: 'unverifiable', reasons: ['checkpoint completed media is not an ordered prefix'] };
     }
-    const empty = editorIsEmpty(editor);
+    const empty = isPreBodyImportableShell(checkpoint, editor, document.title);
     const prefix = empty ? null : observedPrefix(editor, plan, document);
-    const phaseReasons = lifecycleReasons(checkpoint, editor, checkpointPrefix, plan.visual_anchors.length);
+    const phaseReasons = lifecycleReasons(checkpoint, editor, checkpointPrefix, plan.visual_anchors.length, empty);
     if (phaseReasons.length > 0)
         return { kind: 'unverifiable', reasons: phaseReasons };
     if (empty)

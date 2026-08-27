@@ -239,6 +239,28 @@ function checkpointForPlan(
   };
 }
 
+function createdShellInput(
+  editorOverrides: Partial<XArticleEditorObservation> = {},
+  checkpointOverrides: Partial<XArticleMaterializationCheckpointV1> = {}
+) {
+  const editorObservation: XArticleEditorObservation = {
+    ...emptyEditor,
+    title: document.title,
+    ...editorOverrides
+  };
+  const observation = observationFor(editorObservation);
+  return {
+    plan,
+    checkpoint: {
+      ...deepClone(initialCheckpoint),
+      last_editor_revision: observation.page_revision,
+      ...checkpointOverrides
+    },
+    document,
+    observation
+  };
+}
+
 describe('reconcileXArticleDraft', () => {
   it.each([
     ['empty', emptyEditor, initialCheckpoint, 'empty'],
@@ -248,6 +270,67 @@ describe('reconcileXArticleDraft', () => {
   ])('classifies %s', (_name, editorObservation, checkpointValue, kind) => {
     expect(reconcileXArticleDraft(input(editorObservation, checkpointValue)).kind).toBe(kind);
   });
+
+  it.each([
+    ['matching bound revision', () => createdShellInput(), 'empty'],
+    ['null revision', () => {
+      const value = createdShellInput();
+      return { ...value, checkpoint: { ...value.checkpoint, last_editor_revision: null } };
+    }, 'unverifiable'],
+    ['stale revision', () => {
+      const value = createdShellInput();
+      return {
+        ...value,
+        checkpoint: { ...value.checkpoint, last_editor_revision: sha256({ stale: true }) }
+      };
+    }, 'unverifiable'],
+    ['forged revision', () => {
+      const value = createdShellInput();
+      const forgedRevision = sha256({ forged: true });
+      return {
+        ...value,
+        checkpoint: { ...value.checkpoint, last_editor_revision: forgedRevision },
+        observation: { ...value.observation, page_revision: forgedRevision }
+      };
+    }, 'unverifiable'],
+    ['changed title', () => createdShellInput({ title: 'Human changed title' }), 'unverifiable'],
+    ['unknown content', () => createdShellInput({ has_unknown_content: true }), 'unverifiable'],
+    ['nonempty block', () => createdShellInput({
+      blocks: [{ kind: 'paragraph', runs: [{ text: 'Human body', marks: [], link: null }] }]
+    }), 'unverifiable'],
+    ['nonempty visual', () => createdShellInput({
+      visuals: [{
+        ref: 'media_created_shell',
+        asset_id: plan.visual_anchors[0]!.asset_id,
+        kind: 'inline',
+        block_ordinal: plan.visual_anchors[0]!.block_ordinal,
+        alt_text: plan.visual_anchors[0]!.alt_text,
+        status: 'uploaded',
+        owned_by_execution: true
+      }]
+    }), 'unverifiable'],
+    ['non-null import state', () => createdShellInput({
+      import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors
+      }
+    }), 'unverifiable'],
+    ['phase drift', () => createdShellInput({}, { phase: 'preflight_passed' }), 'unverifiable'],
+    ['checkpoint drift', () => createdShellInput({}, {
+      body: { status: 'issued', observed_digest: null }
+    }), 'unverifiable']
+  ] as const)(
+    'classifies an exact-titled bodyless created shell with $0 as $2',
+    (_name, build, expectedKind) => {
+      const result = reconcileXArticleDraft(build());
+      if (expectedKind === 'empty') {
+        expect(result).toEqual({ kind: 'empty', next_action: 'import_body' });
+      } else {
+        expect(result).toMatchObject({ kind: 'unverifiable', reasons: expect.any(Array) });
+      }
+    }
+  );
 
   it('returns the exact completed prefix and deterministic next action', () => {
     expect(reconcileXArticleDraft(input(editor(1), checkpoint(1)))).toEqual({

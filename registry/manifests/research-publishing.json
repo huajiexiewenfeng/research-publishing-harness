@@ -100,8 +100,8 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts",
-      "sha256": "fb61b7877dbb79a457b14109dc8be7b240133a5c736086bbd052336825d5f8f9",
-      "bytes": 130006
+      "sha256": "891a699b1908f2d805e51cdf74ef597889709da28128466f3ce1b604fbafc587",
+      "bytes": 130097
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.ts",
@@ -115,8 +115,8 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-draft-reconciler.ts",
-      "sha256": "901f43a9970c6528ba445661f5c0db4c901005192e97cfab75ed4b51e37287e8",
-      "bytes": 24562
+      "sha256": "bacac7e9a77a13f4e3395b5c8a4c3727de5b6035fb7f162d51f408beee763550",
+      "bytes": 25065
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-editor-protocol.ts",

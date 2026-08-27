@@ -485,6 +485,7 @@ export class XArticleBrowserAdapter {
           ...current,
           draft_id: page.draft_id,
           phase: 'article_shell_ready',
+          last_editor_revision: current.last_editor_revision ?? observation.page_revision,
           updated_at: this.now().toISOString()
         }));
         context = await this.transition(
