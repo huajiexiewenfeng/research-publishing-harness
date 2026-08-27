@@ -1,7 +1,7 @@
-# Bug Brief: created Draft revision baseline is not checkpointed
+# Bug Brief: created Draft shell is not fully materialized before body import
 
 - bug_id: `x-article-created-draft-revision-baseline-2026-08-27`
-- status: fixed and offline-verified; independent review and fresh live smoke pending
+- status: reopened title-stage fix offline-verified; fresh live smoke pending
 - source: real Chrome Draft-only smoke
 - execution: `x_article_execution_8a739b6d-6a40-4316-af0b-f5c31b80d929`
 - draft_id: `2092793637604294656`
@@ -18,15 +18,45 @@ Reproduced once in the approved Task 4 live smoke. Runtime evidence shows the va
 
 Draft-ID binding omits null-only promotion of the validated create observation revision. The reconciler recognizes only empty-title empty shells, while X has already applied the approved title to the new Draft.
 
+The post-fix live smoke disproved the second assumption for the real Host. Draft creation produced a saved, bodyless editor whose title remained empty. The prepared V3.2 decision path treated that shell as immediately importable and skipped the existing `set_article_title` command used by the legacy editor path. A title-only success report must also preserve the body as pending; title text alone is not evidence that document import occurred.
+
 ## Scope lock
 
-Active: article browser adapter, Draft reconciler, their focused tests, generated parity artifacts, deterministic manifest.
+Active: prepared article editor decision, prepared checkpoint projection, their focused tests, generated parity artifacts, deterministic manifest.
 
 Excluded: Chrome Host, schemas, protocols, Publish flow, cleanup, unrelated recovery design.
 
 ## Fix plan
 
-Write failing regression tests first. Promote only a null checkpoint revision during Draft binding. Classify only a matching-revision, exact-approved-title, otherwise-empty pre-import Draft as importable. Preserve all drift and unknown-content failures.
+Write failing regression tests first. For a validated empty-title shell, issue `set_article_title`; require a saved observation with the exact approved title before issuing `import_article_document`. Keep the body pending after title-only reports. Preserve all drift, replay, and unknown-content failures.
+
+## Post-fix live evidence
+
+- execution: `x_article_execution_86e4c8d6-28b9-42f0-8c4c-25883dd295f4`
+- draft_id: `2092809957653753856`
+- live DOM: `(Needs title)` and an empty `Add a title` textbox
+- create report: normalized title empty, autosave saved; no title write attempted
+- next command: body import was issued but not claimed because the exact-title Host precondition failed
+- effects: body import `0`, images `0`, Publish `0`; old Draft unchanged
+
+## Reopened fix implementation
+
+- Prepared V3.2 now issues a separately claimed `set_article_title` command when the validated new Draft shell has an empty title.
+- The title command is bound to the locked publication Plan and is included in prepared capability, effect/recovery, receipt-trust, and Host protocol checks.
+- A title-only observation updates the stable editor revision while leaving checkpoint body status pending and the phase at `article_shell_ready`.
+- Only a later exact-titled, otherwise empty, saved observation can lead to `import_article_document`.
+- The offline Host fixture now executes the real title command; its former implicit metadata substage was removed.
+
+## Reopened fix offline verification
+
+- RED: the focused regression received `import_article_document` instead of `set_article_title` (`1 failed / 70 skipped`).
+- GREEN: the same regression proves `create -> set title -> saved exact-title observation -> import`, with body still pending before import (`1 passed / 70 skipped`).
+- Adapter suite: `71/71` passed.
+- Integration and security suites: `63/63` passed after adding the one explicit title transaction to measured command and observation counts.
+- Manifest and targeted X Article CLI/package checks: `6/6` passed.
+- Lint and typecheck: exit `0`; build: exit `0` after rerunning outside the restricted filesystem sandbox.
+- Manifest: two final generations produced identical SHA-256 `683381F01F508EE5B7B77CF0611C3FF818399FA460596EC5F4BEDF1D86E99689`, `52,557` bytes, and `252` files.
+- Fresh real-Chrome Draft-only verification remains pending. Publish, deletion, and cleanup are not authorized.
 
 ## Implementation
 

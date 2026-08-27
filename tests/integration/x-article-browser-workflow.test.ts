@@ -57,7 +57,7 @@ async function succeed(
 const materializationCapabilities = {
   executor: 'codex-chrome', executor_version: 'offline-control-plane-fixture', browser_family: 'chrome',
   capabilities: [
-    'observe_article_page', 'create_article_draft', 'import_article_document',
+    'observe_article_page', 'create_article_draft', 'set_article_title', 'import_article_document',
     'replace_article_visual_anchor', 'upload_article_cover', 'open_article_preview',
     'open_publish_review', 'publish_article_once'
   ],
@@ -272,6 +272,10 @@ class OfflineMaterializationHost {
       throw new Error('offline Host refuses public network observation');
     }
     if (command.payload.kind === 'create_article_draft') return this.editor(command);
+    if (command.payload.kind === 'set_article_title') {
+      this.persistDraftMetadata();
+      return this.editor(command);
+    }
     if (command.payload.kind === 'import_article_document') {
       if (this.bodyImportEffects > 0 || this.blocks.length > 0) this.bodyOverwriteAttempts += 1;
       if (this.bodyImportEffects === 0) {
@@ -557,12 +561,8 @@ async function runOfflineMaterialization(
     if (
       crashPoint === 'after_metadata'
       && !crashed
-      && command.kind === 'create_article_draft'
+      && command.kind === 'set_article_title'
     ) {
-      // Prepared V3.2 has no standalone metadata command/checkpoint. The offline Host
-      // persists the planned title as its exact local metadata substage; cover remains
-      // a later, separate upload_article_cover command.
-      host.persistDraftMetadata();
       await recordBoundary(command);
     }
   }
@@ -909,9 +909,9 @@ describe('X Article Browser workflow', () => {
   });
 
   it.each([
-    [0, 12, 9, 5, 5],
-    [3, 15, 12, 7, 7],
-    [10, 22, 19, 14, 14]
+    [0, 12, 9, 6, 6],
+    [3, 15, 12, 8, 8],
+    [10, 22, 19, 15, 15]
   ])(
     'keeps %i images within the measured command and Observation budgets',
     async (images, commandCeiling, observationCeiling, measuredCommands, measuredObservations) => {
@@ -945,8 +945,8 @@ describe('X Article Browser workflow', () => {
     expect(result.cover_effect_count).toBe(1);
     expect(result.completed_asset_ids).toEqual(result.expected_asset_ids);
     expect(new Set(result.completed_asset_ids).size).toBe(4);
-    expect(result.command_count).toBe(8);
-    expect(result.observation_count).toBe(8);
+    expect(result.command_count).toBe(9);
+    expect(result.observation_count).toBe(9);
     expect(result.command_count).toBeLessThanOrEqual(result.command_ceiling);
     expect(result.observation_count).toBeLessThanOrEqual(result.observation_ceiling);
     expect(result.publish_command_count).toBe(0);

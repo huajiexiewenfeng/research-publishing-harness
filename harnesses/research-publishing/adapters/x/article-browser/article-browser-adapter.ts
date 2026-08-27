@@ -1396,9 +1396,14 @@ export class XArticleBrowserAdapter {
       return this.blockMaterialization(context, trusted, { kind: 'unverifiable', reasons: ['editor observation identity is invalid'] });
     }
     const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
-    const bodyObserved = observation.editor.title.length > 0 || observation.editor.blocks.length > 0;
     const template = createXArticleImportTemplate(context.plan.intent.document);
     const importState = observation.editor.import_state;
+    const bodyObserved = observation.editor.blocks.length > 0
+      || importState !== null
+      || (
+        context.pending_command?.kind === 'import_article_document'
+        && context.plan.intent.document.blocks.length === 0
+      );
     const completedCount = importState === null
       ? plan.visual_anchors.length
       : sha256(importState.unresolved_anchors) === sha256(
@@ -1435,7 +1440,9 @@ export class XArticleBrowserAdapter {
       ? 'draft_reconciled'
       : media.some((entry) => entry.status === 'completed')
         ? 'media_materializing'
-        : 'body_imported';
+        : bodyObserved || checkpoint.body.status === 'verified'
+          ? 'body_imported'
+          : checkpoint.phase;
     const candidate: XArticleMaterializationCheckpointV1 = {
       ...checkpoint,
       phase,
@@ -1842,6 +1849,9 @@ export class XArticleBrowserAdapter {
     if (command.kind === 'create_article_draft') {
       return command.purpose === 'create_article_draft' && command.side_effect === 'write';
     }
+    if (command.kind === 'set_article_title') {
+      return command.purpose === 'set_article_title' && command.side_effect === 'write';
+    }
     if (command.kind === 'import_article_document') {
       return command.purpose === 'import_article_document' && command.side_effect === 'write';
     }
@@ -1965,7 +1975,8 @@ export class XArticleBrowserAdapter {
   }
 
   private isMaterializationEffect(command: XArticleBrowserCommandV1): boolean {
-    return command.kind === 'import_article_document'
+    return command.kind === 'set_article_title'
+      || command.kind === 'import_article_document'
       || command.kind === 'replace_article_visual_anchor'
       || command.kind === 'upload_article_cover'
       || command.kind === 'open_article_preview';
@@ -2109,6 +2120,15 @@ export class XArticleBrowserAdapter {
     materializationPlan: XArticleMaterializationPlanV1,
     input: IssueXArticleBrowserCommandInput
   ): void {
+    if (
+      input.payload.kind === 'set_article_title'
+      && input.payload.title !== context.plan.intent.document.title
+    ) {
+      throw new HarnessError(
+        'ARTICLE_MATERIALIZATION_DRIFT',
+        'prepared title command is not bound to durable content'
+      );
+    }
     if (input.payload.kind === 'import_article_document') {
       const canonicalTemplate = createXArticleImportTemplate(context.plan.intent.document);
       if (
@@ -2519,7 +2539,7 @@ export class XArticleBrowserAdapter {
       );
     }
     const required: XArticleBrowserCommandKind[] = [
-      'observe_article_page', 'create_article_draft', 'open_article_preview',
+      'observe_article_page', 'create_article_draft', 'set_article_title', 'open_article_preview',
       'open_publish_review', 'publish_article_once'
     ];
     if (plan.intent.visuals.some((visual) => visual.placement.kind === 'cover')) {

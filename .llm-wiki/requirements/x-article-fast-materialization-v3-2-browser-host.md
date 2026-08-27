@@ -16,6 +16,12 @@ This is the durable Browser Host contract for the live-Chrome boundary. It consu
 
 The Host follows adapter state and issued commands; it does not interpret approval authority. Publication Bundle-derived child authorization remains the single action-time authority. These checks cover Draft materialization only and authorize zero Publish actions.
 
+## Title materialization contract
+
+A newly created empty Draft with an empty title is not yet body-importable. The adapter must issue `set_article_title` bound to the locked publication Plan. Before typing, the Host proves the exact claim, origin, account, URL Draft ID, expected revision, empty title, empty body, zero visuals, null import state, no unknown content, and one unique title control. It writes only the approved title, waits for editor stability and autosave, and reports success only from a fresh normalized observation containing the exact approved title and an otherwise empty saved Draft.
+
+The title report updates the stable editor revision but leaves checkpoint body status pending. It neither proves body import nor authorizes a paste. Only a later exact `import_article_document` command returned by `next` and successfully claimed authorizes body mutation.
+
 ## Body import contract
 
 Before `import_article_document` changes the page, the Host must prove from the current Chrome page and exact artifacts:

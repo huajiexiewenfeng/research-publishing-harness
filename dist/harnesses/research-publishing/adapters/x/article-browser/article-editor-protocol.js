@@ -5,6 +5,14 @@ export function nextMaterializationEditorDecision(context, observation, reconcil
         return blocked('ARTICLE_MATERIALIZATION_DRIFT', 'X Article Draft cannot be reconciled safely');
     }
     if (reconciliation.kind === 'empty') {
+        const editor = contract.detectEditor(observation);
+        if (editor.title === '') {
+            return command(context, observation, 'set_article_title', 'set_article_title', {
+                kind: 'set_article_title',
+                target_ref: contract.detectControl(observation, 'title').ref,
+                title: context.plan.intent.document.title
+            });
+        }
         return command(context, observation, 'import_article_document', 'import_article_document', {
             kind: 'import_article_document',
             target_ref: contract.detectControl(observation, 'body').ref,

@@ -106,7 +106,7 @@ describe('X Article Browser security', () => {
     const execution = await adapter.prepare(humanPlan, {
       executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
       capabilities: [
-        'observe_article_page', 'create_article_draft', 'import_article_document',
+        'observe_article_page', 'create_article_draft', 'set_article_title', 'import_article_document',
         'replace_article_visual_anchor', 'open_article_preview', 'open_publish_review',
         'publish_article_once'
       ],

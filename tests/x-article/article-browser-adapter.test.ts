@@ -116,6 +116,7 @@ async function reportSuccess(
 }
 
 const editorControls = [
+  { ref: 'title', role: 'textbox' as const, name: 'Add a title', test_id: null, disabled: false },
   { ref: 'body', role: 'textbox' as const, name: '', test_id: 'composer', disabled: false },
   { ref: 'preview', role: 'link' as const, name: 'Preview', test_id: null, disabled: false }
 ];
@@ -134,7 +135,8 @@ function editorObservation(
 
 async function advancePreparedToImport(
   adapter: XArticleBrowserAdapter,
-  executionId: string
+  executionId: string,
+  plannedTitle = plan.intent.document.title
 ) {
   let next = await adapter.next(executionId);
   await reportSuccess(adapter, executionId, next.command, observed(executionId, next.command!.command_id, {
@@ -148,6 +150,16 @@ async function advancePreparedToImport(
     {
       draft_id: '2090731994279755776', title: '', blocks: [], visuals: [],
       import_state: null, has_unknown_content: false, autosave_state: 'saved'
+    }
+  ));
+  next = await adapter.next(executionId);
+  await reportSuccess(adapter, executionId, next.command, editorObservation(
+    executionId,
+    next.command!.command_id,
+    {
+      draft_id: '2090731994279755776', title: plannedTitle,
+      blocks: [], visuals: [], import_state: null,
+      has_unknown_content: false, autosave_state: 'saved'
     }
   ));
   return adapter.next(executionId);
@@ -314,7 +326,7 @@ async function coordinatedConcurrentNext(
 }
 
 describe('XArticleBrowserAdapter', () => {
-  it('binds the created Draft revision before importing its exact-titled bodyless shell', async () => {
+  it('writes and verifies the approved title before importing a newly created empty Draft', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-created-shell-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
       executionId: () => 'execution_created_shell_1',
@@ -338,23 +350,42 @@ describe('XArticleBrowserAdapter', () => {
       execution.execution_id,
       next.command!.command_id,
       {
-        draft_id: '2090731994279755776', title: plan.intent.document.title,
+        draft_id: '2090731994279755776', title: '',
         blocks: [], visuals: [], import_state: null,
         has_unknown_content: false, autosave_state: 'saved'
       }
     );
     await reportSuccess(adapter, execution.execution_id, next.command, createdDraft);
 
+    const title = await adapter.next(execution.execution_id);
+    expect(title.command).toMatchObject({
+      kind: 'set_article_title',
+      expected_page_revision: createdDraft.page_revision,
+      payload: { kind: 'set_article_title', title: plan.intent.document.title }
+    });
+    const titledDraft = editorObservation(
+      execution.execution_id,
+      title.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: plan.intent.document.title,
+        blocks: [], visuals: [], import_state: null,
+        has_unknown_content: false, autosave_state: 'saved'
+      }
+    );
+    await reportSuccess(adapter, execution.execution_id, title.command, titledDraft);
+
     const importing = await adapter.next(execution.execution_id);
     expect(importing.command).toMatchObject({
       kind: 'import_article_document',
-      expected_page_revision: createdDraft.page_revision
+      expected_page_revision: titledDraft.page_revision
     });
     await expect(store.readJson(
       `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`
     )).resolves.toMatchObject({
       draft_id: '2090731994279755776',
-      last_editor_revision: createdDraft.page_revision
+      phase: 'article_shell_ready',
+      body: { status: 'issued', observed_digest: null },
+      last_editor_revision: titledDraft.page_revision
     });
   });
 
@@ -377,8 +408,8 @@ describe('XArticleBrowserAdapter', () => {
       draft_id: '2090731994279755776',
       body_block_count: 1,
       inline_image_count: 0,
-      command_count: 5,
-      observation_count: 5,
+      command_count: 6,
+      observation_count: 6,
       human_wait_seconds: 0,
       within_budget: true,
       preview_revision: preview.page_revision,
@@ -388,7 +419,7 @@ describe('XArticleBrowserAdapter', () => {
     const progress = await store.readText(
       `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`
     );
-    expect(progress.trim().split('\n')).toHaveLength(5);
+    expect(progress.trim().split('\n')).toHaveLength(6);
     expect(progress).toContain('"observed_effect":"complete"');
     await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
       state: 'confirmation_pending', publish_command_count: 0
@@ -988,6 +1019,16 @@ describe('XArticleBrowserAdapter', () => {
         import_state: null, has_unknown_content: false, autosave_state: 'saved'
       }
     ));
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id,
+      next.command!.command_id,
+      {
+        draft_id: '2090731994279755776', title: plan.intent.document.title,
+        blocks: [], visuals: [], import_state: null,
+        has_unknown_content: false, autosave_state: 'saved'
+      }
+    ));
     const writeNew = store.writeNew.bind(store);
     let failOnce = true;
     store.writeNew = async (path, value) => {
@@ -1006,11 +1047,11 @@ describe('XArticleBrowserAdapter', () => {
       `runs/${execution.execution_id}/x-article/browser/adapter-context.json`
     )).resolves.toMatchObject({
       pending_command: null,
-      pending_issue: { command_id: 'command_body_intent_3', input: { kind: 'import_article_document' } }
+      pending_issue: { command_id: 'command_body_intent_4', input: { kind: 'import_article_document' } }
     });
     const repaired = await adapter.next(execution.execution_id);
     expect(repaired.command).toMatchObject({
-      command_id: 'command_body_intent_3', kind: 'import_article_document'
+      command_id: 'command_body_intent_4', kind: 'import_article_document'
     });
   });
 
@@ -1344,8 +1385,8 @@ describe('XArticleBrowserAdapter', () => {
     )).resolves.toMatchObject({
       body_block_count: 1,
       inline_image_count: 0,
-      command_count: 6,
-      observation_count: 5,
+      command_count: 7,
+      observation_count: 6,
       recovery_count: 1
     });
     await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
@@ -1365,7 +1406,11 @@ describe('XArticleBrowserAdapter', () => {
       now: () => new Date('2026-08-21T09:01:00.000Z')
     });
     const execution = await adapter.prepare(preparedPlan, coverBulkCapabilities);
-    const importing = await advancePreparedToImport(adapter, execution.execution_id);
+    const importing = await advancePreparedToImport(
+      adapter,
+      execution.execution_id,
+      preparedPlan.intent.document.title
+    );
     await reportSuccess(adapter, execution.execution_id, importing.command, editorObservation(
       execution.execution_id,
       importing.command!.command_id,

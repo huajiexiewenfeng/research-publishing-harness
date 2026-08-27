@@ -7,7 +7,7 @@ Use this reference only for an execution created by `x-article browser prepare`.
 Before `prepare` or any Chrome Draft mutation, verify all of the following:
 
 - `registry/manifests/research-publishing.json` declares protocol `x-article-materialization/v3.2`, default strategy `rich_text_anchor_import/v1`, page contract `x-article-web/2026-08`, and the compatible runtime/Skill/manifest/Browser Host release set.
-- The Browser Host release declares the semantic transactions `import_article_document` and `replace_article_visual_anchor` plus the wait behavior `materialization_progress`.
+- The Browser Host release declares the semantic transactions `set_article_title`, `import_article_document`, and `replace_article_visual_anchor` plus the wait behavior `materialization_progress`.
 - The JSON passed to CLI `--capabilities` is the exact Chrome command-capability manifest: `executor=codex-chrome`, a nonblank `executor_version`, `browser_family=chrome`, unique supported command kinds, and an ISO `observed_at`. It includes `import_article_document` and `replace_article_visual_anchor` plus every command kind required by the Plan.
 
 `materialization_progress` is a Host release-set behavior and persists as `x-article-materialization-progress/v1`; it is not an X Article Browser command kind. Do not add it to the CLI `capabilities` array and do not invent an `x-article browser progress` command.
@@ -78,6 +78,8 @@ For one prepared execution:
 The checks below are live checks against the selected explicit Chrome binding. A prior smoke, fixture, screenshot, log, or remembered page state is not evidence for the current command. Record a checklist result only from the current page and the exact immutable command, claim, locked publication Plan, materialization Plan, and Package.
 
 ### Body import checks
+
+Before body import, an empty newly created Draft is materialized through a separate `set_article_title` command. Verify the exact claim, origin, account, URL Draft ID, expected revision, empty title, empty body, zero visuals, `import_state=null`, `has_unknown_content=false`, and a unique title control. Write only `payload.title`, wait for editor stability and autosave, then report success only when a fresh normalized observation contains that exact title, an otherwise empty Draft, and `autosave_state=saved`. A title report is metadata evidence only: it does not prove or authorize body import. Return to the Host loop and require a newly issued and claimed `import_article_document` command.
 
 `import_article_document` is one semantic transaction. Immediately before focusing the body target or pasting, all of these preconditions must be true:
 
