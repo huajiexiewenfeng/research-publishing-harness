@@ -127,6 +127,22 @@ function adoptedCheckpoint(
   };
 }
 
+function forgedAdoptedCheckpoint(
+  materializationPlan: XArticleMaterializationPlanV1
+): XArticleMaterializationCheckpointV1 {
+  return {
+    ...checkpoint(materializationPlan),
+    draft_id: '2092851979932647424',
+    draft_origin: 'adopted_existing',
+    phase: 'body_verified',
+    body: {
+      status: 'adopted_verified',
+      observed_digest: materializationPlan.import_template_digest
+    },
+    last_editor_revision: digest('e')
+  };
+}
+
 function progress(
   override: Partial<Parameters<typeof createXArticleStageProgress>[0]> = {}
 ) {
@@ -153,6 +169,34 @@ async function fixture() {
 }
 
 describe('XArticleMaterializationStore', () => {
+  it('rejects adopted checkpoint claims for a null-binding Plan at every store boundary', async () => {
+    const createCase = await fixture();
+    const createPlan = plan('execution_null_binding_create', true);
+    await expect(createCase.store.create(createPlan, forgedAdoptedCheckpoint(createPlan)))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+
+    const updateCase = await fixture();
+    const updatePlan = plan('execution_null_binding_update', true);
+    await updateCase.store.create(updatePlan, checkpoint(updatePlan));
+    await expect(updateCase.store.updateCheckpoint(updatePlan.execution_id, 0, () => ({
+      ...forgedAdoptedCheckpoint(updatePlan),
+      updated_at: '2026-08-27T06:03:00.000Z'
+    }))).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+
+    const readCase = await fixture();
+    const readPlan = plan('execution_null_binding_read', true);
+    await readCase.workspace.writeNew(
+      'runs/execution_null_binding_read/x-article/browser/materialization-plan.json',
+      readPlan
+    );
+    await readCase.workspace.writeNew(
+      'runs/execution_null_binding_read/x-article/browser/materialization-checkpoint.json',
+      forgedAdoptedCheckpoint(readPlan)
+    );
+    await expect(readCase.store.readCheckpoint(readPlan.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
   it('round-trips an adopted checkpoint and rejects forged adopted state', async () => {
     const { store } = await fixture();
     const materializationPlan = adoptedPlan('execution_adopted_round_trip');

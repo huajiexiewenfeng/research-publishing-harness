@@ -172,19 +172,26 @@ export class XArticleMaterializationStore {
             || checkpoint.phase === 'publish_submitted'
             || checkpoint.phase === 'public_verified'
             || checkpoint.phase === 'blocked';
-        const adoptedCheckpointMatches = !adoptedPlan || (checkpoint.draft_origin === 'adopted_existing'
+        const adoptedCheckpointMatches = adoptedPlan
+            && checkpoint.draft_origin === 'adopted_existing'
             && checkpoint.source_execution_id === null
             && checkpoint.draft_id === plan.draft_binding.draft_id
             && checkpoint.body.status === 'adopted_verified'
             && checkpoint.body.observed_digest === plan.import_template_digest
             && checkpoint.last_editor_revision !== null
-            && adoptedPhase);
+            && adoptedPhase;
+        const createdNewCheckpointMatches = !adoptedPlan
+            && checkpoint.draft_origin === 'created_new'
+            && checkpoint.body.status !== 'adopted_verified';
+        const checkpointOriginMatchesPlan = adoptedPlan
+            ? adoptedCheckpointMatches
+            : createdNewCheckpointMatches;
         if (plan.execution_id !== requestedExecutionId
             || checkpoint.execution_id !== requestedExecutionId
             || checkpoint.execution_id !== plan.execution_id
             || checkpoint.materialization_digest !== plan.materialization_digest
             || !mediaMatches
-            || !adoptedCheckpointMatches) {
+            || !checkpointOriginMatchesPlan) {
             throw this.conflict('materialization checkpoint does not match its locked plan');
         }
     }
