@@ -1000,6 +1000,93 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toBe(true);
   });
 
+  it('repairs a crashed null-observation adoption rejection projection without checkpoint side effects', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-empty-projection-crash-')));
+    const executionId = 'execution_existing_media_empty_projection_crash';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_empty_projection_crash', 'source_command_empty_projection_crash', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const input = { command: next.command!, status: 'success' as const, observation: null };
+    await adapter.claim(input.command);
+    const projectionPath = `runs/${execution.execution_id}/x-article/browser/report-projections/${input.command.command_id}.json`;
+    const reportPath = `runs/${execution.execution_id}/x-article/browser/reports/${input.command.command_id}.json`;
+    const writeNew = store.writeNew.bind(store);
+    let failProjection = true;
+    store.writeNew = async (path, value) => {
+      if (failProjection && path === projectionPath) {
+        failProjection = false;
+        throw new Error('injected adoption rejection projection crash');
+      }
+      return writeNew(path, value);
+    };
+
+    await expect(adapter.report(input)).rejects.toThrow('injected adoption rejection projection crash');
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.exists(reportPath)).resolves.toBe(true);
+    await expect(store.exists(projectionPath)).resolves.toBe(false);
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+    )).resolves.toMatchObject({ event_type: 'article_adoption_rejected' });
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`))
+      .resolves.toBe(false);
+
+    const replay = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    await expect(replay.report(input)).resolves.toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.exists(projectionPath)).resolves.toBe(true);
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000003.json`
+    )).rejects.toThrow();
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`))
+      .resolves.toBe(false);
+  });
+
+  it('terminalizes and replays a foreign pre-binding observation without checkpoint side effects', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-foreign-preflight-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_foreign_preflight',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_foreign_preflight', 'source_command_foreign_preflight', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const input = {
+      command: next.command!, status: 'success' as const,
+      observation: {
+        ...freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z'),
+        execution_id: 'foreign_execution'
+      }
+    };
+    await adapter.claim(input.command);
+
+    const first = await adapter.report(input);
+    await expect(adapter.report(input)).resolves.toEqual(first);
+    expect(first).toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+    )).resolves.toMatchObject({ event_type: 'article_adoption_rejected' });
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`))
+      .resolves.toBe(false);
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`))
+      .resolves.toBe(false);
+  });
+
   it('replays an identical adopted-Draft preflight report without duplicate projection side effects', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-preflight-replay-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

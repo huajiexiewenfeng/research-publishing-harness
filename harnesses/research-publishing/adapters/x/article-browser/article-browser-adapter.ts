@@ -810,9 +810,9 @@ export class XArticleBrowserAdapter {
           context.execution_mode === 'media_completion_v3_3'
           && context.snapshot.state === 'preflight'
         ) {
-          await this.persistMaterializationReportEvidence(reportPath, input);
-          context = await this.rejectAdoption(context, error);
-          return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
+          return this.finalizePreBindingAdoptionRejection(
+            context, reportPath, input, reportDigest, error
+          );
         }
         if (!this.isPreparedMaterializationMode(context)) throw error;
         const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
@@ -825,11 +825,16 @@ export class XArticleBrowserAdapter {
     let materializationReport: MaterializationReportEvidenceV1 | null = null;
     if (this.isPreparedMaterializationMode(context)) {
       materializationReport = await this.persistMaterializationReportEvidence(reportPath, input);
-      if (this.hasMaterializationCheckpoint(context)) {
+      if (await this.hasMaterializationCheckpoint(context)) {
         await this.recordMaterializationProgress(context, materializationReport);
       }
     } else {
       await this.ensureExactArtifact(reportPath, input);
+    }
+    if (await this.hasDurablePreBindingAdoptionRejection(context)) {
+      return (await this.finalizeProjectedReport(
+        context, input.command.command_id, reportDigest
+      )).snapshot;
     }
     if (
       this.isPreparedReportActive(context)
@@ -839,15 +844,16 @@ export class XArticleBrowserAdapter {
         context.execution_mode === 'media_completion_v3_3'
         && context.snapshot.state === 'preflight'
       ) {
-        context = await this.rejectAdoption(context, new HarnessError(
-          'ARTICLE_DRAFT_CONFLICT',
-          'adopted Draft preflight success report has no browser observation'
-        ));
-        return (await this.finalizeProjectedReport(
+        return this.finalizePreBindingAdoptionRejection(
           context,
-          input.command.command_id,
-          reportDigest
-        )).snapshot;
+          reportPath,
+          input,
+          reportDigest,
+          new HarnessError(
+            'ARTICLE_DRAFT_CONFLICT',
+            'adopted Draft preflight success report has no browser observation'
+          )
+        );
       }
       const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
       context = await this.blockMaterialization(context, checkpoint, {
@@ -887,6 +893,18 @@ export class XArticleBrowserAdapter {
       input.observation.execution_id !== input.command.execution_id ||
       input.observation.command_id !== input.command.command_id
     ) {
+      if (
+        context.execution_mode === 'media_completion_v3_3'
+        && context.snapshot.state === 'preflight'
+      ) {
+        return this.finalizePreBindingAdoptionRejection(
+          context,
+          reportPath,
+          input,
+          reportDigest,
+          new HarnessError('ARTICLE_DRAFT_CONFLICT', 'reported observation identity is foreign')
+        );
+      }
       if (this.isPreparedReportActive(context)) {
         const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
         context = await this.blockMaterialization(context, checkpoint, {
@@ -1714,6 +1732,20 @@ export class XArticleBrowserAdapter {
     return this.transition(context, 'materialization_blocked', 'article_adoption_rejected');
   }
 
+  private async finalizePreBindingAdoptionRejection(
+    context: AdapterContext,
+    reportPath: string,
+    input: XArticleBrowserReportInput,
+    reportDigest: string,
+    error: HarnessError
+  ): Promise<XArticleExecutionSnapshotV1> {
+    await this.persistMaterializationReportEvidence(reportPath, input);
+    context = await this.rejectAdoption(context, error);
+    return (await this.finalizeProjectedReport(
+      context, input.command.command_id, reportDigest
+    )).snapshot;
+  }
+
   private async reconcilePreparedPreview(
     context: AdapterContext,
     observation: XArticleBrowserObservation
@@ -2224,9 +2256,43 @@ export class XArticleBrowserAdapter {
       || context.execution_mode === 'media_completion_v3_3';
   }
 
-  private hasMaterializationCheckpoint(context: AdapterContext): boolean {
-    return this.isPreparedMaterializationMode(context)
-      && !(context.execution_mode === 'media_completion_v3_3' && context.snapshot.state === 'preflight');
+  private async hasMaterializationCheckpoint(context: AdapterContext): Promise<boolean> {
+    if (!this.isPreparedMaterializationMode(context)) return false;
+    const planPath = `${this.prefix(context.snapshot.execution_id)}/materialization-plan.json`;
+    const checkpointPath = `${this.prefix(context.snapshot.execution_id)}/materialization-checkpoint.json`;
+    const [planExists, checkpointExists] = await Promise.all([
+      this.store.exists(planPath), this.store.exists(checkpointPath)
+    ]);
+    if (planExists && checkpointExists) return true;
+    if (planExists || checkpointExists) {
+      throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared materialization persistence is partial');
+    }
+    if (
+      context.execution_mode === 'media_completion_v3_3'
+      && context.materialization_plan !== null
+      && context.materialization_plan.draft_binding !== null
+      && (
+        context.snapshot.state === 'preflight'
+        || await this.hasDurablePreBindingAdoptionRejection(context)
+      )
+    ) return false;
+    throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared materialization persistence is missing');
+  }
+
+  private async hasDurablePreBindingAdoptionRejection(context: AdapterContext): Promise<boolean> {
+    if (context.snapshot.state !== 'materialization_blocked') return false;
+    const eventPath = `${this.prefix(context.snapshot.execution_id)}/events/${String(context.snapshot.sequence).padStart(6, '0')}.json`;
+    if (!await this.store.exists(eventPath)) return false;
+    const event = await this.store.readJson<XArticleExecutionEventV1>(eventPath);
+    if (
+      event.execution_id !== context.snapshot.execution_id
+      || event.sequence !== context.snapshot.sequence
+      || event.previous_state !== 'preflight'
+      || event.next_state !== 'materialization_blocked'
+    ) {
+      throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adoption rejection event differs from blocked context');
+    }
+    return event.event_type === 'article_adoption_rejected';
   }
 
   private isPreparedReportActive(context: AdapterContext): boolean {

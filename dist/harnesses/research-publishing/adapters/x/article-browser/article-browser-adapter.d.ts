@@ -77,6 +77,7 @@ export declare class XArticleBrowserAdapter {
     private reconcileMaterializationDraft;
     private hasVerifiedMaterializationBody;
     private rejectAdoption;
+    private finalizePreBindingAdoptionRejection;
     private reconcilePreparedPreview;
     private issueEditorObservation;
     private recordMaterializationProgress;
@@ -92,6 +93,7 @@ export declare class XArticleBrowserAdapter {
     private isMaterializationEffect;
     private isPreparedMaterializationMode;
     private hasMaterializationCheckpoint;
+    private hasDurablePreBindingAdoptionRejection;
     private isPreparedReportActive;
     private readBoundMaterializationPlan;
     private readBoundMaterializationStart;
