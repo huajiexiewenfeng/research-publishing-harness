@@ -106,6 +106,7 @@ export declare class XArticleBrowserAdapter {
     private assertV3_3PendingIssueBinding;
     private assertV3_3DurableCommand;
     private readV3_3CommandObservation;
+    private assertV3_3IssuedCommandBinding;
     private blockMaterialization;
     private issue;
     private finishPendingIssue;
@@ -137,6 +138,7 @@ export declare class XArticleBrowserAdapter {
     private ensureExactArtifact;
     private withExecutionLock;
     private commandPath;
+    private v3_3CommandIssueBindingPath;
     private reportProjectionPath;
     private assertId;
 }

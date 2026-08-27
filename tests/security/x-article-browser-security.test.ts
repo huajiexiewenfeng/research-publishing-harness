@@ -62,6 +62,28 @@ const v33Plan = createXArticlePublicationPlan({
   visuals: [{ asset: v33Asset, placement: { kind: 'block', block_ordinal: 1 } }],
   plannedAt: '2026-08-26T00:00:00.000Z', provenance: {}
 });
+const v33SecondAsset = {
+  asset_id: 'asset_v33_inline_second', relative_path: 'assets/v33-inline-second.png',
+  digest: `sha256:${'c'.repeat(64)}` as const, mime_type: 'image/png' as const,
+  alt_text: 'Second bound V3.3 inline visual', claim_refs: ['claim_v33_second']
+};
+const v33TwoAnchorPlan = createXArticlePublicationPlan({
+  planId: 'plan_v33_two_anchor_security', runId: 'run_v33_two_anchor_security',
+  targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/security/v33-two-anchor', digest: DIGEST_A },
+  document: {
+    schema_version: '1.0', title: 'Bound V3.3 two-anchor Draft', cover_asset_id: null,
+    blocks: [
+      { kind: 'image', asset_id: v33Asset.asset_id, alt_text: v33Asset.alt_text },
+      { kind: 'image', asset_id: v33SecondAsset.asset_id, alt_text: v33SecondAsset.alt_text }
+    ]
+  },
+  visuals: [
+    { asset: v33Asset, placement: { kind: 'block', block_ordinal: 1 } },
+    { asset: v33SecondAsset, placement: { kind: 'block', block_ordinal: 2 } }
+  ],
+  plannedAt: '2026-08-26T00:00:00.000Z', provenance: {}
+});
 const v33Capabilities = {
   executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
   capabilities: [
@@ -128,6 +150,31 @@ function v33EditorObservation(
   });
 }
 
+function v33TwoAnchorObservation(
+  executionId: string,
+  commandId: string,
+  observedAt: string,
+  resolvedCount: number,
+  visuals: readonly Record<string, unknown>[] = []
+): XArticleBrowserObservation {
+  const template = createXArticleImportTemplate(v33TwoAnchorPlan.intent.document);
+  return preparedObservation(executionId, commandId, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+    page_kind: 'article_editor', observed_at: observedAt,
+    controls: [
+      { ref: 'body_v33_two', role: 'textbox', name: '', test_id: 'composer', disabled: false }
+    ],
+    editor: {
+      draft_id: '2092246293603373056', title: v33TwoAnchorPlan.intent.document.title,
+      blocks: v33TwoAnchorPlan.intent.document.blocks.slice(0, resolvedCount), visuals, import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors.slice(resolvedCount)
+      }, has_unknown_content: false, autosave_state: 'saved'
+    }
+  });
+}
+
 async function createV33SecurityFixture(suffix: string) {
   const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-v33-${suffix}-`)));
   const executionId = `execution_v33_${suffix}`;
@@ -156,9 +203,71 @@ async function createV33SecurityFixture(suffix: string) {
   return { store, adapter, executionId, contextPath, pendingCommand: pending.command! };
 }
 
+async function createV33TwoAnchorSecurityFixture(suffix: string) {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-v33-two-${suffix}-`)));
+  const executionId = `execution_v33_two_${suffix}`;
+  let commandNumber = 0;
+  let currentTime = '2026-08-26T00:00:30.000Z';
+  const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => executionId,
+    commandId: () => `command_v33_two_${suffix}_${++commandNumber}`,
+    eventId: () => `event_v33_two_${suffix}_${commandNumber}`,
+    now: () => new Date(currentTime)
+  });
+  const source = v33TwoAnchorObservation(
+    'source_v33_two_security', `source_command_v33_two_${suffix}`, '2026-08-26T00:00:00.000Z', 0
+  );
+  const execution = await adapter.prepareExistingDraftMedia(v33TwoAnchorPlan, source, v33Capabilities);
+  const navigating = await adapter.next(execution.execution_id);
+  const firstPredecessor = v33TwoAnchorObservation(
+    execution.execution_id, navigating.command!.command_id, '2026-08-26T00:01:00.000Z', 0
+  );
+  currentTime = '2026-08-26T00:01:00.000Z';
+  await adapter.claim(navigating.command!);
+  await adapter.report({ command: navigating.command!, status: 'success', observation: firstPredecessor });
+
+  const first = await adapter.next(execution.execution_id);
+  expect(first.command).toMatchObject({
+    kind: 'replace_article_visual_anchor', purpose: 'replace_article_visual_anchor_1'
+  });
+  await adapter.claim(first.command!);
+  currentTime = '2026-08-26T00:02:00.000Z';
+  await adapter.report({
+    command: first.command!, status: 'success',
+    observation: v33TwoAnchorObservation(
+      execution.execution_id, first.command!.command_id, '2026-08-26T00:02:00.000Z', 1,
+      [{
+        ref: 'visual_v33_first', asset_id: v33Asset.asset_id, kind: 'inline', block_ordinal: 1,
+        alt_text: v33Asset.alt_text, status: 'uploaded', owned_by_execution: true
+      }]
+    )
+  });
+  const second = await adapter.next(execution.execution_id);
+  expect(second.command).toMatchObject({
+    kind: 'replace_article_visual_anchor', purpose: 'replace_article_visual_anchor_2'
+  });
+  return {
+    store, adapter, executionId, pendingCommand: second.command!,
+    staleRevision: firstPredecessor.page_revision,
+    contextPath: `runs/${executionId}/x-article/browser/adapter-context.json`
+  };
+}
+
 async function v33CommandCount(store: WorkspaceStore, executionId: string): Promise<number> {
   return (await store.list(`runs/${executionId}/x-article/browser/commands`))
     .filter((entry) => entry.kind === 'directory').length;
+}
+
+async function v33CommandKindCount(
+  store: WorkspaceStore,
+  executionId: string,
+  kind: XArticleBrowserCommandV1['kind']
+): Promise<number> {
+  const entries = await store.list(`runs/${executionId}/x-article/browser/commands`);
+  const commands = await Promise.all(entries
+    .filter((entry) => entry.kind === 'directory')
+    .map((entry) => store.readJson<XArticleBrowserCommandV1>(`${entry.relative_path}/command.json`)));
+  return commands.filter((command) => command.kind === kind).length;
 }
 
 describe('X Article Browser security', () => {
@@ -291,6 +400,104 @@ describe('X Article Browser security', () => {
       .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
     expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
   });
+
+  it.each(['kept', 'recomputed'] as const)(
+    'rejects a V3.3 issued replacement whose pending issue command id changed with %s action key',
+    async (actionKeyMode) => {
+      const fixture = await createV33SecurityFixture(`command_id_${actionKeyMode}`);
+      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const commandId = `command_v33_changed_${actionKeyMode}`;
+      const pendingIssue = {
+        ...context.pending_issue,
+        command_id: commandId,
+        action_key: actionKeyMode === 'kept'
+          ? context.pending_issue.action_key
+          : sha256({
+              checkpoint_revision: context.pending_issue.checkpoint_revision,
+              state: context.snapshot.state,
+              sequence: context.snapshot.sequence,
+              input: context.pending_issue.input
+            })
+      };
+      await fixture.store.replaceAtomic(fixture.contextPath, {
+        ...context, pending_command: null, pending_issue: pendingIssue
+      });
+      const before = await v33CommandKindCount(
+        fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+      );
+
+      await expect(fixture.adapter.next(fixture.executionId))
+        .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+      expect(await v33CommandKindCount(
+        fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+      )).toBe(before);
+    }
+  );
+
+  it('repairs the original V3.3 issued replacement idempotently after pending-command projection loss', async () => {
+    const fixture = await createV33SecurityFixture('command_id_legal_repair');
+    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+    await fixture.store.replaceAtomic(fixture.contextPath, { ...context, pending_command: null });
+    const before = await v33CommandKindCount(
+      fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+    );
+
+    const repaired = await fixture.adapter.next(fixture.executionId);
+    expect(repaired.command?.kind).toBe('observe_article_page');
+    const replayed = await fixture.adapter.next(fixture.executionId);
+    expect(replayed.command?.command_id).toBe(repaired.command?.command_id);
+    expect(await v33CommandKindCount(
+      fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+    )).toBe(before);
+  });
+
+  it.each(['next', 'claim', 'report'] as const)(
+    'rejects a V3.3 second inline command rebound to an older valid predecessor before %s',
+    async (operation) => {
+      const fixture = await createV33TwoAnchorSecurityFixture(`stale_revision_${operation}`);
+      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const command = {
+        ...context.pending_command,
+        expected_page_revision: fixture.staleRevision
+      } as XArticleBrowserCommandV1;
+      const input = Object.fromEntries(
+        Object.entries(command).filter(([key]) =>
+          !['schema_version', 'command_id', 'payload_digest', 'issued_at'].includes(key)
+        )
+      );
+      const pendingIssue = {
+        ...context.pending_issue,
+        input,
+        input_digest: sha256(input),
+        action_key: sha256({
+          checkpoint_revision: context.pending_issue.checkpoint_revision,
+          state: context.snapshot.state,
+          sequence: context.snapshot.sequence,
+          input
+        })
+      };
+      await fixture.store.replaceAtomic(
+        `runs/${fixture.executionId}/x-article/browser/commands/${command.command_id}/command.json`,
+        command
+      );
+      await fixture.store.replaceAtomic(fixture.contextPath, {
+        ...context, pending_command: command, pending_issue: pendingIssue
+      });
+      const before = await v33CommandKindCount(
+        fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+      );
+      const attempted = operation === 'next'
+        ? fixture.adapter.next(fixture.executionId)
+        : operation === 'claim'
+          ? fixture.adapter.claim(command)
+          : fixture.adapter.report({ command, status: 'uncertain', observation: null });
+
+      await expect(attempted).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+      expect(await v33CommandKindCount(
+        fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+      )).toBe(before);
+    }
+  );
 
   it('rejects changed V3.3 pending issue and pending command digests before returning or writing', async () => {
     for (const target of ['pending_issue', 'pending_command'] as const) {

@@ -114,6 +114,18 @@ interface PendingIssueIntent {
   readonly action_key: string;
 }
 
+interface V3_3CommandIssueBinding {
+  readonly schema_version: 'x-article-command-issue-binding/v1';
+  readonly execution_id: string;
+  readonly command_id: string;
+  readonly input_digest: string;
+  readonly checkpoint_revision: number | null;
+  readonly action_key: string;
+  readonly predecessor_observation_id: string | null;
+  readonly predecessor_revision: string | null;
+  readonly binding_digest: string;
+}
+
 interface ProjectedReportIdentity {
   readonly command_id: string;
   readonly report_digest: string;
@@ -153,6 +165,11 @@ interface XArticlePublishConfirmationConsumptionV1 {
 const V3_3_ALLOWED_COMMANDS = new Set<XArticleBrowserCommandKind>([
   'navigate',
   'observe_article_page',
+  'upload_article_cover',
+  'replace_article_visual_anchor',
+  'set_article_image_alt'
+]);
+const V3_3_MEDIA_COMMANDS = new Set<XArticleBrowserCommandKind>([
   'upload_article_cover',
   'replace_article_visual_anchor',
   'set_article_image_alt'
@@ -2753,6 +2770,7 @@ export class XArticleBrowserAdapter {
       throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command action binding changed');
     }
     await this.assertV3_3DurableCommand(context, intent.input);
+    await this.assertV3_3IssuedCommandBinding(context, intent);
     if (
       context.pending_command !== null
       && context.pending_command.command_id === intent.command_id
@@ -2856,6 +2874,19 @@ export class XArticleBrowserAdapter {
     }
 
     const observation = await this.readV3_3CommandObservation(context, input.expected_page_revision);
+    const isEnvelope = 'schema_version' in input;
+    const isFreshIssue = !isEnvelope && context.pending_issue === null;
+    if (isFreshIssue && V3_3_MEDIA_COMMANDS.has(input.kind)) {
+      if (
+        context.editor_revision !== observation.page_revision
+        || context.latest_editor_observation_id !== observation.observation_id
+      ) {
+        throw new HarnessError(
+          'PUBLISH_GATE_BLOCKED',
+          'existing Draft media command predecessor revision changed'
+        );
+      }
+    }
     let editor;
     try {
       editor = this.contract.detectEditor(observation);
@@ -2991,6 +3022,61 @@ export class XArticleBrowserAdapter {
     return observation;
   }
 
+  private async assertV3_3IssuedCommandBinding(
+    context: AdapterContext,
+    intent: PendingIssueIntent
+  ): Promise<void> {
+    let binding: V3_3CommandIssueBinding;
+    try {
+      binding = await this.store.readJson<V3_3CommandIssueBinding>(
+        this.v3_3CommandIssueBindingPath(context.snapshot.execution_id, intent.command_id)
+      );
+    } catch (error) {
+      throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command issue binding is missing', error);
+    }
+    const { binding_digest: persistedDigest, ...body } = binding;
+    if (
+      binding.schema_version !== 'x-article-command-issue-binding/v1'
+      || persistedDigest !== sha256(body)
+      || binding.execution_id !== context.snapshot.execution_id
+      || binding.command_id !== intent.command_id
+      || binding.input_digest !== intent.input_digest
+      || binding.checkpoint_revision !== intent.checkpoint_revision
+      || binding.action_key !== intent.action_key
+      || binding.predecessor_revision !== intent.input.expected_page_revision
+      || (binding.predecessor_revision === null) !== (binding.predecessor_observation_id === null)
+    ) {
+      throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft issued command binding changed');
+    }
+    if (binding.predecessor_observation_id !== null) {
+      let predecessor: XArticleBrowserObservation;
+      try {
+        predecessor = await this.store.readJson<XArticleBrowserObservation>(
+          `${this.prefix(context.snapshot.execution_id)}/observations/${binding.predecessor_observation_id}.json`
+        );
+      } catch (error) {
+        throw new HarnessError(
+          'PUBLISH_GATE_BLOCKED', 'existing Draft command predecessor is missing', error
+        );
+      }
+      const predecessorBody = Object.fromEntries(
+        Object.entries(predecessor).filter(([key]) => key !== 'page_revision')
+      );
+      if (
+        predecessor.page_revision !== computeXArticlePageRevision(predecessorBody)
+        || predecessor.page_revision !== binding.predecessor_revision
+        || predecessor.observation_id !== binding.predecessor_observation_id
+        || predecessor.execution_id !== context.snapshot.execution_id
+        || predecessor.origin !== 'https://x.com'
+        || predecessor.account_handle !== context.plan.intent.target_account
+        || predecessor.page_kind !== 'article_editor'
+        || predecessor.editor?.draft_id !== context.snapshot.draft_id
+      ) {
+        throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command predecessor changed');
+      }
+    }
+  }
+
   private async blockMaterialization(
     context: AdapterContext,
     checkpoint: XArticleMaterializationCheckpointV1,
@@ -3045,6 +3131,24 @@ export class XArticleBrowserAdapter {
         input
       })
     };
+    if (context.execution_mode === 'media_completion_v3_3') {
+      const bindingBody = {
+        schema_version: 'x-article-command-issue-binding/v1' as const,
+        execution_id: context.snapshot.execution_id,
+        command_id: commandId,
+        input_digest: pendingIssue.input_digest,
+        checkpoint_revision: pendingIssue.checkpoint_revision,
+        action_key: pendingIssue.action_key,
+        predecessor_observation_id: input.expected_page_revision === null
+          ? null
+          : context.latest_editor_observation_id,
+        predecessor_revision: input.expected_page_revision
+      };
+      await this.ensureExactArtifact(
+        this.v3_3CommandIssueBindingPath(context.snapshot.execution_id, commandId),
+        { ...bindingBody, binding_digest: sha256(bindingBody) }
+      );
+    }
     const intendedContext: AdapterContext = { ...context, pending_issue: pendingIssue };
     await this.writeContext(intendedContext);
     await this.projectPendingIssueCheckpoint(intendedContext);
@@ -3882,6 +3986,11 @@ export class XArticleBrowserAdapter {
   private commandPath(command: Pick<XArticleBrowserCommandV1, 'execution_id' | 'command_id'>): string {
     this.assertId(command.command_id);
     return `${this.prefix(command.execution_id)}/commands/${command.command_id}/command.json`;
+  }
+
+  private v3_3CommandIssueBindingPath(executionId: string, commandId: string): string {
+    this.assertId(commandId);
+    return `${this.prefix(executionId)}/command-issue-bindings/${commandId}.json`;
   }
 
   private reportProjectionPath(
