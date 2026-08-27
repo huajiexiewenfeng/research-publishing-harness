@@ -141,3 +141,105 @@ C:\Users\admin\Documents\New project 2\publishing-workspace\v3-2-draft-smoke\tas
 The receipt does not exist because the run terminated at materialization_blocked. It must not be treated as a successful receipt. The checkpoint, commands, claims, reports, observations, event 000006, and reconciliation evidence are the durable terminal failure record.
 
 No publish_article_once command was issued, claimed, executed, or simulated. No Publish approval was requested. No Draft was published, deleted, or cleaned up. The diagnostic Draft intentionally remains unpublished and undeleted.
+
+---
+
+## Post-fix rerun at a2c63ba — truthful Host failure
+
+### Rerun verdict
+
+- verdict: FAIL — Host stopped fail-closed before the import claim
+- approved starting HEAD: a2c63ba0a2611c10873a73ab202f8ec0dcbcfc97
+- Browser Host completion gate: incomplete
+- retry count: zero; this was the only post-fix execution
+- production/test/Skill changes: none
+- old Draft 2092793637604294656: not reused, edited, navigated, deleted, or cleaned
+- new Draft: 2092809957653753856
+- new Draft URL: https://x.com/compose/articles/edit/2092809957653753856
+- publication state: pre_public
+- Publish commands/clicks: zero / zero
+- new Draft deletion/cleanup: zero / zero
+
+The post-fix runtime correctly retained the created Draft revision and proceeded to issue the body-import command. The Host, however, had completed the claimed create transaction without writing the approved title. The live DOM after creation showed the new Draft row as (Needs title) and the Add a title textbox had no value. No title write was attempted, so this was not an autosave failure and not an observation-normalization loss: the normalized create observation truthfully recorded editor.title as the empty string. Because the V3.2 import precondition requires the live title to equal From Skill Memory to Shared Agent Knowledge, the Host stopped before claiming or executing import_article_document.
+
+### Fresh preflight and locked inputs
+
+| Gate | Rerun evidence | Result |
+|---|---|---|
+| current-branch doctor | ready; Node 22.17.1; network_required=false | pass |
+| exact account | live existing-Chrome DOM showed @Glen56121 | pass |
+| protocol / strategy | x-article-materialization/v3.2 / rich_text_anchor_import/v1 | pass |
+| release set / page contract | compatible_runtime_skill_manifest_browser_host / x-article-web/2026-08 | pass |
+| fallback | explicit_only; no incremental fallback used | pass |
+| source digest | sha256:3b959165aeef507f76b34b6ab1ddca75097bebe2f7ae7ce48aa769ad21713eae | pass |
+| source visual-manifest digest | sha256:8afbc708674f25b4ce5dac555d0b4e142896e25d18a6628d7d89bf495dad9ae3 | pass |
+| canonical Package digest | sha256:dbee576341c587a8b366545b13847f1ccd28e2b87dab8b3d23c2768dd29b8901 | pass |
+| four approved asset digests and Alt | cover plus three inline assets exactly matched | pass |
+| manifest | 252 files; 52,557 bytes; sha256:9cd7494cc4f1b40b17c1211f1f784b03cbbe83fd5b7cfdc2f368a1626868dfa3 | pass; unchanged |
+
+No source normalization retry was performed. No rerun Draft mutation occurred before these checks passed.
+
+### Rerun identities and digests
+
+| Item | Value |
+|---|---|
+| workspace | C:\Users\admin\Documents\New project 2\publishing-workspace\v3-2-draft-smoke\task4-rerun-20260827 |
+| Plan ID | x_article_plan_07d1b01e-907c-42ab-a3c4-33a4e31ef6b1 |
+| run ID | x_article_cc1d96ec-131b-4fe3-ab28-0436c39c336a |
+| execution ID | x_article_execution_86e4c8d6-28b9-42f0-8c4c-25883dd295f4 |
+| publication Plan digest | sha256:5c51972378d0f249e159fe930c8bc2b81658ef48044fbd2bf3d3ea0b484e4d22 |
+| materialization digest | sha256:8275ca040156a3e9296a6b787359b1a1af72aceabe9c26523c1e0dd49f0d0dbc |
+| Article Document digest | sha256:2d885ac78e372052ae55e5d956eb77dc71780964f4422f64212622350324b325 |
+| import-template digest | sha256:f6043bb74f2d33eeac1d55705b7fc37f2202ff01e871c165d58ec86f646842c2 |
+
+### Command and progress ledger
+
+| # | Command | Claim / observation | Result |
+|---|---|---|---|
+| 1 | x_article_command_08a92f58-39ee-4b84-a833-15898524fa6d / observe_article_page | claimed; one index observation; exact account and create control | success |
+| 2 | x_article_command_29ee7c85-8b0f-42a6-9e23-0722fe8bd7d3 / create_article_draft | claimed; one editor observation; new Draft 2092809957653753856; title empty; body empty; autosave saved | partial semantic failure recorded truthfully |
+| 3 | x_article_command_6ca65ff1-4f71-4c0d-b468-1d8f55bdac31 / import_article_document | issued with expected revision sha256:44585ccb8a5edfae4dea2e96908a3aa6494626184d283706c3aca0ec84df4391; not claimed | stopped on exact-title precondition |
+
+Totals at stop:
+
+- commands issued: 3 of 15
+- claims: 2
+- observations/reports: 2 / 2, within the observation ceiling of 12
+- persisted progress records: 2, both completion records
+- progress elapsed_seconds: 59.216 for index observation; 48.376 for Draft creation
+- body imports: 0
+- cover uploads: 0
+- inline image uploads: 0
+- publish_article_once commands: 0
+
+The checkpoint is revision 3, phase article_shell_ready. It binds Draft 2092809957653753856 and last_editor_revision sha256:44585ccb8a5edfae4dea2e96908a3aa6494626184d283706c3aca0ec84df4391. Body status is issued with observed_digest null; all three media entries remain pending; publish confirmation is absent. Adapter status remains pre_public with no receipt.
+
+### Recovery, Preview, and acceptance
+
+The first inline image was never reached, so the requested disconnect, reacquire, rebind, and resume-editor recovery point was not executed. No import replay or image replay occurred. Preview was not opened, and marker/duplicate/body/Alt verification was therefore not reachable.
+
+| Criterion | Rerun result |
+|---|---|
+| fresh Draft and exact account | pass |
+| exact title before body import | fail; actual DOM title empty |
+| one document import | fail; correctly not claimed or executed |
+| cover plus three inline images | fail; not reached |
+| first-image recovery without replay | fail; not reached |
+| marker-free exact Preview | fail; not reached |
+| confirmation_pending | fail; absent |
+| commands <=15 / observations <=12 | pass; 3 / 2 |
+| Publish command count 0 | pass |
+| no delete/cleanup | pass |
+
+This rerun does not close the Browser Host completion gate.
+
+### Minimal durable evidence paths
+
+- browser execution root: C:\Users\admin\Documents\New project 2\publishing-workspace\v3-2-draft-smoke\task4-rerun-20260827\runs\x_article_execution_86e4c8d6-28b9-42f0-8c4c-25883dd295f4\x-article\browser
+- checkpoint: materialization-checkpoint.json
+- progress: materialization-progress.jsonl
+- truthful create observation: observations\obs_x_article_command_29ee7c85-8b0f-42a6-9e23-0722fe8bd7d3.json
+- unclaimed import command: commands\x_article_command_6ca65ff1-4f71-4c0d-b468-1d8f55bdac31\command.json
+- expected receipt: materialization-receipt.json — absent
+
+No Publish approval was requested. Neither diagnostic Draft was published or deleted. This is execution evidence only and is not self-approval.
