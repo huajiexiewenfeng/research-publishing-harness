@@ -643,6 +643,23 @@ describe('XArticleCommandBroker', () => {
 });
 
 describe('X Article import observation contract', () => {
+  it('rejects import-template visual anchors inside canonical editor blocks', () => {
+    const observation = revise({
+      ...emptyArticleEditor,
+      editor: {
+        ...emptyArticleEditor.editor!,
+        blocks: [{
+          kind: 'visual_anchor',
+          anchor_id: 'anchor_asset_alpha_2',
+          marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+        }]
+      }
+    });
+
+    expect(() => validateContract('x-article-browser-observation', observation))
+      .toThrowError(expect.objectContaining({ code: 'CONTRACT_INVALID' }));
+  });
+
   it('accepts an editor import state with ordered unique anchors', () => {
     const observation = revise({
       ...emptyArticleEditor,

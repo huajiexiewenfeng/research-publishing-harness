@@ -58,6 +58,19 @@ The report JSON has exactly three top-level fields:
 
 Do not add progress, diagnostics, screenshots, DOM, or a second observation to the report. `report` returns the updated execution snapshot as `artifact` and repeats its execution state in outer `state`.
 
+### Deterministic Host observation normalization
+
+The Browser Host must never copy `payload.template.blocks` directly into `observation.editor.blocks`. Import Template `visual_anchor` entries are temporary editor markers, not canonical X Article Document blocks. Before computing `page_revision` or writing the report input, pass the parsed editor snapshot and the exact claimed import template through the built runtime helper:
+
+```text
+dist/harnesses/research-publishing/adapters/x/article-browser/article-browser-host-normalizer.js
+normalizeXArticleHostEditor({ editor, template })
+```
+
+The helper removes only exact planned marker blocks, keeps canonical completed image blocks, and promotes the remaining exact marker suffix into `editor.import_state.unresolved_anchors`. It rejects a foreign, duplicated, reordered, misplaced, or digest-invalid marker/template with `ARTICLE_DRAFT_CONFLICT`. The resulting `editor.blocks` contains only canonical `heading`, `subheading`, `paragraph`, `quote`, list, and completed `image` blocks.
+
+The adapter validates the normalized `x-article-browser-observation` before it persists any prepared report evidence. A malformed canonical block or visual therefore leaves no report, observation, projection, or context mutation. Do not bypass this failure by weakening the observation, copying raw DOM objects, or retrying the Chrome effect.
+
 ## Executable Host loop
 
 For one prepared execution:

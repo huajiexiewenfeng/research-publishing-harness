@@ -474,6 +474,9 @@ export class XArticleBrowserAdapter {
             }
             throw new HarnessError('CONTRACT_INVALID', 'reported X Article command envelope changed');
         }
+        if (input.observation !== null) {
+            validateContract('x-article-browser-observation', input.observation);
+        }
         let materializationReport = null;
         if (context.execution_mode === 'materialization_v3_2') {
             materializationReport = await this.persistMaterializationReportEvidence(reportPath, input);

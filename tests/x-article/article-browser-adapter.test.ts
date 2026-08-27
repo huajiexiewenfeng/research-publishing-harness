@@ -1828,6 +1828,50 @@ describe('XArticleBrowserAdapter', () => {
       .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_DRIFT' });
   });
 
+  it('rejects a malformed editor observation before persisting report artifacts', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-report-preflight-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_report_preflight_1',
+      eventId: (() => { let n = 0; return () => `event_report_preflight_${++n}`; })(),
+      commandId: (() => { let n = 0; return () => `command_report_preflight_${++n}`; })(),
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const importing = await advancePreparedToImport(adapter, execution.execution_id);
+    const command = importing.command!;
+    const template = createXArticleImportTemplate(plan.intent.document);
+    const malformed = editorObservation(execution.execution_id, command.command_id, {
+      draft_id: '2090731994279755776', title: plan.intent.document.title,
+      blocks: [{
+        kind: 'visual_anchor', anchor_id: 'anchor_asset_alpha_2',
+        marker: 'RPH_VISUAL_ANCHOR:asset_alpha:2'
+      }] as unknown as typeof plan.intent.document.blocks,
+      visuals: [], has_unknown_content: false, autosave_state: 'saved',
+      import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: []
+      }
+    });
+    await adapter.claim(command);
+    const contextPath = `runs/${execution.execution_id}/x-article/browser/adapter-context.json`;
+    const contextBefore = await store.readJson(contextPath);
+
+    await expect(adapter.report({ command, status: 'success', observation: malformed }))
+      .rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/reports/${command.command_id}.json`
+    )).resolves.toBe(false);
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/observations/${malformed.observation_id}.json`
+    )).resolves.toBe(false);
+    await expect(store.exists(
+      `runs/${execution.execution_id}/x-article/browser/report-projections/${command.command_id}.json`
+    )).resolves.toBe(false);
+    await expect(store.readJson(contextPath)).resolves.toEqual(contextBefore);
+  });
+
   it('persists bulk import strategy only when both capabilities are advertised', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-capabilities-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {

@@ -1,7 +1,7 @@
 # Bug Brief: created Draft shell is not fully materialized before body import
 
 - bug_id: `x-article-created-draft-revision-baseline-2026-08-27`
-- status: reopened title-stage fix offline-verified; fresh live smoke pending
+- status: observation-normalizer fix offline-verified; fresh live smoke pending
 - source: real Chrome Draft-only smoke
 - execution: `x_article_execution_8a739b6d-6a40-4316-af0b-f5c31b80d929`
 - draft_id: `2092793637604294656`
@@ -57,6 +57,49 @@ Write failing regression tests first. For a validated empty-title shell, issue `
 - Lint and typecheck: exit `0`; build: exit `0` after rerunning outside the restricted filesystem sandbox.
 - Manifest: two final generations produced identical SHA-256 `683381F01F508EE5B7B77CF0611C3FF818399FA460596EC5F4BEDF1D86E99689`, `52,557` bytes, and `252` files.
 - Fresh real-Chrome Draft-only verification remains pending. Publish, deletion, and cleanup are not authorized.
+
+## 2026-08-27 live title-stage rerun: observation normalization bug
+
+- execution: `x_article_execution_08062357-73a2-4467-8c26-362cad43d618`
+- draft_id: `2092824385736613888`
+- expected: one post-import Host observation contains only canonical Article Document blocks; the three visible marker blocks are represented exclusively by ordered `import_state.unresolved_anchors`
+- actual: the Host copied Import Template `visual_anchor` blocks into `editor.blocks`; the observation schema accepted them; report evidence was persisted before reconciliation; `normalizeBlock` then raised `TypeError: Cannot read properties of undefined (reading 'map')`
+- browser result: exact title and one rich-text body import are saved; cover/images/Preview/Publish were not reached
+
+### Reopened root cause
+
+1. `x-article-browser-observation.schema.json` accepts arbitrary objects for editor blocks and visuals, so its runtime contract is weaker than the TypeScript protocol.
+2. prepared report evidence is persisted before Page Contract validation, so a malformed observation can leave a report without a projection.
+3. the Browser Host protocol has no executable pure normalizer for converting imported marker blocks into canonical document blocks plus ordered unresolved-anchor state.
+
+### Reopened scope lock
+
+- active: observation schema parity, a pure Host observation normalizer, pre-persistence report validation, focused adapter/schema/normalizer tests, generated build parity, Bug Brief and verification evidence
+- read-only: the failed live workspace and Draft `2092824385736613888`
+- excluded: any new Chrome mutation, report replay against the live failed execution, cover/image upload, Preview, Publish, Draft deletion/cleanup, unrelated Browser and publication flows
+
+### Reopened fix and verification plan
+
+Write failing tests first for: rejection of `visual_anchor` inside canonical editor blocks; deterministic removal and ordered promotion of exact marker blocks by the Host normalizer; and zero report/observation/context persistence when preflight validation fails. Then implement only those boundaries, run focused and adjacent suites, lint, typecheck, build, and deterministic manifest checks. No new live smoke is authorized in this fix turn.
+
+### Observation-normalizer fix
+
+- The runtime observation schema now uses the canonical Article block and visual shapes; Import Template `visual_anchor` markers are no longer legal inside `editor.blocks`.
+- The adapter validates the complete reported observation before writing materialization report evidence, observations, projections, or context changes.
+- The Browser Host has a pure deterministic normalizer that verifies the Import Template digest, removes only exact planned marker blocks, preserves completed image blocks, and promotes the remaining ordered suffix into `import_state.unresolved_anchors`.
+- Foreign, duplicate, reordered, or misplaced anchors fail closed with `ARTICLE_DRAFT_CONFLICT`.
+
+### Observation-normalizer offline verification
+
+- RED: the schema accepted `visual_anchor` as a canonical editor block, and a malformed success report reached persistence/reconciliation instead of failing with `CONTRACT_INVALID`.
+- GREEN focused regressions: schema rejection, pre-persistence atomicity, and Host normalization all passed (`4/4`; the three focused files later passed `105/105`).
+- Publish-confirmation and CLI regression fixtures were aligned with the explicit `set_article_title` stage; `73/73` tests passed.
+- Adjacent X Article, integration, security, and CLI suites: `18` files and `390/390` tests passed.
+- ESLint and TypeScript typecheck: exit `0`; TypeScript build: exit `0`.
+- Offline acceptance: exit `0`, Fake Browser network remained `unused`, one document import plus three grouped image replacements, zero paragraph-level transactions.
+- `x-publishing-copilot` structure validation: `Skill is valid!`.
+- Manifest: two generations produced identical SHA-256 `AC7D19AB01A42C31664EA9DA51175630A344C6E5C4E2873F0B0BDC1153FD9A9C`, identical `52,783` bytes, and `253` files.
+- No Chrome, Draft, Preview, Publish, deletion, cleanup, or live report replay occurred during this fix. A fresh Draft-only smoke remains a separate explicit step.
 
 ## Implementation
 

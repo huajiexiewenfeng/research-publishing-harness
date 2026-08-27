@@ -100,8 +100,13 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts",
-      "sha256": "0f0d0031d851978a916bad175b09c9021e4e760eaab13290d7585eeac6aecfe1",
-      "bytes": 130825
+      "sha256": "98551cd01d0117b1fa2bfec98e037b38e4a081db87a37c9da8cd331a1e392ac3",
+      "bytes": 130997
+    },
+    {
+      "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-host-normalizer.ts",
+      "sha256": "13e761adbf57ff64eb2d2a6f09881d9fc4dcfb63c464b3ea2255f942e0508f62",
+      "bytes": 3926
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.ts",
@@ -680,8 +685,8 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/x-article-browser-observation.schema.json",
-      "sha256": "bfe74b413d7f75062cb959d310e1a0b64ca835fef69bcbcec0d3cfc25a5fa342",
-      "bytes": 3574
+      "sha256": "5485368b3b9622407f2eb6d70489552b5e2bdd463a3dc6f6252b0a67141c65a5",
+      "bytes": 5811
     },
     {
       "path": "harnesses/research-publishing/contracts/x-article-document.schema.json",
@@ -1290,8 +1295,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-materialization-v3-2.md",
-      "sha256": "5c281ae27b6736ed1abb723af1a4ef5bc85e5c3e6a713cc31ae009e8deff8100",
-      "bytes": 18244
+      "sha256": "be3e311cbe29daf07a661d29a11e3f23c5031723bb0ff9086a283f5d266ba672",
+      "bytes": 19624
     },
     {
       "path": "skills/x-publishing-copilot/scp.yml",

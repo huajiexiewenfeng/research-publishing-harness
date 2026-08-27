@@ -71,7 +71,7 @@ const adapterPlan = createXArticlePublicationPlan({
 const capabilities = {
   executor: 'codex-chrome', executor_version: 'test', browser_family: 'chrome',
   capabilities: [
-    'observe_article_page', 'create_article_draft', 'open_article_preview',
+    'observe_article_page', 'create_article_draft', 'set_article_title', 'open_article_preview',
     'open_publish_review', 'publish_article_once', 'import_article_document',
     'replace_article_visual_anchor'
   ],
@@ -120,12 +120,28 @@ async function preparedConfirmationFixture(executionId: string) {
     canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
     page_kind: 'article_editor',
     controls: [
+      { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
       { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
       { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
     ],
     editor: {
       draft_id: '2092246293603373056', title: '', blocks: [], visuals: [],
       import_state: null, has_unknown_content: false, autosave_state: 'saved'
+    }
+  }));
+  next = await adapter.next(execution.execution_id);
+  await claimAndReport(adapter, next.command!, observed(execution.execution_id, next.command!.command_id, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+    page_kind: 'article_editor',
+    controls: [
+      { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+      { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+      { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
+    ],
+    editor: {
+      draft_id: '2092246293603373056', title: adapterPlan.intent.document.title,
+      blocks: [], visuals: [], import_state: null,
+      has_unknown_content: false, autosave_state: 'saved'
     }
   }));
   next = await adapter.next(execution.execution_id);
