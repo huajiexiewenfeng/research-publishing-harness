@@ -659,6 +659,24 @@ describe('reconcileXArticleDraft', () => {
     })).kind).toBe('unverifiable');
   });
 
+  it('treats an adopted verified body as durable evidence while media is pending', () => {
+    const observation = observationFor(editor(0));
+    const adopted = {
+      ...checkpoint(0),
+      draft_origin: 'adopted_existing' as const,
+      phase: 'body_verified' as const,
+      body: { status: 'adopted_verified' as const, observed_digest: plan.import_template_digest },
+      last_editor_revision: observation.page_revision
+    };
+
+    expect(reconcileXArticleDraft({ plan, checkpoint: adopted, document, observation })).toEqual({
+      kind: 'recoverable_partial',
+      completed_anchor_ids: [],
+      next_anchor_id: plan.visual_anchors[0]!.anchor_id,
+      next_action: 'replace_anchor'
+    });
+  });
+
   it('fails closed on body/media phase and publish-confirmation contradictions', () => {
     expect(reconcileXArticleDraft(input(editor(1), {
       ...checkpoint(1), phase: 'body_imported'

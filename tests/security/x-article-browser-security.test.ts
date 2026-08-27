@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { XArticleBrowserAdapter } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import {
   computeXArticlePageRevision,
   type XArticleBrowserObservation
@@ -15,6 +16,7 @@ import type {
 } from '../../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
 import { XArticleWeb2026_08Contract } from '../../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
+import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
@@ -158,6 +160,62 @@ describe('X Article Browser security', () => {
     await expect(store.readJson(
       `runs/${execution.execution_id}/x-article/browser/observations/${humanObservation.observation_id}.json`
     )).resolves.toEqual(humanObservation);
+  });
+
+  it('rejects a tampered V3.3 issue intent before it can issue a forbidden second write', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-v33-command-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_v33_command_guard',
+      commandId: (() => { let number = 0; return () => `command_v33_guard_${++number}`; })(),
+      eventId: (() => { let number = 0; return () => `event_v33_guard_${++number}`; })(),
+      now: () => new Date('2026-08-26T00:01:00.000Z')
+    });
+    const template = createXArticleImportTemplate(plan.intent.document);
+    const source = preparedObservation('source_v33_command_guard', 'source_command_v33_command_guard', {
+      canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+      page_kind: 'article_editor',
+      editor: {
+        draft_id: '2092246293603373056', title: plan.intent.document.title, blocks: [], visuals: [],
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: []
+        }, has_unknown_content: false, autosave_state: 'saved'
+      }
+    });
+    const execution = await adapter.prepareExistingDraftMedia(plan, source, {
+      executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
+      capabilities: [
+        'observe_article_page', 'create_article_draft', 'set_article_title',
+        'import_article_document', 'replace_article_visual_anchor', 'open_article_preview',
+        'open_publish_review', 'publish_article_once'
+      ],
+      observed_at: '2026-08-26T00:00:00.000Z'
+    });
+    await adapter.next(execution.execution_id);
+    const contextPath = `runs/${execution.execution_id}/x-article/browser/adapter-context.json`;
+    const context = await store.readJson<Record<string, any>>(contextPath);
+    const input = {
+      ...context.pending_issue.input,
+      kind: 'create_article_draft',
+      purpose: 'create_article_draft',
+      side_effect: 'write',
+      payload: { kind: 'create_article_draft', target_ref: 'create' }
+    };
+    await store.replaceAtomic(contextPath, {
+      ...context,
+      pending_command: null,
+      pending_issue: {
+        ...context.pending_issue,
+        command_id: 'command_v33_guard_tampered',
+        input,
+        input_digest: sha256(input)
+      }
+    });
+
+    await expect(adapter.next(execution.execution_id)).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    const commands = await store.list(`runs/${execution.execution_id}/x-article/browser/commands`);
+    expect(commands).toHaveLength(1);
   });
 
   it('rejects malformed and extensible Publish confirmations at the contract boundary', () => {

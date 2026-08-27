@@ -232,9 +232,9 @@ function checkpointIdentityReasons(
     reasons.push('checkpoint materialization identity does not match the materialization plan');
   }
   if (
-    (checkpoint.body.status === 'verified'
+    (bodyIsVerified(checkpoint)
       && checkpoint.body.observed_digest !== plan.import_template_digest)
-    || (checkpoint.body.status !== 'verified' && checkpoint.body.observed_digest !== null)
+    || (!bodyIsVerified(checkpoint) && checkpoint.body.observed_digest !== null)
   ) {
     reasons.push('checkpoint body observation does not match the materialization plan');
   }
@@ -292,6 +292,11 @@ function checkpointIdentityReasons(
     }
   }
   return reasons;
+}
+
+function bodyIsVerified(checkpoint: XArticleMaterializationCheckpointV1): boolean {
+  return (checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified')
+    && checkpoint.body.observed_digest !== null;
 }
 
 function mediaUnverifiableReasons(
@@ -380,10 +385,7 @@ function lifecycleReasons(
   if (!materializedPhase) {
     reasons.push(`checkpoint phase ${checkpoint.phase} cannot reconcile materialized draft content`);
   }
-  if (
-    checkpoint.body.status !== 'verified'
-    || checkpoint.body.observed_digest === null
-  ) {
+  if (!bodyIsVerified(checkpoint)) {
     reasons.push('populated editor does not have a verified checkpoint body');
   }
   if (

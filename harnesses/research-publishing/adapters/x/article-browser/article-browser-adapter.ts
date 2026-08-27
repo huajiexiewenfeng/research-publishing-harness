@@ -150,6 +150,14 @@ interface XArticlePublishConfirmationConsumptionV1 {
   readonly consumption_digest: `sha256:${string}`;
 }
 
+const V3_3_ALLOWED_COMMANDS = new Set<XArticleBrowserCommandKind>([
+  'navigate',
+  'observe_article_page',
+  'upload_article_cover',
+  'replace_article_visual_anchor',
+  'set_article_image_alt'
+]);
+
 interface XArticleBrowserAdapterOptions {
   readonly executionId?: () => string;
   readonly eventId?: () => string;
@@ -1640,7 +1648,11 @@ export class XArticleBrowserAdapter {
         : checkpoint.media.filter((media) => media.status === 'completed').length;
     const inlineVisuals = observation.editor.visuals.filter((visual) => visual.kind === 'inline');
     const media = checkpoint.media.map((entry, index) => {
-      if (index >= completedCount) return entry;
+      if (index >= completedCount) {
+        return entry.status === 'upload_started'
+          ? { ...entry, status: 'pending' as const, observed_media_ref: null, observed_context_digest: null }
+          : entry;
+      }
       const anchor = plan.visual_anchors[index]!;
       const visual = inlineVisuals.find((candidate) =>
         candidate.asset_id === anchor.asset_id
@@ -1660,25 +1672,25 @@ export class XArticleBrowserAdapter {
         observed_context_digest: anchor.context_digest
       };
     });
+    const body = checkpoint.body.status === 'adopted_verified'
+      ? checkpoint.body
+      : bodyObserved
+        ? { status: 'verified' as const, observed_digest: plan.import_template_digest }
+        : checkpoint.body;
     const finalEditor = importState === null
-      && (bodyObserved || this.hasVerifiedMaterializationBody(checkpoint))
+      && this.hasVerifiedMaterializationBody({ ...checkpoint, body })
       && media.every((entry) => entry.status === 'completed');
     const phase = finalEditor
       ? 'draft_reconciled'
       : media.some((entry) => entry.status === 'completed')
         ? 'media_materializing'
-        : bodyObserved || this.hasVerifiedMaterializationBody(checkpoint)
-          ? checkpoint.body.status === 'adopted_verified' ? 'body_verified' : 'body_imported'
-          : checkpoint.phase;
+        : body.status === 'adopted_verified'
+          ? 'body_verified'
+          : bodyObserved ? 'body_imported' : checkpoint.phase;
     const candidate: XArticleMaterializationCheckpointV1 = {
       ...checkpoint,
       phase,
-      body: bodyObserved
-        ? {
-          status: checkpoint.body.status === 'adopted_verified' ? 'adopted_verified' as const : 'verified' as const,
-          observed_digest: plan.import_template_digest
-        }
-        : checkpoint.body,
+      body,
       media,
       last_editor_revision: observation.page_revision,
       updated_at: observation.observed_at
@@ -1717,7 +1729,8 @@ export class XArticleBrowserAdapter {
   }
 
   private hasVerifiedMaterializationBody(checkpoint: XArticleMaterializationCheckpointV1): boolean {
-    return checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified';
+    return (checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified')
+      && checkpoint.body.observed_digest !== null;
   }
 
   private async rejectAdoption(
@@ -2470,6 +2483,7 @@ export class XArticleBrowserAdapter {
     materializationPlan: XArticleMaterializationPlanV1,
     input: IssueXArticleBrowserCommandInput
   ): void {
+    this.assertV3_3AllowedCommand(context, input.kind);
     if (
       input.payload.kind === 'set_article_title'
       && input.payload.title !== context.plan.intent.document.title
@@ -2525,6 +2539,21 @@ export class XArticleBrowserAdapter {
     }
   }
 
+  private assertV3_3AllowedCommand(
+    context: AdapterContext,
+    kind: XArticleBrowserCommandKind
+  ): void {
+    if (
+      context.execution_mode === 'media_completion_v3_3'
+      && !V3_3_ALLOWED_COMMANDS.has(kind)
+    ) {
+      throw new HarnessError(
+        'PUBLISH_GATE_BLOCKED',
+        `existing Draft media completion cannot issue ${kind}`
+      );
+    }
+  }
+
   private async blockMaterialization(
     context: AdapterContext,
     checkpoint: XArticleMaterializationCheckpointV1,
@@ -2555,6 +2584,7 @@ export class XArticleBrowserAdapter {
     input: IssueXArticleBrowserCommandInput,
     deterministicId?: string
   ): Promise<{ readonly snapshot: XArticleExecutionSnapshotV1; readonly command: XArticleBrowserCommandV1 }> {
+    this.assertV3_3AllowedCommand(context, input.kind);
     let checkpointRevision: number | null = null;
     if (
       this.isPreparedMaterializationMode(context)
@@ -2594,6 +2624,7 @@ export class XArticleBrowserAdapter {
     if (pendingIssue.input_digest !== sha256(pendingIssue.input)) {
       throw new HarnessError('CONTRACT_INVALID', 'X Article command issue intent changed');
     }
+    this.assertV3_3AllowedCommand(context, pendingIssue.input.kind);
     await this.projectPendingIssueCheckpoint(context);
     const command = await this.broker.issue(pendingIssue.input, pendingIssue.command_id);
     const nextContext: AdapterContext = {
@@ -2869,6 +2900,7 @@ export class XArticleBrowserAdapter {
     if (sha256(stableCommandInput) !== intent.input_digest) {
       throw new HarnessError('CONTRACT_INVALID', 'broker command is not bound to durable issue intent');
     }
+    this.assertV3_3AllowedCommand(context, command.kind);
     const repaired: AdapterContext = {
       ...context,
       pending_command: command,
