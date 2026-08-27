@@ -181,6 +181,81 @@ function freshBodyCompleteObservation(
   return existingBodyCompleteObservation(executionId, commandId, observedAt);
 }
 
+type InlineRecoveryImage = 'matching' | 'unknown' | null;
+
+function inlineBodyCompleteObservation(
+  executionId: string,
+  commandId: string,
+  options: {
+    readonly anchor: boolean;
+    readonly image: InlineRecoveryImage;
+    readonly observedAt?: string;
+  }
+) {
+  const template = createXArticleImportTemplate(inlinePlan.intent.document);
+  const matchingVisual = {
+    ref: 'inline_recovery_ref', asset_id: inlineAsset.asset_id, kind: 'inline' as const,
+    block_ordinal: 1, alt_text: inlineAsset.alt_text, status: 'uploaded' as const,
+    owned_by_execution: true
+  };
+  return editorObservation(executionId, commandId, {
+    draft_id: '2092851979932647424', title: inlinePlan.intent.document.title,
+    blocks: options.anchor ? [] : inlinePlan.intent.document.blocks,
+    visuals: options.image === 'matching' ? [matchingVisual] : [],
+    import_state: options.anchor ? {
+      template_digest: template.template_digest,
+      source_document_digest: template.source_document_digest,
+      unresolved_anchors: template.anchors
+    } : null,
+    has_unknown_content: options.image === 'unknown', autosave_state: 'saved'
+  }, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    observed_at: options.observedAt ?? '2026-08-21T09:01:00.000Z'
+  });
+}
+
+async function createAdoptedInlineRecoveryFixture(suffix: string) {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-existing-inline-recovery-${suffix}-`)));
+  const executionId = `execution_existing_inline_recovery_${suffix}`;
+  let commandNumber = 0;
+  let eventNumber = 0;
+  const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => executionId,
+    commandId: () => `command_existing_inline_recovery_${suffix}_${++commandNumber}`,
+    eventId: () => `event_existing_inline_recovery_${suffix}_${++eventNumber}`,
+    now: () => new Date('2026-08-21T09:01:00.000Z')
+  });
+  const template = createXArticleImportTemplate(inlinePlan.intent.document);
+  const source = editorObservation('source_inline_recovery', `source_command_${suffix}`, {
+    draft_id: '2092851979932647424', title: inlinePlan.intent.document.title,
+    blocks: [], visuals: [], import_state: {
+      template_digest: template.template_digest,
+      source_document_digest: template.source_document_digest,
+      unresolved_anchors: template.anchors
+    }, has_unknown_content: false, autosave_state: 'saved'
+  }, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    observed_at: '2026-08-21T09:00:00.000Z'
+  });
+  const execution = await adapter.prepareExistingDraftMedia(inlinePlan, source, bulkCapabilities);
+  const navigating = await adapter.next(execution.execution_id);
+  await reportSuccess(adapter, execution.execution_id, navigating.command, inlineBodyCompleteObservation(
+    execution.execution_id, navigating.command!.command_id,
+    { anchor: true, image: null, observedAt: '2026-08-21T09:01:00.000Z' }
+  ));
+  const pending = await adapter.next(execution.execution_id);
+  expect(pending.command?.kind).toBe('replace_article_visual_anchor');
+  return { store, adapter, executionId, pendingCommand: pending.command! };
+}
+
+async function mediaCommandCount(store: WorkspaceStore, executionId: string, kind: string): Promise<number> {
+  const entries = await store.list(`runs/${executionId}/x-article/browser/commands`);
+  const commands = await Promise.all(entries
+    .filter((entry) => entry.kind === 'directory')
+    .map((entry) => store.readJson<{ kind: string }>(`${entry.relative_path}/command.json`)));
+  return commands.filter((command) => command.kind === kind).length;
+}
+
 async function advancePreparedToImport(
   adapter: XArticleBrowserAdapter,
   executionId: string,
@@ -1418,6 +1493,202 @@ describe('XArticleBrowserAdapter', () => {
       snapshot: { state: 'draft_reconciled', publish_command_count: 0 }, command: null
     });
   });
+
+  it.each([
+    { name: 'anchor present / image absent', anchor: true, image: null, expected: 'replace_article_visual_anchor' },
+    { name: 'anchor present / matching image present', anchor: true, image: 'matching', expected: 'observe_article_page' },
+    { name: 'anchor absent / matching image present', anchor: false, image: 'matching', expected: 'next_media' },
+    { name: 'anchor absent / image unknown', anchor: false, image: 'unknown', expected: 'materialization_blocked' }
+  ] as const)('recovers $name without duplicate upload', async (testCase) => {
+    const fixture = await createAdoptedInlineRecoveryFixture(testCase.name.replace(/\W/g, '_'));
+    const before = await mediaCommandCount(fixture.store, fixture.executionId, 'replace_article_visual_anchor');
+    await fixture.adapter.claim(fixture.pendingCommand);
+    const snapshot = await fixture.adapter.report({
+      command: fixture.pendingCommand,
+      status: 'success',
+      observation: inlineBodyCompleteObservation(
+        fixture.executionId,
+        fixture.pendingCommand.command_id,
+        { anchor: testCase.anchor, image: testCase.image }
+      )
+    });
+    const next = await fixture.adapter.next(fixture.executionId);
+    const outcome = snapshot.state === 'materialization_blocked'
+      ? 'materialization_blocked'
+      : next.command?.kind ?? 'next_media';
+    const additionalAssetCommands = (
+      await mediaCommandCount(fixture.store, fixture.executionId, 'replace_article_visual_anchor')
+    ) - before;
+
+    expect(outcome).toBe(testCase.expected);
+    expect(additionalAssetCommands).toBe(testCase.expected === 'replace_article_visual_anchor' ? 1 : 0);
+    if (testCase.expected === 'materialization_blocked') {
+      await expect(fixture.store.readJson(
+        `runs/${fixture.executionId}/x-article/browser/materialization-checkpoint.json`
+      )).resolves.toMatchObject({ phase: 'blocked', media: [{ status: 'ambiguous' }] });
+    }
+  });
+
+  it('observes a V3.3 media effect before deciding after effect-before-report restart', async () => {
+    const fixture = await createAdoptedInlineRecoveryFixture('effect_before_report');
+    await fixture.adapter.claim(fixture.pendingCommand);
+    const restarted = new XArticleBrowserAdapter(
+      fixture.store,
+      new XArticleWeb2026_08Contract(),
+      {
+        commandId: (() => { let number = 20; return () => `command_effect_before_report_${++number}`; })(),
+        eventId: (() => { let number = 20; return () => `event_effect_before_report_${++number}`; })(),
+        now: () => new Date('2026-08-21T09:03:00.000Z')
+      }
+    );
+
+    const next = await restarted.next(fixture.executionId);
+    expect(next.command).toMatchObject({ kind: 'observe_article_page', side_effect: 'read' });
+    expect(next.command?.command_id).not.toBe(fixture.pendingCommand.command_id);
+    expect(await mediaCommandCount(
+      fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+    )).toBe(1);
+  });
+
+  it('reconciles cover and inline recovery independently', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-cover-inline-independent-')));
+    const executionId = 'execution_existing_cover_inline_independent';
+    let commandNumber = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => executionId,
+      commandId: () => `command_existing_cover_inline_independent_${++commandNumber}`,
+      eventId: () => `event_existing_cover_inline_independent_${commandNumber}`,
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const source = existingBodyCompleteObservation(
+      'source_cover_inline_independent', 'source_command_cover_inline_independent', '2026-08-21T09:00:00.000Z'
+    );
+    const execution = await adapter.prepareExistingDraftMedia(coverInlinePlan, source, coverBulkCapabilities);
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, freshBodyCompleteObservation(
+      execution.execution_id, next.command!.command_id, '2026-08-21T09:01:00.000Z'
+    ));
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('upload_article_cover');
+    const template = createXArticleImportTemplate(coverInlinePlan.intent.document);
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id, next.command!.command_id, {
+        draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+        blocks: coverInlinePlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+        visuals: [{
+          ref: 'cover_independent', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+          alt_text: null, status: 'uploaded', owned_by_execution: true
+        }],
+        import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        }, has_unknown_content: false, autosave_state: 'saved'
+      }, {
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        observed_at: '2026-08-21T09:01:00.000Z'
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('replace_article_visual_anchor');
+    await reportSuccess(adapter, execution.execution_id, next.command, editorObservation(
+      execution.execution_id, next.command!.command_id, {
+        draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+        blocks: coverInlinePlan.intent.document.blocks,
+        visuals: [
+          {
+            ref: 'cover_independent', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          },
+          {
+            ref: 'inline_independent', asset_id: inlineAsset.asset_id, kind: 'inline', block_ordinal: 2,
+            alt_text: inlineAsset.alt_text, status: 'uploaded', owned_by_execution: true
+          }
+        ], import_state: null, has_unknown_content: false, autosave_state: 'saved'
+      }, {
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        observed_at: '2026-08-21T09:01:00.000Z'
+      }
+    ));
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'draft_reconciled' }, command: null
+    });
+    expect(await mediaCommandCount(store, executionId, 'upload_article_cover')).toBe(1);
+    expect(await mediaCommandCount(store, executionId, 'replace_article_visual_anchor')).toBe(1);
+  });
+
+  it.each(['observation', 'checkpoint', 'context'] as const)(
+    'replays one V3.3 media report across the %s persistence boundary',
+    async (boundary) => {
+      const fixture = await createAdoptedInlineRecoveryFixture(`report_${boundary}`);
+      await fixture.adapter.claim(fixture.pendingCommand);
+      const report = {
+        command: fixture.pendingCommand,
+        status: 'success' as const,
+        observation: inlineBodyCompleteObservation(
+          fixture.executionId,
+          fixture.pendingCommand.command_id,
+          { anchor: false, image: 'matching' }
+        )
+      };
+      const writeNew = fixture.store.writeNew.bind(fixture.store);
+      const replaceAtomic = fixture.store.replaceAtomic.bind(fixture.store);
+      let failOnce = true;
+      fixture.store.writeNew = async (path, value) => {
+        const result = await writeNew(path, value);
+        if (failOnce && boundary === 'observation' && path.includes('/observations/')) {
+          failOnce = false;
+          throw new Error('injected persisted observation crash');
+        }
+        return result;
+      };
+      fixture.store.replaceAtomic = async (path, value) => {
+        const result = await replaceAtomic(path, value);
+        const projected = value as {
+          media?: readonly { status?: string }[];
+          pending_command?: unknown;
+          last_projected_report?: unknown;
+        };
+        if (
+          failOnce
+          && boundary === 'checkpoint'
+          && path.endsWith('/materialization-checkpoint.json')
+          && projected.media?.[0]?.status === 'completed'
+        ) {
+          failOnce = false;
+          throw new Error('injected persisted checkpoint crash');
+        }
+        if (
+          failOnce
+          && boundary === 'context'
+          && path.endsWith('/adapter-context.json')
+          && projected.pending_command === null
+          && projected.last_projected_report !== null
+        ) {
+          failOnce = false;
+          throw new Error('injected persisted context crash');
+        }
+        return result;
+      };
+
+      await expect(fixture.adapter.report(report)).rejects.toThrow('injected persisted');
+      await expect(fixture.adapter.report(report)).resolves.toMatchObject({
+        state: 'materialization_reconciling'
+      });
+      await expect(fixture.store.readJson(
+        `runs/${fixture.executionId}/x-article/browser/materialization-checkpoint.json`
+      )).resolves.toMatchObject({
+        revision: 3, phase: 'draft_reconciled', media: [{ status: 'completed' }]
+      });
+      expect(await mediaCommandCount(
+        fixture.store, fixture.executionId, 'replace_article_visual_anchor'
+      )).toBe(1);
+      expect((await fixture.store.list(
+        `runs/${fixture.executionId}/x-article/browser/commands`
+      )).filter((entry) => entry.kind === 'directory')).toHaveLength(2);
+    }
+  );
 
   it('repairs exact prepare retries after context-first and store-first crashes', async () => {
     for (const boundary of ['materialization_store', 'adapter_context'] as const) {

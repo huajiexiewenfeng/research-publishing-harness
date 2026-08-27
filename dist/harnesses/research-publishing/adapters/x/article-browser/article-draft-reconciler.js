@@ -150,9 +150,9 @@ function checkpointIdentityReasons(plan, checkpoint, document) {
     if (checkpoint.materialization_digest !== plan.materialization_digest) {
         reasons.push('checkpoint materialization identity does not match the materialization plan');
     }
-    if ((checkpoint.body.status === 'verified'
+    if ((bodyIsVerified(checkpoint)
         && checkpoint.body.observed_digest !== plan.import_template_digest)
-        || (checkpoint.body.status !== 'verified' && checkpoint.body.observed_digest !== null)) {
+        || (!bodyIsVerified(checkpoint) && checkpoint.body.observed_digest !== null)) {
         reasons.push('checkpoint body observation does not match the materialization plan');
     }
     if (checkpoint.media.length !== plan.visual_anchors.length) {
@@ -203,6 +203,10 @@ function checkpointIdentityReasons(plan, checkpoint, document) {
         }
     }
     return reasons;
+}
+function bodyIsVerified(checkpoint) {
+    return (checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified')
+        && checkpoint.body.observed_digest !== null;
 }
 function mediaUnverifiableReasons(editor, checkpoint, plan, document) {
     const reasons = [];
@@ -285,8 +289,7 @@ function lifecycleReasons(checkpoint, editor, checkpointPrefix, anchorCount, imp
     if (!materializedPhase) {
         reasons.push(`checkpoint phase ${checkpoint.phase} cannot reconcile materialized draft content`);
     }
-    if (checkpoint.body.status !== 'verified'
-        || checkpoint.body.observed_digest === null) {
+    if (!bodyIsVerified(checkpoint)) {
         reasons.push('populated editor does not have a verified checkpoint body');
     }
     if ((checkpoint.phase === 'body_imported' || checkpoint.phase === 'body_verified')

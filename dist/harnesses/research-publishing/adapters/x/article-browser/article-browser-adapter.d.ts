@@ -74,12 +74,14 @@ export declare class XArticleBrowserAdapter {
     private nextEditorCommand;
     private nextMaterializationCommand;
     private reconcileReportedEditor;
+    private reconcileReportedV3_3Editor;
     private reconcileMaterializationDraft;
     private hasVerifiedMaterializationBody;
     private rejectAdoption;
     private finalizePreBindingAdoptionRejection;
     private reconcilePreparedPreview;
     private issueEditorObservation;
+    private observeUnreportedV3_3Effect;
     private recordMaterializationProgress;
     private progressFromReportEvidence;
     private materializationReportBody;
@@ -101,6 +103,9 @@ export declare class XArticleBrowserAdapter {
     private boundPreviewReceiptEvidence;
     private isOnlyMissingCover;
     private assertPreparedCommandBinding;
+    private assertV3_3PendingIssueBinding;
+    private assertV3_3DurableCommand;
+    private readV3_3CommandObservation;
     private blockMaterialization;
     private issue;
     private finishPendingIssue;

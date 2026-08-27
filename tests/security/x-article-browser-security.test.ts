@@ -48,6 +48,30 @@ const visualAsset = {
   mime_type: 'image/png', alt_text: 'Architecture diagram', claim_refs: ['claim_1']
 } as const;
 
+const v33Asset = {
+  asset_id: 'asset_v33_inline', relative_path: 'assets/v33-inline.png', digest: DIGEST_B,
+  mime_type: 'image/png' as const, alt_text: 'Bound V3.3 inline visual', claim_refs: ['claim_v33']
+};
+const v33Plan = createXArticlePublicationPlan({
+  planId: 'plan_v33_security', runId: 'run_v33_security', targetAccount: '@Glen56121',
+  articlePackage: { root: 'articles/security/v33', digest: DIGEST_A },
+  document: {
+    schema_version: '1.0', title: 'Bound V3.3 Draft', cover_asset_id: null,
+    blocks: [{ kind: 'image', asset_id: v33Asset.asset_id, alt_text: v33Asset.alt_text }]
+  },
+  visuals: [{ asset: v33Asset, placement: { kind: 'block', block_ordinal: 1 } }],
+  plannedAt: '2026-08-26T00:00:00.000Z', provenance: {}
+});
+const v33Capabilities = {
+  executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
+  capabilities: [
+    'observe_article_page', 'create_article_draft', 'set_article_title',
+    'import_article_document', 'replace_article_visual_anchor', 'open_article_preview',
+    'open_publish_review', 'publish_article_once'
+  ],
+  observed_at: '2026-08-26T00:00:00.000Z'
+} as const;
+
 function importCommand(
   payload: object,
   envelope: Partial<{ readonly kind: string; readonly side_effect: string }> = {}
@@ -77,6 +101,64 @@ function preparedObservation(
     ...input,
     page_revision: computeXArticlePageRevision(input)
   } as unknown as XArticleBrowserObservation;
+}
+
+function v33EditorObservation(
+  executionId: string,
+  commandId: string,
+  observedAt: string,
+  overrides: Record<string, unknown> = {}
+): XArticleBrowserObservation {
+  const template = createXArticleImportTemplate(v33Plan.intent.document);
+  return preparedObservation(executionId, commandId, {
+    canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+    page_kind: 'article_editor', observed_at: observedAt,
+    controls: [
+      { ref: 'body_v33', role: 'textbox', name: '', test_id: 'composer', disabled: false }
+    ],
+    editor: {
+      draft_id: '2092246293603373056', title: v33Plan.intent.document.title,
+      blocks: [], visuals: [], import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors
+      }, has_unknown_content: false, autosave_state: 'saved'
+    },
+    ...overrides
+  });
+}
+
+async function createV33SecurityFixture(suffix: string) {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-x-article-v33-${suffix}-`)));
+  const executionId = `execution_v33_${suffix}`;
+  let commandNumber = 0;
+  const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => executionId,
+    commandId: () => `command_v33_${suffix}_${++commandNumber}`,
+    eventId: () => `event_v33_${suffix}_${commandNumber}`,
+    now: () => new Date('2026-08-26T00:01:00.000Z')
+  });
+  const source = v33EditorObservation(
+    'source_v33_security', `source_command_v33_${suffix}`, '2026-08-26T00:00:00.000Z'
+  );
+  const execution = await adapter.prepareExistingDraftMedia(v33Plan, source, v33Capabilities);
+  const navigating = await adapter.next(execution.execution_id);
+  await adapter.claim(navigating.command!);
+  await adapter.report({
+    command: navigating.command!, status: 'success',
+    observation: v33EditorObservation(
+      execution.execution_id, navigating.command!.command_id, '2026-08-26T00:01:00.000Z'
+    )
+  });
+  const pending = await adapter.next(execution.execution_id);
+  expect(pending.command?.kind).toBe('replace_article_visual_anchor');
+  const contextPath = `runs/${executionId}/x-article/browser/adapter-context.json`;
+  return { store, adapter, executionId, contextPath, pendingCommand: pending.command! };
+}
+
+async function v33CommandCount(store: WorkspaceStore, executionId: string): Promise<number> {
+  return (await store.list(`runs/${executionId}/x-article/browser/commands`))
+    .filter((entry) => entry.kind === 'directory').length;
 }
 
 describe('X Article Browser security', () => {
@@ -162,60 +244,265 @@ describe('X Article Browser security', () => {
     )).resolves.toEqual(humanObservation);
   });
 
-  it('rejects a tampered V3.3 issue intent before it can issue a forbidden second write', async () => {
-    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-v33-command-')));
-    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
-      executionId: () => 'execution_v33_command_guard',
-      commandId: (() => { let number = 0; return () => `command_v33_guard_${++number}`; })(),
-      eventId: (() => { let number = 0; return () => `event_v33_guard_${++number}`; })(),
-      now: () => new Date('2026-08-26T00:01:00.000Z')
-    });
-    const template = createXArticleImportTemplate(plan.intent.document);
-    const source = preparedObservation('source_v33_command_guard', 'source_command_v33_command_guard', {
-      canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
-      page_kind: 'article_editor',
-      editor: {
-        draft_id: '2092246293603373056', title: plan.intent.document.title, blocks: [], visuals: [],
-        import_state: {
-          template_digest: template.template_digest,
-          source_document_digest: template.source_document_digest,
-          unresolved_anchors: []
-        }, has_unknown_content: false, autosave_state: 'saved'
+  it.each([
+    ['execution', (input: any) => ({ ...input, execution_id: 'execution_foreign' })],
+    ['run', (input: any) => ({ ...input, run_id: 'run_foreign' })],
+    ['Draft', (input: any) => ({ ...input, draft_id: '2092246293603373999' })],
+    ['purpose', (input: any) => ({ ...input, purpose: 'replace_article_visual_anchor_99' })],
+    ['side effect', (input: any) => ({ ...input, side_effect: 'read' })],
+    ['page revision', (input: any) => ({ ...input, expected_page_revision: DIGEST_B })],
+    ['Package root', (input: any) => ({
+      ...input, payload: { ...input.payload, package_root: 'articles/security/foreign' }
+    })],
+    ['Package digest', (input: any) => ({
+      ...input, payload: { ...input.payload, package_digest: DIGEST_B }
+    })],
+    ['anchor', (input: any) => ({
+      ...input, payload: { ...input.payload, anchor: { ...input.payload.anchor, anchor_id: 'anchor_foreign_1' } }
+    })],
+    ['asset', (input: any) => ({
+      ...input, payload: {
+        ...input.payload,
+        asset: { ...input.payload.asset, digest: `sha256:${'f'.repeat(64)}` }
       }
+    })]
+  ] as const)('rejects a re-digested V3.3 pending issue with changed %s binding', async (name, mutate) => {
+    const fixture = await createV33SecurityFixture(`binding_${name.replace(/\W/g, '_')}`);
+    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+    const input = mutate(structuredClone(context.pending_issue.input));
+    const pendingIssue = {
+      ...context.pending_issue,
+      command_id: `command_v33_tampered_${name.replace(/\W/g, '_')}`,
+      input,
+      input_digest: sha256(input),
+      action_key: sha256({
+        checkpoint_revision: context.pending_issue.checkpoint_revision,
+        state: context.snapshot.state,
+        sequence: context.snapshot.sequence,
+        input
+      })
+    };
+    await fixture.store.replaceAtomic(fixture.contextPath, {
+      ...context, pending_command: null, pending_issue: pendingIssue
     });
-    const execution = await adapter.prepareExistingDraftMedia(plan, source, {
-      executor: 'codex-chrome', executor_version: 'offline-security-fixture', browser_family: 'chrome',
-      capabilities: [
-        'observe_article_page', 'create_article_draft', 'set_article_title',
-        'import_article_document', 'replace_article_visual_anchor', 'open_article_preview',
-        'open_publish_review', 'publish_article_once'
-      ],
-      observed_at: '2026-08-26T00:00:00.000Z'
-    });
-    await adapter.next(execution.execution_id);
-    const contextPath = `runs/${execution.execution_id}/x-article/browser/adapter-context.json`;
-    const context = await store.readJson<Record<string, any>>(contextPath);
+    const before = await v33CommandCount(fixture.store, fixture.executionId);
+
+    await expect(fixture.adapter.next(fixture.executionId))
+      .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
+  });
+
+  it('rejects changed V3.3 pending issue and pending command digests before returning or writing', async () => {
+    for (const target of ['pending_issue', 'pending_command'] as const) {
+      const fixture = await createV33SecurityFixture(`digest_${target}`);
+      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      await fixture.store.replaceAtomic(fixture.contextPath, target === 'pending_issue'
+        ? {
+            ...context,
+            pending_command: null,
+            pending_issue: { ...context.pending_issue, input_digest: DIGEST_B }
+          }
+        : {
+            ...context,
+            pending_command: {
+              ...context.pending_command,
+              purpose: 'replace_article_visual_anchor_99',
+              payload_digest: sha256(context.pending_command.payload)
+            }
+          });
+      const before = await v33CommandCount(fixture.store, fixture.executionId);
+
+      await expect(fixture.adapter.next(fixture.executionId)).rejects.toMatchObject({
+        code: expect.stringMatching(/CONTRACT_INVALID|PUBLISH_GATE_BLOCKED|COMMAND_REPLAY_REJECTED/)
+      });
+      expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
+    }
+  });
+
+  it.each(['next', 'claim', 'report'] as const)(
+    'validates a re-digested V3.3 pending command again before %s',
+    async (operation) => {
+      const fixture = await createV33SecurityFixture(`pending_${operation}`);
+      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const payload = {
+        ...context.pending_command.payload,
+        package_digest: `sha256:${'e'.repeat(64)}`
+      };
+      const command = {
+        ...context.pending_command,
+        payload,
+        payload_digest: sha256(payload)
+      } as XArticleBrowserCommandV1;
+      const input = Object.fromEntries(
+        Object.entries(command).filter(([key]) =>
+          !['schema_version', 'command_id', 'payload_digest', 'issued_at'].includes(key)
+        )
+      );
+      const pendingIssue = {
+        ...context.pending_issue,
+        input,
+        input_digest: sha256(input),
+        action_key: sha256({
+          checkpoint_revision: context.pending_issue.checkpoint_revision,
+          state: context.snapshot.state,
+          sequence: context.snapshot.sequence,
+          input
+        })
+      };
+      await fixture.store.replaceAtomic(fixture.contextPath, {
+        ...context, pending_command: command, pending_issue: pendingIssue
+      });
+      const before = await v33CommandCount(fixture.store, fixture.executionId);
+      const attempted = operation === 'next'
+        ? fixture.adapter.next(fixture.executionId)
+        : operation === 'claim'
+          ? fixture.adapter.claim(command)
+          : fixture.adapter.report({ command, status: 'uncertain', observation: null });
+
+      await expect(attempted).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+      expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
+    }
+  );
+
+  it.each([
+    ['create_article_draft', 'write', { kind: 'create_article_draft', target_ref: 'create' }],
+    ['set_article_title', 'write', { kind: 'set_article_title', target_ref: 'title', title: v33Plan.intent.document.title }],
+    ['import_article_document', 'write', {
+      kind: 'import_article_document', target_ref: 'body_v33',
+      package_root: v33Plan.intent.article_package.root,
+      package_digest: v33Plan.intent.article_package.digest,
+      template: createXArticleImportTemplate(v33Plan.intent.document)
+    }],
+    ['insert_article_block', 'write', {
+      kind: 'insert_article_block', target_ref: 'body_v33', block_ordinal: 1,
+      block: { kind: 'paragraph', runs: [{ text: 'forbidden', marks: [], link: null }] }
+    }],
+    ['insert_article_image', 'write', {
+      kind: 'insert_article_image', target_ref: 'body_v33', block_ordinal: 1,
+      package_root: v33Plan.intent.article_package.root,
+      package_digest: v33Plan.intent.article_package.digest, asset: v33Asset
+    }],
+    ['open_article_preview', 'write', { kind: 'open_article_preview', target_ref: 'preview' }],
+    ['open_publish_review', 'write', { kind: 'open_publish_review', target_ref: 'publish' }],
+    ['publish_article_once', 'submit', { kind: 'publish_article_once', target_ref: 'publish_once' }]
+  ] as const)('rejects forbidden V3.3 %s even when the persisted intent is re-digested', async (kind, sideEffect, payload) => {
+    const fixture = await createV33SecurityFixture(`forbidden_${kind}`);
+    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
     const input = {
       ...context.pending_issue.input,
-      kind: 'create_article_draft',
-      purpose: 'create_article_draft',
-      side_effect: 'write',
-      payload: { kind: 'create_article_draft', target_ref: 'create' }
+      kind,
+      purpose: kind,
+      side_effect: sideEffect,
+      payload
     };
-    await store.replaceAtomic(contextPath, {
-      ...context,
-      pending_command: null,
-      pending_issue: {
-        ...context.pending_issue,
-        command_id: 'command_v33_guard_tampered',
-        input,
-        input_digest: sha256(input)
-      }
+    const pendingIssue = {
+      ...context.pending_issue,
+      command_id: `command_v33_forbidden_${kind}`,
+      input,
+      input_digest: sha256(input),
+      action_key: sha256({
+        checkpoint_revision: context.pending_issue.checkpoint_revision,
+        state: context.snapshot.state,
+        sequence: context.snapshot.sequence,
+        input
+      })
+    };
+    await fixture.store.replaceAtomic(fixture.contextPath, {
+      ...context, pending_command: null, pending_issue: pendingIssue
     });
+    const before = await v33CommandCount(fixture.store, fixture.executionId);
 
-    await expect(adapter.next(execution.execution_id)).rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
-    const commands = await store.list(`runs/${execution.execution_id}/x-article/browser/commands`);
-    expect(commands).toHaveLength(1);
+    await expect(fixture.adapter.next(fixture.executionId))
+      .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+    expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
+  });
+
+  it.each(['account', 'owned_by_execution'] as const)(
+    'rejects a re-digested V3.3 command whose durable %s binding changed',
+    async (field) => {
+      const fixture = await createV33SecurityFixture(`durable_${field}`);
+      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const latest = structuredClone(context.latest_observation) as XArticleBrowserObservation;
+      const changedBody = {
+        ...latest,
+        ...(field === 'account' ? { account_handle: '@ForeignAccount' } : {}),
+        editor: field === 'owned_by_execution' ? {
+          ...latest.editor!,
+          visuals: [{
+            ref: 'visual_unowned', asset_id: v33Asset.asset_id, kind: 'inline', block_ordinal: 1,
+            alt_text: 'wrong alt', status: 'uploaded', owned_by_execution: false
+          }]
+        } : latest.editor
+      };
+      const revisionBody = Object.fromEntries(
+        Object.entries(changedBody).filter(([key]) => key !== 'page_revision')
+      );
+      const changed = { ...changedBody, page_revision: computeXArticlePageRevision(revisionBody) };
+      await fixture.store.replaceAtomic(
+        `runs/${fixture.executionId}/x-article/browser/observations/${changed.observation_id}.json`,
+        changed
+      );
+      const input = field === 'owned_by_execution'
+        ? {
+            ...context.pending_issue.input,
+            kind: 'set_article_image_alt', purpose: 'set_inline_alt_text_1',
+            expected_page_revision: changed.page_revision,
+            side_effect: 'write',
+            payload: {
+              kind: 'set_article_image_alt', visual_ref: 'visual_unowned', alt_text: v33Asset.alt_text
+            }
+          }
+        : { ...context.pending_issue.input, expected_page_revision: changed.page_revision };
+      const pendingIssue = {
+        ...context.pending_issue,
+        command_id: `command_v33_durable_${field}`,
+        input,
+        input_digest: sha256(input),
+        action_key: sha256({
+          checkpoint_revision: context.pending_issue.checkpoint_revision,
+          state: context.snapshot.state,
+          sequence: context.snapshot.sequence,
+          input
+        })
+      };
+      await fixture.store.replaceAtomic(fixture.contextPath, {
+        ...context,
+        latest_observation: changed,
+        editor_revision: changed.page_revision,
+        pending_command: null,
+        pending_issue: pendingIssue
+      });
+      const before = await v33CommandCount(fixture.store, fixture.executionId);
+
+      await expect(fixture.adapter.next(fixture.executionId))
+        .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
+      expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
+    }
+  );
+
+  it('keeps an old blocked V3.3 execution immutable when a different report arrives', async () => {
+    const fixture = await createV33SecurityFixture('old_failed_immutable');
+    await fixture.adapter.claim(fixture.pendingCommand);
+    const observation = v33EditorObservation(
+      fixture.executionId,
+      fixture.pendingCommand.command_id,
+      '2026-08-26T00:01:00.000Z',
+      { editor: { ...v33EditorObservation(
+        fixture.executionId, fixture.pendingCommand.command_id, '2026-08-26T00:01:00.000Z'
+      ).editor!, has_unknown_content: true } }
+    );
+    await expect(fixture.adapter.report({
+      command: fixture.pendingCommand, status: 'success', observation
+    })).resolves.toMatchObject({ state: 'materialization_blocked' });
+    const contextBefore = await fixture.store.readJson(fixture.contextPath);
+    const checkpointPath = `runs/${fixture.executionId}/x-article/browser/materialization-checkpoint.json`;
+    const checkpointBefore = await fixture.store.readJson(checkpointPath);
+
+    await expect(fixture.adapter.report({
+      command: fixture.pendingCommand, status: 'rejected', observation: null
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+    await expect(fixture.store.readJson(fixture.contextPath)).resolves.toEqual(contextBefore);
+    await expect(fixture.store.readJson(checkpointPath)).resolves.toEqual(checkpointBefore);
   });
 
   it('rejects malformed and extensible Publish confirmations at the contract boundary', () => {

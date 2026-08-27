@@ -18,6 +18,13 @@ import { createXArticleReceipt } from './article-receipt.js';
 import { XArticleCommandBroker } from './article-command-broker.js';
 import { nextMaterializationEditorDecision, nextArticleEditorDecision } from './article-editor-protocol.js';
 import { createXArticleImportTemplate } from './article-import-template.js';
+const V3_3_ALLOWED_COMMANDS = new Set([
+    'navigate',
+    'observe_article_page',
+    'upload_article_cover',
+    'replace_article_visual_anchor',
+    'set_article_image_alt'
+]);
 export class XArticleBrowserAdapter {
     store;
     contract;
@@ -225,9 +232,21 @@ export class XArticleBrowserAdapter {
             return { snapshot: context.snapshot, command: null };
         }
         if (context.pending_issue !== null && context.pending_command === null) {
-            return this.finishPendingIssue(context);
+            await this.assertV3_3PendingIssueBinding(context);
+            const recovered = await this.finishPendingIssue(context);
+            if (context.execution_mode === 'media_completion_v3_3'
+                && this.isMaterializationEffect(recovered.command)) {
+                return this.observeUnreportedV3_3Effect(await this.readContext(executionId));
+            }
+            return recovered;
         }
         if (context.pending_command !== null) {
+            await this.assertV3_3PendingIssueBinding(context);
+            await this.assertV3_3DurableCommand(context, context.pending_command);
+            if (context.execution_mode === 'media_completion_v3_3'
+                && this.isMaterializationEffect(context.pending_command)) {
+                return this.observeUnreportedV3_3Effect(context);
+            }
             return {
                 snapshot: context.snapshot,
                 command: context.pending_command.side_effect === 'submit' && context.submit_delivered
@@ -413,6 +432,8 @@ export class XArticleBrowserAdapter {
     async claimLocked(command) {
         let context = await this.readContext(command.execution_id);
         this.assertClaimLifecycleActive(context);
+        await this.assertV3_3PendingIssueBinding(context);
+        await this.assertV3_3DurableCommand(context, command);
         if (context.pending_command === null
             && context.pending_issue?.command_id === command.command_id) {
             context = await this.recoverBrokerPersistedCommand(context, command);
@@ -453,6 +474,8 @@ export class XArticleBrowserAdapter {
     }
     async reportLocked(input) {
         let context = await this.readContext(input.command.execution_id);
+        await this.assertV3_3PendingIssueBinding(context, input.command.command_id);
+        await this.assertV3_3DurableCommand(context, input.command);
         const reportDigest = sha256(input);
         const reportPath = `${this.prefix(input.command.execution_id)}/reports/${input.command.command_id}.json`;
         const projectionPath = this.reportProjectionPath(input.command);
@@ -1109,7 +1132,7 @@ export class XArticleBrowserAdapter {
             context = await this.transition(context, 'draft_reconciled', 'article_draft_reconciled');
             return { snapshot: context.snapshot, command: null };
         }
-        this.assertPreparedCommandBinding(context, persistedPlan, decision.input);
+        await this.assertPreparedCommandBinding(context, persistedPlan, decision.input);
         return this.issue(context, decision.input);
     }
     async reconcileReportedEditor(context, observation) {
@@ -1127,6 +1150,9 @@ export class XArticleBrowserAdapter {
             return this.blockMaterialization(context, trusted, { kind: 'unverifiable', reasons: ['editor observation identity is invalid'] });
         }
         const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        if (context.execution_mode === 'media_completion_v3_3') {
+            return this.reconcileReportedV3_3Editor(context, plan, checkpoint, observation);
+        }
         const template = createXArticleImportTemplate(context.plan.intent.document);
         const importState = observation.editor.import_state;
         const bodyObserved = observation.editor.blocks.length > 0
@@ -1140,8 +1166,11 @@ export class XArticleBrowserAdapter {
                 : checkpoint.media.filter((media) => media.status === 'completed').length;
         const inlineVisuals = observation.editor.visuals.filter((visual) => visual.kind === 'inline');
         const media = checkpoint.media.map((entry, index) => {
-            if (index >= completedCount)
-                return entry;
+            if (index >= completedCount) {
+                return entry.status === 'upload_started'
+                    ? { ...entry, status: 'pending', observed_media_ref: null, observed_context_digest: null }
+                    : entry;
+            }
             const anchor = plan.visual_anchors[index];
             const visual = inlineVisuals.find((candidate) => candidate.asset_id === anchor.asset_id
                 && candidate.block_ordinal === anchor.block_ordinal);
@@ -1158,25 +1187,25 @@ export class XArticleBrowserAdapter {
                 observed_context_digest: anchor.context_digest
             };
         });
+        const body = checkpoint.body.status === 'adopted_verified'
+            ? checkpoint.body
+            : bodyObserved
+                ? { status: 'verified', observed_digest: plan.import_template_digest }
+                : checkpoint.body;
         const finalEditor = importState === null
-            && (bodyObserved || this.hasVerifiedMaterializationBody(checkpoint))
+            && this.hasVerifiedMaterializationBody({ ...checkpoint, body })
             && media.every((entry) => entry.status === 'completed');
         const phase = finalEditor
             ? 'draft_reconciled'
             : media.some((entry) => entry.status === 'completed')
                 ? 'media_materializing'
-                : bodyObserved || this.hasVerifiedMaterializationBody(checkpoint)
-                    ? checkpoint.body.status === 'adopted_verified' ? 'body_verified' : 'body_imported'
-                    : checkpoint.phase;
+                : body.status === 'adopted_verified'
+                    ? 'body_verified'
+                    : bodyObserved ? 'body_imported' : checkpoint.phase;
         const candidate = {
             ...checkpoint,
             phase,
-            body: bodyObserved
-                ? {
-                    status: checkpoint.body.status === 'adopted_verified' ? 'adopted_verified' : 'verified',
-                    observed_digest: plan.import_template_digest
-                }
-                : checkpoint.body,
+            body,
             media,
             last_editor_revision: observation.page_revision,
             updated_at: observation.observed_at
@@ -1193,6 +1222,131 @@ export class XArticleBrowserAdapter {
         }
         return context;
     }
+    async reconcileReportedV3_3Editor(context, plan, checkpoint, observation) {
+        const editor = observation.editor;
+        const template = createXArticleImportTemplate(context.plan.intent.document);
+        const coverBinding = context.plan.intent.visuals.find((binding) => binding.placement.kind === 'cover');
+        const covers = editor.visuals.filter((visual) => visual.kind === 'cover');
+        const coverPresence = coverBinding === undefined
+            ? covers.length === 0 ? 'absent' : 'ambiguous'
+            : covers.length === 0
+                ? 'absent'
+                : covers.length === 1
+                    && covers[0].asset_id === coverBinding.asset.asset_id
+                    && covers[0].block_ordinal === null
+                    && covers[0].ref.length > 0
+                    && covers[0].status === 'uploaded'
+                    && covers[0].owned_by_execution
+                    && (this.contract.media_alt_capabilities.cover === 'unobservable'
+                        ? covers[0].alt_text === null
+                        : covers[0].alt_text === coverBinding.asset.alt_text)
+                    ? 'present'
+                    : 'ambiguous';
+        const importState = editor.import_state;
+        const resolvedCount = importState === null
+            ? template.anchors.length
+            : importState.template_digest === template.template_digest
+                && importState.source_document_digest === template.source_document_digest
+                && sha256(importState.unresolved_anchors) === sha256(template.anchors.slice(template.anchors.length - importState.unresolved_anchors.length))
+                ? template.anchors.length - importState.unresolved_anchors.length
+                : null;
+        const inlineVisuals = editor.visuals.filter((visual) => visual.kind === 'inline');
+        const matchedVisualRefs = new Set();
+        let waitForObservation = false;
+        let inlineAmbiguous = editor.has_unknown_content;
+        const media = checkpoint.media.map((entry, index) => {
+            const anchor = plan.visual_anchors[index];
+            const anchorPresence = resolvedCount === null
+                ? 'ambiguous'
+                : index < resolvedCount ? 'absent' : 'present';
+            const candidates = inlineVisuals.filter((visual) => visual.block_ordinal === anchor.block_ordinal || visual.asset_id === anchor.asset_id);
+            const exact = candidates.length === 1
+                && candidates[0].asset_id === anchor.asset_id
+                && candidates[0].block_ordinal === anchor.block_ordinal
+                && candidates[0].ref.length > 0
+                && candidates[0].status === 'uploaded'
+                && candidates[0].owned_by_execution
+                && candidates[0].alt_text?.normalize('NFC') === anchor.alt_text.normalize('NFC');
+            const imagePresence = candidates.length === 0
+                ? 'absent'
+                : exact ? 'present' : 'ambiguous';
+            if (exact)
+                matchedVisualRefs.add(candidates[0].ref);
+            if (anchorPresence === 'present' && imagePresence === 'absent') {
+                if (entry.status === 'completed' || editor.has_unknown_content) {
+                    inlineAmbiguous = true;
+                    return { ...entry, status: 'ambiguous' };
+                }
+                return {
+                    ...entry,
+                    status: 'pending',
+                    observed_media_ref: null,
+                    observed_context_digest: null
+                };
+            }
+            if (anchorPresence === 'present' && imagePresence === 'present') {
+                if (entry.status === 'upload_started') {
+                    waitForObservation = true;
+                    return entry;
+                }
+                inlineAmbiguous = true;
+                return { ...entry, status: 'ambiguous' };
+            }
+            if (anchorPresence === 'absent' && imagePresence === 'present') {
+                return {
+                    ...entry,
+                    status: 'completed',
+                    observed_media_ref: candidates[0].ref,
+                    observed_context_digest: anchor.context_digest
+                };
+            }
+            inlineAmbiguous = true;
+            return { ...entry, status: 'ambiguous' };
+        });
+        if (inlineVisuals.some((visual) => !matchedVisualRefs.has(visual.ref))
+            || new Set(inlineVisuals.map((visual) => visual.ref)).size !== inlineVisuals.length)
+            inlineAmbiguous = true;
+        const reconciledMedia = inlineAmbiguous
+            ? media.map((entry) => ({ ...entry, status: 'ambiguous' }))
+            : media;
+        const ambiguous = inlineAmbiguous || coverPresence === 'ambiguous';
+        const finalEditor = importState === null
+            && this.hasVerifiedMaterializationBody(checkpoint)
+            && reconciledMedia.every((entry) => entry.status === 'completed');
+        const phase = finalEditor
+            ? 'draft_reconciled'
+            : reconciledMedia.some((entry) => entry.status === 'completed' || entry.status === 'upload_started')
+                ? 'media_materializing'
+                : 'body_verified';
+        const candidate = {
+            ...checkpoint,
+            phase,
+            body: checkpoint.body,
+            media: reconciledMedia,
+            last_editor_revision: observation.page_revision,
+            updated_at: observation.observed_at
+        };
+        const stableCurrent = { ...checkpoint, revision: 0, updated_at: '' };
+        const stableCandidate = { ...candidate, revision: 0, updated_at: '' };
+        const updated = isDeepStrictEqual(stableCurrent, stableCandidate)
+            ? checkpoint
+            : await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, () => candidate);
+        if (ambiguous) {
+            return this.blockMaterialization(context, updated, {
+                kind: 'unverifiable',
+                reasons: ['existing Draft media effect is ambiguous or contradictory']
+            });
+        }
+        if (waitForObservation) {
+            return { ...context, needs_editor_observation: true };
+        }
+        const reconciliation = this.reconcileMaterializationDraft(plan, updated, context.plan.intent.document, observation);
+        if ((reconciliation.kind === 'content_drift' || reconciliation.kind === 'unverifiable')
+            && !this.isOnlyMissingCover(reconciliation)) {
+            return this.blockMaterialization(context, updated, reconciliation);
+        }
+        return context;
+    }
     reconcileMaterializationDraft(plan, checkpoint, document, observation) {
         const reconciliationCheckpoint = checkpoint.body.status === 'adopted_verified'
             ? { ...checkpoint, body: { status: 'verified', observed_digest: checkpoint.body.observed_digest } }
@@ -1200,7 +1354,8 @@ export class XArticleBrowserAdapter {
         return reconcileXArticleDraft({ plan, checkpoint: reconciliationCheckpoint, document, observation });
     }
     hasVerifiedMaterializationBody(checkpoint) {
-        return checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified';
+        return (checkpoint.body.status === 'verified' || checkpoint.body.status === 'adopted_verified')
+            && checkpoint.body.observed_digest !== null;
     }
     async rejectAdoption(context, error) {
         const evidence = { code: error.code, message: error.message };
@@ -1250,6 +1405,16 @@ export class XArticleBrowserAdapter {
             allowed_origin: 'https://x.com', side_effect: 'read',
             payload: { kind: 'observe_article_page', scope: 'editor' }
         });
+    }
+    async observeUnreportedV3_3Effect(context) {
+        const observing = {
+            ...context,
+            pending_command: null,
+            pending_issue: null,
+            needs_editor_observation: true
+        };
+        await this.writeContext(observing);
+        return this.issueEditorObservation(observing);
     }
     async recordMaterializationProgress(context, evidence) {
         const input = evidence.report;
@@ -1355,7 +1520,7 @@ export class XArticleBrowserAdapter {
             }
             this.assertId(entry.name);
             const command = validateContract('x-article-browser-command', await this.store.readJson(`${entry.relative_path}/command.json`));
-            this.assertPreparedCommandBinding(context, materializationPlan, command);
+            await this.assertPreparedCommandBinding(context, materializationPlan, command);
             if (command.execution_id !== executionId
                 || command.command_id !== entry.name
                 || command.run_id !== context.plan.run_id
@@ -1601,6 +1766,7 @@ export class XArticleBrowserAdapter {
             || command.kind === 'import_article_document'
             || command.kind === 'replace_article_visual_anchor'
             || command.kind === 'upload_article_cover'
+            || command.kind === 'set_article_image_alt'
             || command.kind === 'open_article_preview';
     }
     isPreparedMaterializationMode(context) {
@@ -1770,7 +1936,8 @@ export class XArticleBrowserAdapter {
             && reconciliation.differences[0]?.path === 'editor.visuals.cover[0]'
             && reconciliation.differences[0]?.reason === 'missing';
     }
-    assertPreparedCommandBinding(context, materializationPlan, input) {
+    async assertPreparedCommandBinding(context, materializationPlan, input) {
+        await this.assertV3_3DurableCommand(context, input, materializationPlan);
         if (input.payload.kind === 'set_article_title'
             && input.payload.title !== context.plan.intent.document.title) {
             throw new HarnessError('ARTICLE_MATERIALIZATION_DRIFT', 'prepared title command is not bound to durable content');
@@ -1810,6 +1977,220 @@ export class XArticleBrowserAdapter {
             }
         }
     }
+    async assertV3_3PendingIssueBinding(context, commandId) {
+        const intent = context.pending_issue;
+        if (intent === null) {
+            if (context.execution_mode === 'media_completion_v3_3'
+                && context.pending_command !== null
+                && (commandId === undefined || context.pending_command.command_id === commandId)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft pending command lost its issue intent');
+            }
+            return;
+        }
+        if (commandId !== undefined && intent.command_id !== commandId)
+            return;
+        if (intent.input_digest !== sha256(intent.input)) {
+            throw new HarnessError('CONTRACT_INVALID', 'X Article command issue intent changed');
+        }
+        if (context.execution_mode !== 'media_completion_v3_3')
+            return;
+        const expectedActionKey = sha256({
+            checkpoint_revision: intent.checkpoint_revision,
+            state: context.snapshot.state,
+            sequence: context.snapshot.sequence,
+            input: intent.input
+        });
+        if (commandId === undefined && intent.action_key !== expectedActionKey) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command action binding changed');
+        }
+        await this.assertV3_3DurableCommand(context, intent.input);
+        if (context.pending_command !== null
+            && context.pending_command.command_id === intent.command_id) {
+            const stableCommandInput = Object.fromEntries(Object.entries(context.pending_command).filter(([key]) => !['schema_version', 'command_id', 'payload_digest', 'issued_at'].includes(key)));
+            if (context.pending_command.payload_digest !== sha256(context.pending_command.payload)
+                || sha256(stableCommandInput) !== intent.input_digest) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft pending command changed');
+            }
+        }
+    }
+    async assertV3_3DurableCommand(context, input, boundPlan) {
+        if (context.execution_mode !== 'media_completion_v3_3')
+            return;
+        if (!V3_3_ALLOWED_COMMANDS.has(input.kind)) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', `existing Draft media completion cannot issue ${input.kind}`);
+        }
+        let materializationPlan = boundPlan;
+        if (materializationPlan === undefined && input.kind === 'navigate') {
+            let durablePlan;
+            try {
+                durablePlan = await this.store.readJson(`${this.prefix(context.snapshot.execution_id)}/plan.json`);
+                assertXArticlePublicationPlan(durablePlan);
+            }
+            catch (error) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft durable Plan is unavailable', error);
+            }
+            const draftBinding = context.materialization_plan?.draft_binding;
+            if (draftBinding === null || draftBinding === undefined) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft durable binding is unavailable');
+            }
+            const expected = createXArticleMaterializationPlan({
+                execution_id: context.snapshot.execution_id,
+                publication_plan: durablePlan,
+                import_template: createXArticleImportTemplate(durablePlan.intent.document),
+                strategy: 'rich_text_anchor_import/v1',
+                draft_binding: draftBinding
+            });
+            if (!isDeepStrictEqual(durablePlan, context.plan) || !isDeepStrictEqual(expected, context.materialization_plan)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft pre-binding Plan changed');
+            }
+            materializationPlan = expected;
+        }
+        materializationPlan ??= await this.readBoundMaterializationPlan(context);
+        const binding = materializationPlan?.draft_binding;
+        if (materializationPlan === null
+            || materializationPlan === undefined
+            || binding === null
+            || binding === undefined
+            || materializationPlan.execution_id !== context.snapshot.execution_id
+            || materializationPlan.publication_plan_digest !== context.plan.plan_digest
+            || binding.expected_account !== context.plan.intent.target_account
+            || input.execution_id !== context.snapshot.execution_id
+            || input.run_id !== context.plan.run_id
+            || input.draft_id !== binding.draft_id
+            || input.allowed_origin !== 'https://x.com'
+            || input.kind !== input.payload.kind) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command identity binding changed');
+        }
+        if ('schema_version' in input) {
+            try {
+                validateContract('x-article-browser-command', input);
+            }
+            catch (error) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command envelope changed', error);
+            }
+            if (input.schema_version !== '1.0'
+                || input.payload_digest !== sha256(input.payload)
+                || !Number.isFinite(Date.parse(input.issued_at))) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command digest changed');
+            }
+        }
+        if (input.kind === 'navigate' && input.payload.kind === 'navigate') {
+            if (input.purpose !== 'navigate_existing_article_draft'
+                || input.side_effect !== 'read'
+                || input.expected_page_revision !== null
+                || input.payload.url !== `https://x.com/compose/articles/edit/${binding.draft_id}`) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft navigation binding changed');
+            }
+            return;
+        }
+        const observation = await this.readV3_3CommandObservation(context, input.expected_page_revision);
+        let editor;
+        try {
+            editor = this.contract.detectEditor(observation);
+        }
+        catch (error) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command has no bound editor', error);
+        }
+        if (observation.account_handle !== materializationPlan.target_account
+            || observation.page_kind !== 'article_editor'
+            || editor.draft_id !== binding.draft_id
+            || context.snapshot.draft_id !== binding.draft_id) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command account or Draft binding changed');
+        }
+        if (input.kind === 'observe_article_page' && input.payload.kind === 'observe_article_page') {
+            if (input.side_effect !== 'read'
+                || input.payload.scope !== 'editor'
+                || !['reconcile_article_editor', 'reconcile_article_import_completion'].includes(input.purpose)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft observation binding changed');
+            }
+            return;
+        }
+        if (input.kind === 'upload_article_cover' && input.payload.kind === 'upload_article_cover') {
+            const cover = context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'cover');
+            if (input.purpose !== 'upload_article_cover'
+                || input.side_effect !== 'write'
+                || cover === undefined
+                || context.plan.intent.document.cover_asset_id !== cover.asset.asset_id
+                || input.payload.package_root !== context.plan.intent.article_package.root
+                || input.payload.package_digest !== context.plan.intent.article_package.digest
+                || !isDeepStrictEqual(input.payload.asset, cover.asset)) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft cover binding changed');
+            }
+            return;
+        }
+        if (input.kind === 'replace_article_visual_anchor'
+            && input.payload.kind === 'replace_article_visual_anchor') {
+            const anchor = materializationPlan.visual_anchors.find((candidate) => candidate.anchor_id === input.payload.anchor.anchor_id);
+            const templateAnchor = createXArticleImportTemplate(context.plan.intent.document).anchors.find((candidate) => candidate.anchor_id === input.payload.anchor.anchor_id);
+            const visual = anchor === undefined ? undefined : context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'block'
+                && candidate.placement.block_ordinal === anchor.block_ordinal
+                && candidate.asset.asset_id === anchor.asset_id);
+            let bodyRef;
+            try {
+                bodyRef = this.contract.detectControl(observation, 'body').ref;
+            }
+            catch (error) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft anchor target changed', error);
+            }
+            if (input.side_effect !== 'write'
+                || anchor === undefined
+                || templateAnchor === undefined
+                || visual === undefined
+                || input.purpose !== `replace_article_visual_anchor_${anchor.block_ordinal}`
+                || input.payload.target_ref !== bodyRef
+                || input.payload.package_root !== context.plan.intent.article_package.root
+                || input.payload.package_digest !== context.plan.intent.article_package.digest
+                || !isDeepStrictEqual(input.payload.anchor, templateAnchor)
+                || !isDeepStrictEqual(input.payload.asset, visual.asset)
+                || input.payload.asset.digest !== anchor.asset_digest) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft anchor or asset binding changed');
+            }
+            return;
+        }
+        if (input.kind === 'set_article_image_alt' && input.payload.kind === 'set_article_image_alt') {
+            const payload = input.payload;
+            const observedVisual = editor.visuals.find((visual) => visual.ref === payload.visual_ref);
+            const cover = context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'cover');
+            if (input.purpose !== 'set_cover_alt_text'
+                || input.side_effect !== 'write'
+                || observedVisual === undefined
+                || !observedVisual.owned_by_execution
+                || observedVisual.status !== 'uploaded'
+                || observedVisual.kind !== 'cover'
+                || cover === undefined
+                || observedVisual.asset_id !== cover.asset.asset_id
+                || payload.alt_text !== cover.asset.alt_text) {
+                throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft Alt or ownership binding changed');
+            }
+            return;
+        }
+        throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command payload is not exactly bound');
+    }
+    async readV3_3CommandObservation(context, revision) {
+        if (revision === null) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft write lacks a page revision');
+        }
+        const observations = [];
+        const entries = await this.store.list(`${this.prefix(context.snapshot.execution_id)}/observations`);
+        for (const entry of entries) {
+            if (entry.kind !== 'file' || !entry.name.endsWith('.json'))
+                continue;
+            const observation = await this.store.readJson(entry.relative_path);
+            if (observation.page_revision === revision)
+                observations.push(observation);
+        }
+        if (observations.length !== 1) {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command page revision is not uniquely durable');
+        }
+        const observation = observations[0];
+        const revisionBody = Object.fromEntries(Object.entries(observation).filter(([key]) => key !== 'page_revision'));
+        if (observation.page_revision !== computeXArticlePageRevision(revisionBody)
+            || observation.execution_id !== context.snapshot.execution_id
+            || observation.origin !== 'https://x.com') {
+            throw new HarnessError('PUBLISH_GATE_BLOCKED', 'existing Draft command page evidence changed');
+        }
+        return observation;
+    }
     async blockMaterialization(context, checkpoint, evidence) {
         if (checkpoint.phase !== 'blocked') {
             await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (trusted) => ({
@@ -1825,6 +2206,7 @@ export class XArticleBrowserAdapter {
         return this.transition(context, 'materialization_blocked', 'article_materialization_blocked');
     }
     async issue(context, input, deterministicId) {
+        await this.assertV3_3DurableCommand(context, input);
         let checkpointRevision = null;
         if (this.isPreparedMaterializationMode(context)
             && !(context.execution_mode === 'media_completion_v3_3' && context.snapshot.state === 'preflight')) {
@@ -1854,9 +2236,8 @@ export class XArticleBrowserAdapter {
         if (pendingIssue === null) {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'X Article command issue intent is absent');
         }
-        if (pendingIssue.input_digest !== sha256(pendingIssue.input)) {
-            throw new HarnessError('CONTRACT_INVALID', 'X Article command issue intent changed');
-        }
+        await this.assertV3_3PendingIssueBinding(context);
+        await this.assertV3_3DurableCommand(context, pendingIssue.input);
         await this.projectPendingIssueCheckpoint(context);
         const command = await this.broker.issue(pendingIssue.input, pendingIssue.command_id);
         const nextContext = {
@@ -2058,6 +2439,7 @@ export class XArticleBrowserAdapter {
         if (sha256(stableCommandInput) !== intent.input_digest) {
             throw new HarnessError('CONTRACT_INVALID', 'broker command is not bound to durable issue intent');
         }
+        await this.assertV3_3DurableCommand(context, command);
         const repaired = {
             ...context,
             pending_command: command,
