@@ -83,11 +83,11 @@ Observed title: From Skill Memory to Shared Agent Knowledge. Command 2's semanti
 Totals at stop:
 
 - commands 2 of 15; observations 2 of 12; claims 2
-- Publish commands 0; progress records 0
+- Publish commands 0; persisted progress records 2, both completion records (one for each completed command)
 - materialization start 2026-08-27T01:53:58.105Z
 - terminal block 2026-08-27T01:58:37.205Z
 - automation time to block approximately 279.1s, within six minutes
-- command 1 issue-to-observation gap 159.751s without persisted progress; bounded-wait progress criterion failed
+- command 1 issue-to-observation gap 159.751s had no persisted progress during the gap; its completion progress record was written 0.523s after the observation, so the two persisted completion records do not satisfy bounded-wait progress
 
 ## Terminal block and recovery result
 
@@ -121,7 +121,7 @@ The deliberate disconnect/reacquire plus resume-editor step could occur only aft
 | Publish command count | 0 | 0 | pass |
 | command/observation budgets | commands <=15; observations <=12 | 2 / 2 | pass |
 | automation time | <=6 min | approximately 279.1s | pass |
-| bounded progress | no silent gap | 159.751s with no persisted progress | fail |
+| bounded progress | no silent gap | 159.751s with no progress during the gap; first of two completion progress records followed the observation by 0.523s | fail |
 | no deletion/cleanup | zero | zero | pass |
 
 ## Runtime evidence and receipt boundary
