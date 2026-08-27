@@ -72,6 +72,8 @@ export declare class XArticleBrowserAdapter {
     private nextMaterializationCommand;
     private reconcileReportedEditor;
     private reconcileMaterializationDraft;
+    private hasVerifiedMaterializationBody;
+    private rejectAdoption;
     private reconcilePreparedPreview;
     private issueEditorObservation;
     private recordMaterializationProgress;

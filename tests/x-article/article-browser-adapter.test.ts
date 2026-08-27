@@ -929,6 +929,79 @@ describe('XArticleBrowserAdapter', () => {
     ]));
   });
 
+  it.each(['body_verified', 'media_materializing'] as const)(
+    'resumes an adopted body-complete Draft through %s without treating it as drift',
+    async (phase) => {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-existing-media-resume-${phase}-`)));
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => `execution_existing_media_resume_${phase}`,
+        now: () => new Date('2026-08-21T09:00:00.000Z')
+      });
+      const execution = await adapter.prepareExistingDraftMedia(
+        coverInlinePlan,
+        existingBodyCompleteObservation(
+          `source_resume_${phase}`, `source_command_resume_${phase}`, '2026-08-21T08:59:00.000Z'
+        ),
+        coverBulkCapabilities
+      );
+      let next = await adapter.next(execution.execution_id);
+      await reportSuccess(adapter, execution.execution_id, next.command,
+        freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z'));
+      next = await adapter.next(execution.execution_id);
+      expect(next.command?.kind).toBe('upload_article_cover');
+      if (phase === 'media_materializing') {
+        const checkpointPath = `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`;
+        const checkpoint = await store.readJson<Record<string, unknown>>(checkpointPath);
+        await store.replaceAtomic(checkpointPath, { ...checkpoint, phase });
+      }
+
+      await expect(adapter.resumeEditor(execution.execution_id)).resolves.toMatchObject({
+        state: 'materialization_reconciling', publish_command_count: 0
+      });
+      await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+        command: { kind: 'observe_article_page' }, snapshot: { state: 'materialization_reconciling' }
+      });
+    }
+  );
+
+  it.each(['account', 'body', 'draft'] as const)(
+    'records adopted Draft %s verification rejection as terminal materialization evidence',
+    async (mismatch) => {
+      const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-existing-media-reject-${mismatch}-`)));
+      const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+        executionId: () => `execution_existing_media_reject_${mismatch}`,
+        now: () => new Date('2026-08-21T09:00:00.000Z')
+      });
+      const execution = await adapter.prepareExistingDraftMedia(
+        coverInlinePlan,
+        existingBodyCompleteObservation(`source_${mismatch}`, `source_command_${mismatch}`, '2026-08-21T08:59:00.000Z'),
+        coverBulkCapabilities
+      );
+      const next = await adapter.next(execution.execution_id);
+      const fresh = freshBodyCompleteObservation(execution.execution_id, next.command!.command_id, '2026-08-21T09:00:00.000Z');
+      const invalid = mismatch === 'account'
+        ? observed(execution.execution_id, next.command!.command_id, { ...fresh, account_handle: '@ForeignAccount' })
+        : mismatch === 'body'
+          ? observed(execution.execution_id, next.command!.command_id, {
+            ...fresh, editor: { ...fresh.editor!, title: 'Human edited title' }
+          })
+          : observed(execution.execution_id, next.command!.command_id, {
+            ...fresh,
+            canonical_url: 'https://x.com/compose/articles/edit/2092851979932647425',
+            editor: { ...fresh.editor!, draft_id: '2092851979932647425' }
+          });
+
+      await expect(reportSuccess(adapter, execution.execution_id, next.command, invalid))
+        .resolves.toBeUndefined();
+      await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+        snapshot: { state: 'materialization_blocked' }, command: null
+      });
+      await expect(store.readJson<Record<string, unknown>>(
+        `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+      )).resolves.toMatchObject({ event_type: 'article_adoption_rejected' });
+    }
+  );
+
   it('reconciles adopted cover and inline media without opening Preview or publishing', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-complete-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -993,6 +1066,56 @@ describe('XArticleBrowserAdapter', () => {
       }
     ));
 
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'draft_reconciled', publish_command_count: 0 }, command: null
+    });
+  });
+
+  it('reconciles a body-empty adopted Draft after its only cover upload', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-cover-only-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_cover_only',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const source = observed('source_cover_only', 'source_command_cover_only', {
+      observed_at: '2026-08-21T08:59:00.000Z',
+      canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+      page_kind: 'article_editor', controls: editorControls,
+      editor: {
+        draft_id: '2092851979932647424', title: coverOnlyPlan.intent.document.title,
+        blocks: [], visuals: [], import_state: {
+          template_digest: createXArticleImportTemplate(coverOnlyPlan.intent.document).template_digest,
+          source_document_digest: createXArticleImportTemplate(coverOnlyPlan.intent.document).source_document_digest,
+          unresolved_anchors: []
+        }, has_unknown_content: false, autosave_state: 'saved'
+      }
+    });
+    const execution = await adapter.prepareExistingDraftMedia(coverOnlyPlan, source, coverBulkCapabilities);
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:00:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: { ...source.editor!, draft_id: '2092851979932647424' }
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('upload_article_cover');
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:00:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          ...source.editor!, draft_id: '2092851979932647424', import_state: null,
+          visuals: [{
+            ref: 'cover_only_existing', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          }]
+        }
+      }
+    ));
     await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
       snapshot: { state: 'draft_reconciled', publish_command_count: 0 }, command: null
     });
