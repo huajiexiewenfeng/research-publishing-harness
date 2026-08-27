@@ -243,3 +243,61 @@ This rerun does not close the Browser Host completion gate.
 - expected receipt: materialization-receipt.json — absent
 
 No Publish approval was requested. Neither diagnostic Draft was published or deleted. This is execution evidence only and is not self-approval.
+
+---
+
+## Title-stage fix rerun at 7fd0c8e — Host observation normalization failure
+
+### Rerun verdict
+
+- verdict: **FAIL — stop after the single allowed new Draft**
+- implementation HEAD: `7fd0c8e` (`fix: materialize X Article title before import`)
+- existing-Chrome account: exact live match `@Glen56121`
+- execution ID: `x_article_execution_08062357-73a2-4467-8c26-362cad43d618`
+- new Draft ID: `2092824385736613888`
+- new Draft URL: `https://x.com/compose/articles/edit/2092824385736613888`
+- publication Plan digest: `sha256:5c51972378d0f249e159fe930c8bc2b81658ef48044fbd2bf3d3ea0b484e4d22`
+- materialization digest: `sha256:bfda1ed495ecdb93844cae8bf4b4a567b7aad55041fb0f82e1942687a944c31b`
+- browser content at stop: exact approved title plus one rich-text body import; cover and inline images not uploaded
+- Preview / confirmation: not reached / absent
+- Publish commands/clicks: zero / zero
+- Draft deletion or cleanup: zero / zero
+
+The title-stage implementation fix worked. After the fresh empty Draft observation, the adapter issued and the Host claimed a separate `set_article_title` command. The live editor then showed the exact approved title, an otherwise empty body, and saved state. Only after that exact report did the adapter issue `import_article_document`.
+
+The Host performed one bulk rich-text import through the tab clipboard. Live DOM verification found approximately 13,224 body characters and 111 Draft.js blocks. The editor preserved H2 headings, unordered and ordered lists, blockquotes, bold and italic spans, six exact links, and all three planned visual-anchor markers. No image or Publish action occurred.
+
+The run failed while normalizing the post-import Host observation. The submitted observation represented the three visible anchor-marker blocks as `visual_anchor` entries inside `editor.blocks`. The schema accepted that value, but `article-draft-reconciler.normalizeBlock` assumed every non-image, non-list block had `runs` and attempted `block.runs.map(...)`. The process therefore raised:
+
+```text
+TypeError: Cannot read properties of undefined (reading 'map')
+at article-draft-reconciler.js:21:41
+```
+
+The failure happened after the report and observation artifacts were durably written but before a report projection was created. The execution therefore remains nonterminal at `materialization_reconciling`, with the same import command pending. Per the single-Draft/no-second-retry constraint, the Host did not re-import, upload the cover, upload inline images, open Preview, create another execution, or repair the live Draft locally.
+
+### Command ledger
+
+| # | Command | Live result | Harness result |
+|---|---|---|---|
+| 1 | `x_article_command_71f54a29-3b54-4d18-a67d-7e444275cfeb` / `observe_article_page` | exact account and Articles index observed | success |
+| 2 | `x_article_command_ceeada91-3f46-48a6-b9aa-f6a8f731dbd3` / `create_article_draft` | one new empty Draft `2092824385736613888` | success |
+| 3 | `x_article_command_17547d4a-b571-4735-bf2b-95131d427ec1` / `set_article_title` | exact approved title saved; body still empty | success |
+| 4 | `x_article_command_37d4e4f5-2600-4596-994d-034e1d61f2f3` / `import_article_document` | one rich-text import; all planned formatting and three anchors visible | report normalization crashed before projection |
+
+Totals at stop: four commands issued and claimed, four observations durably present, one body import, zero cover uploads, zero inline uploads, zero Preview opens, and zero Publish commands.
+
+### Additional release-binding finding
+
+`RESEARCH_PUBLISHING_HARNESS_CLI` was set to the parent checkout's stale `dist` and caused the Skill wrapper to report `unknown operation: x-article browser prepare`. Explicitly binding the wrapper to the current worktree build made `prepare` succeed. V3.2 needs a deterministic release-set check that fails with `ARTICLE_RUNTIME_VERSION_MISMATCH` instead of silently preferring a stale environment override.
+
+### Durable evidence
+
+- workspace: `C:\Users\admin\Documents\New project 2\publishing-workspace\v3-2-draft-smoke\task4-title-rerun-20260827`
+- browser execution root: `runs\x_article_execution_08062357-73a2-4467-8c26-362cad43d618\x-article\browser`
+- post-import report input: `host-report-import.json`
+- persisted post-import observation: `observations\obs_x_article_command_37d4e4f5-2600-4596-994d-034e1d61f2f3.json`
+- persisted post-import report without projection: `reports\x_article_command_37d4e4f5-2600-4596-994d-034e1d61f2f3.json`
+- expected materialization receipt: absent
+
+The new Draft remains unpublished, undeleted, and handed off in the existing Chrome session for human inspection. This failure is evidence that the Browser Host still needs a deterministic DOM-to-observation normalizer; it is not evidence that body import failed.
