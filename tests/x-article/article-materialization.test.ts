@@ -291,7 +291,7 @@ describe('X Article materialization contracts', () => {
       draft_id: existingDraftBinding.draft_id,
       draft_origin: 'adopted_existing',
       source_execution_id: null,
-      phase: 'body_verified',
+      phase: 'draft_bound',
       body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
       last_editor_revision: observation.page_revision,
       publish_confirmation: 'absent'

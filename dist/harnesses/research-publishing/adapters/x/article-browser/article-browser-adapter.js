@@ -258,42 +258,12 @@ export class XArticleBrowserAdapter {
                 payload: { kind: 'observe_article_page', scope: 'index' }
             });
         }
+        if (context.execution_mode === 'media_completion_v3_3'
+            && (state === 'preflight' || state === 'account_verified' || state === 'draft_created')) {
+            return this.advanceAdoptedDraftBinding(context);
+        }
         if (state === 'preflight') {
             const observation = this.requireObservation(context);
-            if (context.execution_mode === 'media_completion_v3_3') {
-                let materializationPlan;
-                try {
-                    const account = this.contract.detectAccount(observation);
-                    if (account.handle !== context.plan.intent.target_account) {
-                        throw new HarnessError('X_ACCOUNT_MISMATCH', 'X Article account differs from the Plan target');
-                    }
-                    if (context.materialization_plan === null) {
-                        throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft materialization plan is absent');
-                    }
-                    materializationPlan = context.materialization_plan;
-                    if (materializationPlan.draft_binding === null) {
-                        throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent');
-                    }
-                    verifyXArticleExistingDraftBinding(materializationPlan.draft_binding, context.plan, observation);
-                }
-                catch (error) {
-                    if (error instanceof HarnessError) {
-                        context = await this.rejectAdoption(context, error);
-                        return { snapshot: context.snapshot, command: null };
-                    }
-                    throw error;
-                }
-                const checkpoint = createAdoptedXArticleMaterializationCheckpoint({
-                    plan: materializationPlan, publication_plan: context.plan, observation, updated_at: this.now().toISOString()
-                });
-                await this.materializationStore.create(materializationPlan, checkpoint);
-                context = await this.transition(context, 'account_verified', 'article_adoption_verified');
-                context = await this.transition(context, 'draft_created', 'article_draft_bound', {
-                    draft_id: materializationPlan.draft_binding.draft_id
-                });
-                context = await this.transition(context, 'materialization_reconciling', 'article_materialization_reconciling');
-                return this.nextMaterializationCommand(context, observation);
-            }
             const account = this.contract.detectAccount(observation);
             if (account.handle !== context.plan.intent.target_account) {
                 throw new HarnessError('X_ACCOUNT_MISMATCH', 'X Article account differs from the Plan target');
@@ -577,6 +547,11 @@ export class XArticleBrowserAdapter {
         }
         if (this.isPreparedReportActive(context)
             && (input.observation === null && input.status === 'success')) {
+            if (context.execution_mode === 'media_completion_v3_3'
+                && context.snapshot.state === 'preflight') {
+                context = await this.rejectAdoption(context, new HarnessError('ARTICLE_DRAFT_CONFLICT', 'adopted Draft preflight success report has no browser observation'));
+                return (await this.finalizeProjectedReport(context, input.command.command_id, reportDigest)).snapshot;
+            }
             const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
             context = await this.blockMaterialization(context, checkpoint, {
                 kind: 'unverifiable', reasons: ['successful report has no browser observation']
@@ -904,7 +879,87 @@ export class XArticleBrowserAdapter {
         if (await this.store.exists(planPath)) {
             throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization plan is missing its checkpoint');
         }
-        return null;
+        if (context.execution_mode === 'media_completion_v3_3'
+            && ['created', 'preflight', 'materialization_blocked'].includes(context.snapshot.state))
+            return null;
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'prepared X Article materialization persistence is missing');
+    }
+    async advanceAdoptedDraftBinding(context) {
+        const observation = this.requireObservation(context);
+        const materializationPlan = context.materialization_plan;
+        if (materializationPlan === null || materializationPlan.draft_binding === null) {
+            throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'existing Draft binding is absent');
+        }
+        if (context.snapshot.state === 'preflight') {
+            try {
+                const account = this.contract.detectAccount(observation);
+                if (account.handle !== context.plan.intent.target_account) {
+                    throw new HarnessError('X_ACCOUNT_MISMATCH', 'X Article account differs from the Plan target');
+                }
+                verifyXArticleExistingDraftBinding(materializationPlan.draft_binding, context.plan, observation);
+                await this.ensureAdoptedDraftBoundCheckpoint(context, materializationPlan, observation);
+            }
+            catch (error) {
+                if (error instanceof HarnessError) {
+                    context = await this.rejectAdoption(context, error);
+                    return { snapshot: context.snapshot, command: null };
+                }
+                throw error;
+            }
+            context = await this.transition(context, 'account_verified', 'article_adoption_verified');
+        }
+        if (context.snapshot.state === 'account_verified') {
+            context = await this.transition(context, 'draft_created', 'article_draft_bound', {
+                draft_id: materializationPlan.draft_binding.draft_id
+            });
+        }
+        if (context.snapshot.state === 'draft_created') {
+            const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+            if (checkpoint.phase === 'draft_bound') {
+                await this.materializationStore.updateCheckpoint(context.snapshot.execution_id, checkpoint.revision, (current) => {
+                    if (current.phase !== 'draft_bound'
+                        || current.body.status !== 'adopted_verified'
+                        || current.body.observed_digest !== materializationPlan.import_template_digest) {
+                        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adopted Draft checkpoint changed before body promotion');
+                    }
+                    return { ...current, phase: 'body_verified', updated_at: this.now().toISOString() };
+                });
+            }
+            else if (checkpoint.phase !== 'body_verified'
+                || checkpoint.body.status !== 'adopted_verified'
+                || checkpoint.body.observed_digest !== materializationPlan.import_template_digest) {
+                throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adopted Draft checkpoint cannot resume body promotion');
+            }
+            context = await this.transition(context, 'materialization_reconciling', 'article_materialization_reconciling');
+        }
+        return this.nextMaterializationCommand(context, observation);
+    }
+    async ensureAdoptedDraftBoundCheckpoint(context, materializationPlan, observation) {
+        const checkpointPath = `${this.prefix(context.snapshot.execution_id)}/materialization-checkpoint.json`;
+        const planPath = `${this.prefix(context.snapshot.execution_id)}/materialization-plan.json`;
+        const [checkpointExists, planExists] = await Promise.all([
+            this.store.exists(checkpointPath), this.store.exists(planPath)
+        ]);
+        const expected = createAdoptedXArticleMaterializationCheckpoint({
+            plan: materializationPlan, publication_plan: context.plan, observation, updated_at: this.now().toISOString()
+        });
+        if (!checkpointExists && !planExists)
+            return this.materializationStore.create(materializationPlan, expected);
+        if (!checkpointExists || !planExists) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adopted Draft binding has partial materialization persistence');
+        }
+        const persistedPlan = await this.materializationStore.readPlan(context.snapshot.execution_id);
+        const checkpoint = await this.materializationStore.readCheckpoint(context.snapshot.execution_id);
+        if (!isDeepStrictEqual(persistedPlan, materializationPlan)
+            || checkpoint.materialization_digest !== materializationPlan.materialization_digest
+            || checkpoint.draft_id !== materializationPlan.draft_binding.draft_id
+            || checkpoint.draft_origin !== 'adopted_existing'
+            || checkpoint.body.status !== 'adopted_verified'
+            || checkpoint.body.observed_digest !== materializationPlan.import_template_digest
+            || (checkpoint.phase !== 'draft_bound' && checkpoint.phase !== 'body_verified')) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'adopted Draft binding checkpoint differs on retry');
+        }
+        return checkpoint;
     }
     async nextPublicVerification(context) {
         const article = context.latest_observation?.public_article ?? null;

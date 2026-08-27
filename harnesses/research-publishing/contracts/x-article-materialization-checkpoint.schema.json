@@ -13,7 +13,7 @@
         "properties": {
           "draft_id": { "type": "string" },
           "source_execution_id": { "type": "null" },
-          "phase": { "enum": ["body_verified", "media_materializing", "draft_reconciled", "preview_verified", "human_confirmed", "publish_submitted", "public_verified", "blocked"] },
+          "phase": { "enum": ["draft_bound", "body_verified", "media_materializing", "draft_reconciled", "preview_verified", "human_confirmed", "publish_submitted", "public_verified", "blocked"] },
           "body": {
             "type": "object",
             "properties": {

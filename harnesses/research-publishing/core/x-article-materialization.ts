@@ -451,7 +451,7 @@ export function createAdoptedXArticleMaterializationCheckpoint(
       draft_id: plan.draft_binding.draft_id,
       draft_origin: 'adopted_existing',
       source_execution_id: null,
-      phase: 'body_verified',
+      phase: 'draft_bound',
       body: { status: 'adopted_verified', observed_digest: plan.import_template_digest },
       last_editor_revision: observation.page_revision
     }
@@ -541,7 +541,8 @@ export function assertXArticleMaterializationCheckpointMatchesPlan(
         && media.asset_digest === anchor.asset_digest;
     });
   const adoptedPlan = plan.draft_binding !== null;
-  const adoptedPhase = checkpoint.phase === 'body_verified'
+  const adoptedPhase = checkpoint.phase === 'draft_bound'
+    || checkpoint.phase === 'body_verified'
     || checkpoint.phase === 'media_materializing'
     || checkpoint.phase === 'draft_reconciled'
     || checkpoint.phase === 'preview_verified'

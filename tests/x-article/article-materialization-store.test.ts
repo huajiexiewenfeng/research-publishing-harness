@@ -205,6 +205,13 @@ describe('XArticleMaterializationStore', () => {
     await expect(store.create(materializationPlan, adopted)).resolves.toEqual(adopted);
     await expect(store.readCheckpoint(materializationPlan.execution_id)).resolves.toEqual(adopted);
 
+    const invalidBodyPlan = adoptedPlan('execution_adopted_invalid_body');
+    await expect(store.create(invalidBodyPlan, {
+      ...adoptedCheckpoint(invalidBodyPlan),
+      phase: 'draft_bound',
+      body: { status: 'pending', observed_digest: null }
+    })).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+
     const illegalPlan = adoptedPlan('execution_adopted_forged');
     const illegal = {
       ...adoptedCheckpoint(illegalPlan),

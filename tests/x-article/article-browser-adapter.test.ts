@@ -930,6 +930,76 @@ describe('XArticleBrowserAdapter', () => {
     ]));
   });
 
+  it('persists adopted draft_bound evidence before body promotion and resumes across that boundary', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-draft-bound-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_draft_bound',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_draft_bound', 'source_command_draft_bound', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const navigating = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, navigating.command,
+      freshBodyCompleteObservation(execution.execution_id, navigating.command!.command_id, '2026-08-21T09:00:00.000Z'));
+    const checkpointPath = `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`;
+    const replaceAtomic = store.replaceAtomic.bind(store);
+    let failPromotion = true;
+    store.replaceAtomic = async (path, value) => {
+      if (failPromotion && path === checkpointPath && (value as { phase?: string }).phase === 'body_verified') {
+        failPromotion = false;
+        throw new Error('injected body promotion crash');
+      }
+      return replaceAtomic(path, value);
+    };
+
+    await expect(adapter.next(execution.execution_id)).rejects.toThrow('injected body promotion crash');
+    await expect(store.readJson<Record<string, unknown>>(checkpointPath)).resolves.toMatchObject({
+      revision: 0, phase: 'draft_bound', body: { status: 'adopted_verified' }
+    });
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+    )).resolves.toMatchObject({ event_type: 'article_adoption_verified' });
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000003.json`
+    )).resolves.toMatchObject({ event_type: 'article_draft_bound' });
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({ state: 'draft_created' });
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_reconciling' }, command: { kind: 'upload_article_cover' }
+    });
+    await expect(store.readJson<Record<string, unknown>>(checkpointPath)).resolves.toMatchObject({
+      revision: 1, phase: 'body_verified', body: { status: 'adopted_verified' }
+    });
+  });
+
+  it('terminalizes and replays a V3.3 preflight success report without an observation', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-empty-preflight-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_existing_media_empty_preflight',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepareExistingDraftMedia(
+      coverInlinePlan,
+      existingBodyCompleteObservation('source_empty_preflight', 'source_command_empty_preflight', '2026-08-21T08:59:00.000Z'),
+      coverBulkCapabilities
+    );
+    const next = await adapter.next(execution.execution_id);
+    const input = { command: next.command!, status: 'success' as const, observation: null };
+    await adapter.claim(input.command);
+
+    const first = await adapter.report(input);
+    await expect(adapter.report(input)).resolves.toEqual(first);
+    expect(first).toMatchObject({ state: 'materialization_blocked' });
+    await expect(store.readJson<Record<string, unknown>>(
+      `runs/${execution.execution_id}/x-article/browser/events/000002.json`
+    )).resolves.toMatchObject({ event_type: 'article_adoption_rejected' });
+    await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/report-projections/${input.command.command_id}.json`))
+      .resolves.toBe(true);
+  });
+
   it('replays an identical adopted-Draft preflight report without duplicate projection side effects', async () => {
     const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-existing-media-preflight-replay-')));
     const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
@@ -2566,6 +2636,23 @@ describe('XArticleBrowserAdapter', () => {
     const checkpointPath = `runs/${execution.execution_id}/x-article/browser/materialization-checkpoint.json`;
     const exists = store.exists.bind(store);
     store.exists = async (path) => path === checkpointPath ? false : exists(path);
+
+    await expect(adapter.cancelBeforePublish(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
+  it('fails closed when a V3.2 prepared cancellation has neither plan nor checkpoint', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-x-article-cancel-v32-missing-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_cancel_v32_missing',
+      now: () => new Date('2026-08-21T09:00:00.000Z')
+    });
+    const execution = await adapter.prepare(plan, bulkCapabilities);
+    const prefix = `runs/${execution.execution_id}/x-article/browser/`;
+    const exists = store.exists.bind(store);
+    store.exists = async (path) => (
+      path === `${prefix}materialization-plan.json` || path === `${prefix}materialization-checkpoint.json`
+    ) ? false : exists(path);
 
     await expect(adapter.cancelBeforePublish(execution.execution_id))
       .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
