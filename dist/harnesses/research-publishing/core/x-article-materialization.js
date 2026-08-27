@@ -203,7 +203,50 @@ export function verifyXArticleMaterializationStartEvidence(evidence, plan) {
     }
     return expected;
 }
+export function assertXArticleMaterializationCheckpointMatchesPlan(plan, checkpoint, requestedExecutionId = plan.execution_id) {
+    const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
+        && checkpoint.media.every((media, index) => {
+            const anchor = plan.visual_anchors[index];
+            return anchor !== undefined
+                && media.anchor_id === anchor.anchor_id
+                && media.asset_id === anchor.asset_id
+                && media.block_ordinal === anchor.block_ordinal
+                && media.asset_digest === anchor.asset_digest;
+        });
+    const adoptedPlan = plan.draft_binding !== null;
+    const adoptedPhase = checkpoint.phase === 'body_verified'
+        || checkpoint.phase === 'media_materializing'
+        || checkpoint.phase === 'draft_reconciled'
+        || checkpoint.phase === 'preview_verified'
+        || checkpoint.phase === 'human_confirmed'
+        || checkpoint.phase === 'publish_submitted'
+        || checkpoint.phase === 'public_verified'
+        || checkpoint.phase === 'blocked';
+    const adoptedCheckpointMatches = adoptedPlan
+        && checkpoint.draft_origin === 'adopted_existing'
+        && checkpoint.source_execution_id === null
+        && checkpoint.draft_id === plan.draft_binding.draft_id
+        && checkpoint.body.status === 'adopted_verified'
+        && checkpoint.body.observed_digest === plan.import_template_digest
+        && checkpoint.last_editor_revision !== null
+        && adoptedPhase;
+    const createdNewCheckpointMatches = !adoptedPlan
+        && checkpoint.draft_origin === 'created_new'
+        && checkpoint.body.status !== 'adopted_verified';
+    const checkpointOriginMatchesPlan = adoptedPlan
+        ? adoptedCheckpointMatches
+        : createdNewCheckpointMatches;
+    if (plan.execution_id !== requestedExecutionId
+        || checkpoint.execution_id !== requestedExecutionId
+        || checkpoint.execution_id !== plan.execution_id
+        || checkpoint.materialization_digest !== plan.materialization_digest
+        || !mediaMatches
+        || !checkpointOriginMatchesPlan) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization checkpoint does not match its locked plan');
+    }
+}
 function validatePreviewEvidence(plan, checkpoint) {
+    assertXArticleMaterializationCheckpointMatchesPlan(plan, checkpoint);
     const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
         && checkpoint.media.every((entry, index) => {
             const anchor = plan.visual_anchors[index];
@@ -217,11 +260,10 @@ function validatePreviewEvidence(plan, checkpoint) {
                 && entry.observed_context_digest === anchor.context_digest;
         });
     const mediaRefs = checkpoint.media.map((entry) => entry.observed_media_ref);
-    if (checkpoint.execution_id !== plan.execution_id
-        || checkpoint.materialization_digest !== plan.materialization_digest
-        || checkpoint.draft_id === null
+    const expectedBodyStatus = plan.draft_binding === null ? 'verified' : 'adopted_verified';
+    if (checkpoint.draft_id === null
         || checkpoint.phase !== 'preview_verified'
-        || checkpoint.body.status !== 'verified'
+        || checkpoint.body.status !== expectedBodyStatus
         || checkpoint.body.observed_digest !== plan.import_template_digest
         || checkpoint.last_editor_revision === null
         || checkpoint.publish_confirmation !== 'absent'

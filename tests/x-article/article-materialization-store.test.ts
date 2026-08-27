@@ -242,6 +242,38 @@ describe('XArticleMaterializationStore', () => {
       .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
   });
 
+  it.each([
+    {
+      case: 'null binding with adopted checkpoint',
+      materializationPlan: () => plan('execution_read_plan_forged_created', true),
+      materializationCheckpoint: (materializationPlan: XArticleMaterializationPlanV1) =>
+        forgedAdoptedCheckpoint(materializationPlan)
+    },
+    {
+      case: 'binding with created-new checkpoint',
+      materializationPlan: () => adoptedPlan('execution_read_plan_forged_adopted'),
+      materializationCheckpoint: (materializationPlan: XArticleMaterializationPlanV1) =>
+        checkpoint(materializationPlan)
+    }
+  ])('fails closed when readPlan finds a persisted $case', async ({
+    materializationPlan: createPlan,
+    materializationCheckpoint: createCheckpoint
+  }) => {
+    const { workspace, store } = await fixture();
+    const materializationPlan = createPlan();
+    await workspace.writeNew(
+      `runs/${materializationPlan.execution_id}/x-article/browser/materialization-plan.json`,
+      materializationPlan
+    );
+    await workspace.writeNew(
+      `runs/${materializationPlan.execution_id}/x-article/browser/materialization-checkpoint.json`,
+      createCheckpoint(materializationPlan)
+    );
+
+    await expect(store.readPlan(materializationPlan.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+  });
+
   it('creates and reads a validated plan and checkpoint at the execution paths', async () => {
     const { workspace, store } = await fixture();
     const materializationPlan = plan();

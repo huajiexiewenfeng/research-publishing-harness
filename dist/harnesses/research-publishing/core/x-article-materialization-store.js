@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { HarnessError } from './errors.js';
 import { validateContract } from './schema-validator.js';
+import { assertXArticleMaterializationCheckpointMatchesPlan } from './x-article-materialization.js';
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 function snapshot(value) {
     return structuredClone(value);
@@ -17,7 +18,7 @@ export class XArticleMaterializationStore {
         const validatedPlan = validateContract('x-article-materialization-plan', detachedPlan);
         this.assertSafeExecutionId(requestedExecutionId);
         const validatedCheckpoint = validateContract('x-article-materialization-checkpoint', detachedCheckpoint);
-        this.assertCheckpointMatchesPlan(validatedCheckpoint, validatedPlan, requestedExecutionId);
+        assertXArticleMaterializationCheckpointMatchesPlan(validatedPlan, validatedCheckpoint, requestedExecutionId);
         if (validatedCheckpoint.revision !== 0) {
             throw this.conflict('initial materialization checkpoint revision must be zero');
         }
@@ -36,7 +37,7 @@ export class XArticleMaterializationStore {
                 await this.store.writeNew(checkpointPath, validatedCheckpoint);
             }
             else if (planExists) {
-                const existingPlan = await this.readArtifact(planPath, 'x-article-materialization-plan', 'materialization plan');
+                const existingPlan = await this.readPlanUnlocked(requestedExecutionId);
                 if (!isDeepStrictEqual(existingPlan, validatedPlan)) {
                     throw this.conflict('incomplete materialization plan does not match retry input');
                 }
@@ -61,9 +62,10 @@ export class XArticleMaterializationStore {
         const requestedExecutionId = executionId;
         this.assertSafeExecutionId(requestedExecutionId);
         return this.store.withLock(this.lockPath(requestedExecutionId), async () => {
-            const plan = await this.readArtifact(this.planPath(requestedExecutionId), 'x-article-materialization-plan', 'materialization plan');
-            if (plan.execution_id !== requestedExecutionId) {
-                throw this.conflict('materialization plan does not match the requested execution');
+            const plan = await this.readPlanUnlocked(requestedExecutionId);
+            if (await this.store.exists(this.checkpointPath(requestedExecutionId))) {
+                const checkpoint = await this.readArtifact(this.checkpointPath(requestedExecutionId), 'x-article-materialization-checkpoint', 'materialization checkpoint');
+                assertXArticleMaterializationCheckpointMatchesPlan(plan, checkpoint, requestedExecutionId);
             }
             return snapshot(plan);
         });
@@ -78,7 +80,7 @@ export class XArticleMaterializationStore {
             }
             const detachedUpdate = snapshot(update(snapshot(current)));
             const next = validateContract('x-article-materialization-checkpoint', { ...detachedUpdate, revision: current.revision + 1 });
-            this.assertCheckpointMatchesPlan(next, plan, requestedExecutionId);
+            assertXArticleMaterializationCheckpointMatchesPlan(plan, next, requestedExecutionId);
             const persisted = snapshot(next);
             await this.store.replaceAtomic(this.checkpointPath(requestedExecutionId), persisted);
             return snapshot(persisted);
@@ -130,10 +132,17 @@ export class XArticleMaterializationStore {
         });
     }
     async readStateUnlocked(executionId) {
-        const plan = await this.readArtifact(this.planPath(executionId), 'x-article-materialization-plan', 'materialization plan');
+        const plan = await this.readPlanUnlocked(executionId);
         const checkpoint = await this.readArtifact(this.checkpointPath(executionId), 'x-article-materialization-checkpoint', 'materialization checkpoint');
-        this.assertCheckpointMatchesPlan(checkpoint, plan, executionId);
+        assertXArticleMaterializationCheckpointMatchesPlan(plan, checkpoint, executionId);
         return { plan, checkpoint };
+    }
+    async readPlanUnlocked(executionId) {
+        const plan = await this.readArtifact(this.planPath(executionId), 'x-article-materialization-plan', 'materialization plan');
+        if (plan.execution_id !== executionId) {
+            throw this.conflict('materialization plan does not match the requested execution');
+        }
+        return plan;
     }
     async readArtifact(path, contract, label) {
         try {
@@ -151,48 +160,6 @@ export class XArticleMaterializationStore {
                 throw error;
             }
             throw this.conflict(`${label} is missing or corrupt`, error);
-        }
-    }
-    assertCheckpointMatchesPlan(checkpoint, plan, requestedExecutionId) {
-        const mediaMatches = checkpoint.media.length === plan.visual_anchors.length
-            && checkpoint.media.every((media, index) => {
-                const anchor = plan.visual_anchors[index];
-                return anchor !== undefined
-                    && media.anchor_id === anchor.anchor_id
-                    && media.asset_id === anchor.asset_id
-                    && media.block_ordinal === anchor.block_ordinal
-                    && media.asset_digest === anchor.asset_digest;
-            });
-        const adoptedPlan = plan.draft_binding !== null;
-        const adoptedPhase = checkpoint.phase === 'body_verified'
-            || checkpoint.phase === 'media_materializing'
-            || checkpoint.phase === 'draft_reconciled'
-            || checkpoint.phase === 'preview_verified'
-            || checkpoint.phase === 'human_confirmed'
-            || checkpoint.phase === 'publish_submitted'
-            || checkpoint.phase === 'public_verified'
-            || checkpoint.phase === 'blocked';
-        const adoptedCheckpointMatches = adoptedPlan
-            && checkpoint.draft_origin === 'adopted_existing'
-            && checkpoint.source_execution_id === null
-            && checkpoint.draft_id === plan.draft_binding.draft_id
-            && checkpoint.body.status === 'adopted_verified'
-            && checkpoint.body.observed_digest === plan.import_template_digest
-            && checkpoint.last_editor_revision !== null
-            && adoptedPhase;
-        const createdNewCheckpointMatches = !adoptedPlan
-            && checkpoint.draft_origin === 'created_new'
-            && checkpoint.body.status !== 'adopted_verified';
-        const checkpointOriginMatchesPlan = adoptedPlan
-            ? adoptedCheckpointMatches
-            : createdNewCheckpointMatches;
-        if (plan.execution_id !== requestedExecutionId
-            || checkpoint.execution_id !== requestedExecutionId
-            || checkpoint.execution_id !== plan.execution_id
-            || checkpoint.materialization_digest !== plan.materialization_digest
-            || !mediaMatches
-            || !checkpointOriginMatchesPlan) {
-            throw this.conflict('materialization checkpoint does not match its locked plan');
         }
     }
     assertSafeExecutionId(executionId) {

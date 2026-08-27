@@ -147,6 +147,16 @@ function materializationPlan() {
   });
 }
 
+function adoptedMaterializationPlan() {
+  return createXArticleMaterializationPlan({
+    execution_id: 'execution_adopted_receipt',
+    publication_plan: publicationPlan,
+    import_template: importTemplate,
+    strategy: 'rich_text_anchor_import/v1',
+    draft_binding: existingDraftBinding
+  });
+}
+
 function resignImportTemplate(
   override: Partial<Omit<XArticleImportTemplateV1, 'template_digest'>>
 ): XArticleImportTemplateV1 {
@@ -649,6 +659,26 @@ function createReceiptFor(
 }
 
 describe('X Article materialization performance receipts', () => {
+  it('requires Preview receipts to retain the Plan/checkpoint origin pairing', () => {
+    const adoptedPlan = adoptedMaterializationPlan();
+    const adoptedCheckpoint = previewCheckpoint(adoptedPlan, {
+      draft_id: adoptedPlan.draft_binding!.draft_id,
+      draft_origin: 'adopted_existing',
+      body: { status: 'adopted_verified', observed_digest: adoptedPlan.import_template_digest }
+    });
+
+    expect(() => createReceiptFor(adoptedPlan, { checkpoint: previewCheckpoint(adoptedPlan) }))
+      .toThrowError(expect.objectContaining({ code: 'ARTICLE_CHECKPOINT_CONFLICT' }));
+    expect(() => createReceiptFor(materializationPlan(), {
+      checkpoint: previewCheckpoint(materializationPlan(), {
+        draft_origin: 'adopted_existing',
+        body: { status: 'adopted_verified', observed_digest: materializationPlan().import_template_digest },
+        last_editor_revision: digest('d')
+      })
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_CHECKPOINT_CONFLICT' }));
+    expect(() => createReceiptFor(adoptedPlan, { checkpoint: adoptedCheckpoint })).not.toThrow();
+  });
+
   it('creates a deterministic schema-valid receipt with separate automation and human wait', () => {
     const plan = materializationPlan();
     const receipt = createReceiptFor(plan);

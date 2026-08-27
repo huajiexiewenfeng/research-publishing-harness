@@ -24,8 +24,8 @@ export declare class XArticleMaterializationStore implements XArticleMaterializa
     appendProgress(progress: XArticleStageProgressV1): Promise<XArticleStageProgressV1>;
     readProgress(executionId: string): Promise<readonly XArticleStageProgressV1[]>;
     private readStateUnlocked;
+    private readPlanUnlocked;
     private readArtifact;
-    private assertCheckpointMatchesPlan;
     private assertSafeExecutionId;
     private prefix;
     private planPath;
