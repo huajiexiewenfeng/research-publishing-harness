@@ -120,7 +120,7 @@ function initialCheckpointBody(plan, updatedAt) {
 }
 function assertFreshAdoptedDraftObservation(plan, binding, observation) {
     const observed = validateContract('x-article-browser-observation', structuredClone(observation));
-    const { page_revision: _pageRevision, ...revisionBody } = observed;
+    const revisionBody = Object.fromEntries(Object.entries(observed).filter(([key]) => key !== 'page_revision'));
     const observedAt = Date.parse(observed.observed_at);
     const boundAt = Date.parse(binding.observed_at);
     if (observed.page_revision !== computeXArticlePageRevision(revisionBody)

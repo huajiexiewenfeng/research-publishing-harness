@@ -7,7 +7,10 @@ import {
   verifyXArticleExistingDraftBinding
 } from '../../harnesses/research-publishing/core/x-article-existing-draft-binding.js';
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
-import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
+import {
+  computeXArticlePageRevision,
+  type XArticleBrowserObservation
+} from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 
 const inlineAsset = {
@@ -29,7 +32,11 @@ const publicationPlan = createXArticlePublicationPlan({
   plannedAt: '2026-08-27T05:55:00.000Z', provenance: {}
 });
 
-function observation(plan: typeof publicationPlan) {
+type ExistingDraftObservation = XArticleBrowserObservation & {
+  readonly editor: NonNullable<XArticleBrowserObservation['editor']>;
+};
+
+function observation(plan: typeof publicationPlan): ExistingDraftObservation {
   const template = createXArticleImportTemplate(plan.intent.document);
   const body = {
     schema_version: '1.0' as const,
@@ -62,10 +69,33 @@ function observation(plan: typeof publicationPlan) {
   return { ...body, page_revision: computeXArticlePageRevision(body) };
 }
 
-function resign(value: ReturnType<typeof observation>) {
-  const { page_revision: _pageRevision, ...body } = value;
-  return { ...body, page_revision: computeXArticlePageRevision(body) };
+function resign(value: ExistingDraftObservation): ExistingDraftObservation {
+  const body = Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== 'page_revision')
+  );
+  return {
+    ...body,
+    page_revision: computeXArticlePageRevision(body)
+  } as unknown as ExistingDraftObservation;
 }
+
+type ExistingDraftMutation = (
+  value: ExistingDraftObservation
+) => ExistingDraftObservation;
+
+const existingDraftDriftCases: ReadonlyArray<readonly [string, ExistingDraftMutation]> = [
+  ['account', (value) => ({ ...value, account_handle: '@Foreign' })],
+  ['draft', (value) => ({ ...value, editor: { ...value.editor, draft_id: '2090000000000000000' } })],
+  ['title', (value) => ({ ...value, editor: { ...value.editor, title: 'Changed' } })],
+  ['body', (value) => ({ ...value, editor: { ...value.editor, blocks: [] } })],
+  ['anchors', (value) => ({ ...value, editor: { ...value.editor, import_state: null } })],
+  ['cover', (value) => ({ ...value, editor: { ...value.editor, visuals: [{
+    ref: 'cover', asset_id: 'cover', kind: 'cover', block_ordinal: null,
+    alt_text: null, status: 'uploaded', owned_by_execution: false
+  }] } })],
+  ['unknown', (value) => ({ ...value, editor: { ...value.editor, has_unknown_content: true } })],
+  ['saving', (value) => ({ ...value, editor: { ...value.editor, autosave_state: 'saving' } })]
+];
 
 describe('X Article existing Draft binding', () => {
   it('locks an exact body-complete zero-media Draft', () => {
@@ -87,19 +117,7 @@ describe('X Article existing Draft binding', () => {
     expect(verifyXArticleExistingDraftBinding(binding, plan, observed)).toEqual(binding);
   });
 
-  it.each([
-    ['account', (value: any) => ({ ...value, account_handle: '@Foreign' })],
-    ['draft', (value: any) => ({ ...value, editor: { ...value.editor, draft_id: '2090000000000000000' } })],
-    ['title', (value: any) => ({ ...value, editor: { ...value.editor, title: 'Changed' } })],
-    ['body', (value: any) => ({ ...value, editor: { ...value.editor, blocks: [] } })],
-    ['anchors', (value: any) => ({ ...value, editor: { ...value.editor, import_state: null } })],
-    ['cover', (value: any) => ({ ...value, editor: { ...value.editor, visuals: [{
-      ref: 'cover', asset_id: 'cover', kind: 'cover', block_ordinal: null,
-      alt_text: null, status: 'uploaded', owned_by_execution: false
-    }] } })],
-    ['unknown', (value: any) => ({ ...value, editor: { ...value.editor, has_unknown_content: true } })],
-    ['saving', (value: any) => ({ ...value, editor: { ...value.editor, autosave_state: 'saving' } })]
-  ])('rejects %s drift before binding', (_name, mutate) => {
+  it.each(existingDraftDriftCases)('rejects %s drift before binding', (_name, mutate) => {
     const plan = publicationPlan;
     expect(() => createXArticleExistingDraftBinding({
       publication_plan: plan,

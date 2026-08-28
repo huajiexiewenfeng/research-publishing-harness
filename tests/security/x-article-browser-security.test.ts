@@ -94,6 +94,60 @@ const v33Capabilities = {
   observed_at: '2026-08-26T00:00:00.000Z'
 } as const;
 
+type MutableV33Payload = Record<string, unknown> & {
+  readonly anchor: Record<string, unknown>;
+  readonly asset: Record<string, unknown>;
+};
+
+type MutableV33CommandInput = Omit<IssueXArticleBrowserCommandInput, 'payload'> & {
+  readonly payload: MutableV33Payload;
+};
+
+interface V33SecurityContext extends Record<string, unknown> {
+  readonly snapshot: { readonly state: string; readonly sequence: number };
+  readonly latest_observation: XArticleBrowserObservation;
+  readonly editor_revision: string | null;
+  readonly pending_command: XArticleBrowserCommandV1;
+  readonly pending_issue: {
+    readonly command_id: string;
+    readonly input: MutableV33CommandInput;
+    readonly input_digest: string;
+    readonly checkpoint_revision: number | null;
+    readonly action_key: string;
+  };
+}
+
+type V33InputMutation = (
+  input: MutableV33CommandInput
+) => MutableV33CommandInput;
+
+const v33BindingMutations: ReadonlyArray<readonly [string, V33InputMutation]> = [
+  ['execution', (input) => ({ ...input, execution_id: 'execution_foreign' })],
+  ['run', (input) => ({ ...input, run_id: 'run_foreign' })],
+  ['Draft', (input) => ({ ...input, draft_id: '2092246293603373999' })],
+  ['purpose', (input) => ({ ...input, purpose: 'replace_article_visual_anchor_99' })],
+  ['side effect', (input) => ({ ...input, side_effect: 'read' })],
+  ['page revision', (input) => ({ ...input, expected_page_revision: DIGEST_B })],
+  ['Package root', (input) => ({
+    ...input, payload: { ...input.payload, package_root: 'articles/security/foreign' }
+  })],
+  ['Package digest', (input) => ({
+    ...input, payload: { ...input.payload, package_digest: DIGEST_B }
+  })],
+  ['anchor', (input) => ({
+    ...input, payload: {
+      ...input.payload,
+      anchor: { ...input.payload.anchor, anchor_id: 'anchor_foreign_1' }
+    }
+  })],
+  ['asset', (input) => ({
+    ...input, payload: {
+      ...input.payload,
+      asset: { ...input.payload.asset, digest: `sha256:${'f'.repeat(64)}` }
+    }
+  })]
+];
+
 function importCommand(
   payload: object,
   envelope: Partial<{ readonly kind: string; readonly side_effect: string }> = {}
@@ -353,31 +407,11 @@ describe('X Article Browser security', () => {
     )).resolves.toEqual(humanObservation);
   });
 
-  it.each([
-    ['execution', (input: any) => ({ ...input, execution_id: 'execution_foreign' })],
-    ['run', (input: any) => ({ ...input, run_id: 'run_foreign' })],
-    ['Draft', (input: any) => ({ ...input, draft_id: '2092246293603373999' })],
-    ['purpose', (input: any) => ({ ...input, purpose: 'replace_article_visual_anchor_99' })],
-    ['side effect', (input: any) => ({ ...input, side_effect: 'read' })],
-    ['page revision', (input: any) => ({ ...input, expected_page_revision: DIGEST_B })],
-    ['Package root', (input: any) => ({
-      ...input, payload: { ...input.payload, package_root: 'articles/security/foreign' }
-    })],
-    ['Package digest', (input: any) => ({
-      ...input, payload: { ...input.payload, package_digest: DIGEST_B }
-    })],
-    ['anchor', (input: any) => ({
-      ...input, payload: { ...input.payload, anchor: { ...input.payload.anchor, anchor_id: 'anchor_foreign_1' } }
-    })],
-    ['asset', (input: any) => ({
-      ...input, payload: {
-        ...input.payload,
-        asset: { ...input.payload.asset, digest: `sha256:${'f'.repeat(64)}` }
-      }
-    })]
-  ] as const)('rejects a re-digested V3.3 pending issue with changed %s binding', async (name, mutate) => {
+  it.each(v33BindingMutations)(
+    'rejects a re-digested V3.3 pending issue with changed %s binding',
+    async (name, mutate) => {
     const fixture = await createV33SecurityFixture(`binding_${name.replace(/\W/g, '_')}`);
-    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+    const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
     const input = mutate(structuredClone(context.pending_issue.input));
     const pendingIssue = {
       ...context.pending_issue,
@@ -399,13 +433,14 @@ describe('X Article Browser security', () => {
     await expect(fixture.adapter.next(fixture.executionId))
       .rejects.toMatchObject({ code: 'PUBLISH_GATE_BLOCKED' });
     expect(await v33CommandCount(fixture.store, fixture.executionId)).toBe(before);
-  });
+    }
+  );
 
   it.each(['kept', 'recomputed'] as const)(
     'rejects a V3.3 issued replacement whose pending issue command id changed with %s action key',
     async (actionKeyMode) => {
       const fixture = await createV33SecurityFixture(`command_id_${actionKeyMode}`);
-      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
       const commandId = `command_v33_changed_${actionKeyMode}`;
       const pendingIssue = {
         ...context.pending_issue,
@@ -436,7 +471,7 @@ describe('X Article Browser security', () => {
 
   it('repairs the original V3.3 issued replacement idempotently after pending-command projection loss', async () => {
     const fixture = await createV33SecurityFixture('command_id_legal_repair');
-    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+    const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
     await fixture.store.replaceAtomic(fixture.contextPath, { ...context, pending_command: null });
     const before = await v33CommandKindCount(
       fixture.store, fixture.executionId, 'replace_article_visual_anchor'
@@ -455,7 +490,7 @@ describe('X Article Browser security', () => {
     'rejects a V3.3 second inline command rebound to an older valid predecessor before %s',
     async (operation) => {
       const fixture = await createV33TwoAnchorSecurityFixture(`stale_revision_${operation}`);
-      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
       const command = {
         ...context.pending_command,
         expected_page_revision: fixture.staleRevision
@@ -502,7 +537,7 @@ describe('X Article Browser security', () => {
   it('rejects changed V3.3 pending issue and pending command digests before returning or writing', async () => {
     for (const target of ['pending_issue', 'pending_command'] as const) {
       const fixture = await createV33SecurityFixture(`digest_${target}`);
-      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
       await fixture.store.replaceAtomic(fixture.contextPath, target === 'pending_issue'
         ? {
             ...context,
@@ -530,7 +565,7 @@ describe('X Article Browser security', () => {
     'validates a re-digested V3.3 pending command again before %s',
     async (operation) => {
       const fixture = await createV33SecurityFixture(`pending_${operation}`);
-      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
       const payload = {
         ...context.pending_command.payload,
         package_digest: `sha256:${'e'.repeat(64)}`
@@ -594,7 +629,7 @@ describe('X Article Browser security', () => {
     ['publish_article_once', 'submit', { kind: 'publish_article_once', target_ref: 'publish_once' }]
   ] as const)('rejects forbidden V3.3 %s even when the persisted intent is re-digested', async (kind, sideEffect, payload) => {
     const fixture = await createV33SecurityFixture(`forbidden_${kind}`);
-    const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+    const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
     const input = {
       ...context.pending_issue.input,
       kind,
@@ -628,7 +663,7 @@ describe('X Article Browser security', () => {
     'rejects a re-digested V3.3 command whose durable %s binding changed',
     async (field) => {
       const fixture = await createV33SecurityFixture(`durable_${field}`);
-      const context = await fixture.store.readJson<Record<string, any>>(fixture.contextPath);
+      const context = await fixture.store.readJson<V33SecurityContext>(fixture.contextPath);
       const latest = structuredClone(context.latest_observation) as XArticleBrowserObservation;
       const changedBody = {
         ...latest,

@@ -1169,8 +1169,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/x-article-materialization.ts",
-      "sha256": "f7a0162ce9a88df0713ac5e6fd4e42b66001b6aae6f68b8179be4ae45cd69288",
-      "bytes": 29439
+      "sha256": "8bf880ace4a87026b2061a9d9767469ba6ff1ce15b0180874ac0340f2dc66adf",
+      "bytes": 29489
     },
     {
       "path": "harnesses/research-publishing/core/x-article-publication-plan.ts",

@@ -14,7 +14,7 @@ const capabilities = {
   executor: 'codex-chrome', executor_version: 'test', browser_family: 'chrome',
   capabilities: [
     'observe_article_page', 'create_article_draft', 'open_article_preview',
-    'open_publish_review', 'publish_article_once', 'import_article_document',
+    'open_publish_review', 'publish_article_once', 'set_article_title', 'import_article_document',
     'replace_article_visual_anchor', 'upload_article_cover'
   ],
   observed_at: PREPARED_AT
@@ -78,6 +78,7 @@ export async function createPreparedPublicationBundleFixture(
   }));
   next = await adapter.next(execution.execution_id);
   const editorControls = [
+    { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
     { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
     { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
   ];
