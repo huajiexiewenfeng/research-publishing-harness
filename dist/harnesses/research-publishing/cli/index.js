@@ -16,6 +16,7 @@ import { approvePublicationV2 } from '../core/approval-v2.js';
 import { approvePublicationV2_1 } from '../core/approval-v2-1.js';
 import { approveXArticlePublication } from '../core/x-article-approval.js';
 import { assertXArticlePublicationPlan } from '../core/x-article-publication-plan.js';
+import { createXArticleExistingDraftBinding } from '../core/x-article-existing-draft-binding.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError } from '../core/errors.js';
 import { sha256, sha256Bytes } from '../core/digest.js';
@@ -48,10 +49,11 @@ import { WorkspaceStore } from '../core/workspace-store.js';
 const KNOWN_OPTIONS = new Set([
     'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
     'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
-    'execution', 'confirmation'
+    'observation', 'execution', 'confirmation'
 ]);
-const V3_2_ROUTES = [
+const X_ARTICLE_CONTROL_ROUTES = [
     'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+    'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
     'x-article browser resume-editor --workspace <path> --execution <id> --output json',
     'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
     'x-article browser materialization-status --workspace <path> --execution <id> --output json'
@@ -110,6 +112,9 @@ function parseArguments(argv) {
             ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
             ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
             ...(values['plan'] === undefined ? {} : { plan: resolve(values['plan']) }),
+            ...(values['observation'] === undefined
+                ? {}
+                : { observation: resolve(values['observation']) }),
             ...(values['capabilities'] === undefined
                 ? {}
                 : { capabilities: resolve(values['capabilities']) }),
@@ -239,16 +244,61 @@ async function readMaterializationStatus(operation, options, providedOptions) {
         throw new HarnessError('CONTRACT_INVALID', 'materialization-status requires a V3.2 prepared execution');
     }
     const context = contextValue;
+    const executionMode = context.execution_mode;
     if (context.schema_version !== '1.0'
-        || context.execution_mode !== 'materialization_v3_2'
-        || context.plan === undefined) {
+        || (executionMode !== 'materialization_v3_2'
+            && executionMode !== 'media_completion_v3_3')
+        || context.plan === undefined
+        || context.materialization_plan === undefined) {
         throw new HarnessError('CONTRACT_INVALID', 'materialization-status requires a V3.2 prepared execution');
     }
     assertXArticlePublicationPlan(context.plan);
     const publicationPlan = context.plan;
-    const plan = validateContract('x-article-materialization-plan', await readJsonFile(resolve(prefix, 'materialization-plan.json'), 'materialization plan'));
-    const checkpoint = validateContract('x-article-materialization-checkpoint', await readJsonFile(resolve(prefix, 'materialization-checkpoint.json'), 'materialization checkpoint'));
+    const contextPlan = validateContract('x-article-materialization-plan', context.materialization_plan);
+    const durablePlanValue = await readOptionalJsonFile(resolve(prefix, 'materialization-plan.json'), 'materialization plan');
+    const plan = durablePlanValue === null
+        ? contextPlan
+        : validateContract('x-article-materialization-plan', durablePlanValue);
     const planBody = digestBody(plan, 'materialization_digest');
+    if (plan.execution_id !== executionId
+        || plan.publication_plan_digest !== publicationPlan.plan_digest
+        || plan.target_account !== publicationPlan.intent.target_account
+        || plan.materialization_digest !== sha256(planBody)
+        || contextPlan.materialization_digest !== plan.materialization_digest
+        || (executionMode === 'materialization_v3_2' && plan.draft_binding !== null)
+        || (executionMode === 'media_completion_v3_3' && plan.draft_binding === null)) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization status artifacts are not bound to the requested execution');
+    }
+    const checkpointValue = await readOptionalJsonFile(resolve(prefix, 'materialization-checkpoint.json'), 'materialization checkpoint');
+    if (checkpointValue === null) {
+        const prebindingState = context.snapshot?.state;
+        if (executionMode !== 'media_completion_v3_3'
+            || durablePlanValue !== null
+            || context.snapshot?.execution_id !== executionId
+            || !['created', 'preflight', 'materialization_blocked', 'cancelled_before_publish']
+                .includes(typeof prebindingState === 'string' ? prebindingState : '')) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'materialization status artifacts are not bound to the requested execution');
+        }
+        const [preview, publicReceipt, confirmation] = await Promise.all([
+            readOptionalJsonFile(resolve(prefix, 'materialization-receipt.json'), 'Preview materialization receipt'),
+            readOptionalJsonFile(resolve(prefix, 'materialization-receipt-public.json'), 'public materialization receipt'),
+            readOptionalJsonFile(resolve(prefix, 'publish-confirmation.json'), 'publish confirmation')
+        ]);
+        if (preview !== null || publicReceipt !== null || confirmation !== null) {
+            throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'preflight materialization status contains later-phase evidence');
+        }
+        const artifact = {
+            execution_id: executionId,
+            phase: prebindingState === 'materialization_blocked' ? 'blocked' : 'preflight_pending',
+            publication_plan_digest: plan.publication_plan_digest,
+            materialization_digest: plan.materialization_digest,
+            receipt: { present: false, status: 'absent', receipt_digest: null },
+            confirmation: { state: 'absent', confirmation_digest: null },
+            publication_status: 'pre_public'
+        };
+        return { ok: true, operation, artifact, state: 'pre_public' };
+    }
+    const checkpoint = validateContract('x-article-materialization-checkpoint', checkpointValue);
     const mediaBound = checkpoint.media.length === plan.visual_anchors.length
         && checkpoint.media.every((entry, index) => {
             const anchor = plan.visual_anchors[index];
@@ -258,10 +308,7 @@ async function readMaterializationStatus(operation, options, providedOptions) {
                 && entry.block_ordinal === anchor.block_ordinal
                 && entry.asset_digest === anchor.asset_digest;
         });
-    if (plan.execution_id !== executionId
-        || plan.publication_plan_digest !== publicationPlan.plan_digest
-        || plan.target_account !== publicationPlan.intent.target_account
-        || plan.materialization_digest !== sha256(planBody)
+    if (durablePlanValue === null
         || checkpoint.execution_id !== executionId
         || checkpoint.materialization_digest !== plan.materialization_digest
         || !mediaBound) {
@@ -467,7 +514,7 @@ async function execute(argv) {
             ok: true,
             operation: 'help',
             artifact: {
-                routes: V3_2_ROUTES,
+                routes: X_ARTICLE_CONTROL_ROUTES,
                 compatibility_aliases: V3_2_COMPATIBILITY_ALIASES
             },
             state: 'ready'
@@ -480,6 +527,30 @@ async function execute(argv) {
     const operation = positional.join(' ');
     if (operation === 'x-article browser materialization-status') {
         return readMaterializationStatus(operation, options, providedOptions);
+    }
+    if (operation === 'x-article browser prepare-existing-media') {
+        validateExactOptions(operation, providedOptions, ['plan', 'observation', 'capabilities']);
+        const plan = await readJsonFile(options.plan, 'plan');
+        assertXArticlePublicationPlan(plan);
+        const observation = validateContract('x-article-browser-observation', await readJsonFile(options.observation, 'existing Draft observation'));
+        for (const [label, value] of [
+            ['execution', observation.execution_id],
+            ['command', observation.command_id],
+            ['observation', observation.observation_id]
+        ]) {
+            if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value)) {
+                throw new HarnessError('WORKSPACE_PATH_INVALID', `unsafe source ${label} identity`);
+            }
+        }
+        const pageContract = new XArticleWeb2026_08Contract();
+        pageContract.detectPage(observation);
+        createXArticleExistingDraftBinding({ publication_plan: plan, observation });
+        const capabilities = await readJsonFile(options.capabilities, 'capabilities');
+        assertCapabilityManifest(capabilities);
+        const preparedStore = await WorkspaceStore.open(options.workspace);
+        const browser = new XArticleBrowserAdapter(preparedStore, pageContract);
+        const artifact = await browser.prepareExistingDraftMedia(plan, observation, capabilities);
+        return { ok: true, operation, artifact, state: artifact.state };
     }
     const store = await WorkspaceStore.open(options.workspace);
     const packages = new PackageService(store);

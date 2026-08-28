@@ -42,3 +42,9 @@ One V3.2 claim authorizes one complete semantic transaction, which may contain t
 The observed X Article editor has no `.md` upload path. `import_article_document` imports the structured template once into the claimed empty titled Draft and verifies its template/source digests, ordered anchors, unknown-content flag, and autosave state. `replace_article_visual_anchor` replaces exactly one named anchor with the one claimed asset, restores its planned ordinal, writes and reads back inline Alt, removes the anchor, and waits for autosave before the single observation.
 
 After bulk import starts, never use `insert_article_block`, reimport, or change strategy. Recovery begins with `resume-editor` and a newly issued observe/reconcile command; never perform an unclaimed recovery action. Stop at `confirmation_pending`, display the verified Preview card, and wait for the Human. `confirm-publish` and the later at-most-once Publish loop are outside the Draft materialization transaction.
+
+## X Article V3.3 existing Draft media completion
+
+Use [the complete V3.3 media-completion protocol](x-article-existing-draft-media-completion-v3-3.md) only when the normalized source Observation proves that the selected existing Draft already has the exact title, complete body, every locked visual anchor, and zero media. Enter through `prepare-existing-media`; never substitute the new-Draft `prepare` route.
+
+The command loop remains status → next → verify → claim → one semantic Chrome transaction → one normalized observation → report. It may navigate to and re-observe the bound Draft, upload the planned cover, replace one locked inline anchor, set and read back Alt text, checkpoint progress, and reconcile the final Draft. It must not create a Draft, rewrite title/body, open Preview, or Publish. Stop at `draft_reconciled`.

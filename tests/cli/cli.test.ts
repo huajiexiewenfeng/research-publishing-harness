@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
+import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
+import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import {
@@ -84,8 +86,83 @@ const materializationCliCapabilities = {
   observed_at: '2026-08-27T09:00:00.000Z'
 } as const;
 
+const existingDraftCover = {
+  asset_id: 'asset_cli_existing_cover', relative_path: 'assets/cover.png',
+  digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`, mime_type: 'image/png' as const,
+  alt_text: 'A durable publication boundary.', claim_refs: ['claim_cli_existing_media']
+};
+const existingDraftInline = {
+  ...existingDraftCover,
+  asset_id: 'asset_cli_existing_inline', relative_path: 'assets/inline.png',
+  digest: `sha256:${'c'.repeat(64)}` as `sha256:${string}`,
+  alt_text: 'A locked inline visual anchor.'
+};
+
+function existingDraftMediaCliPlan() {
+  return createXArticlePublicationPlan({
+    planId: 'plan_cli_existing_media', runId: 'run_cli_existing_media',
+    targetAccount: '@Glen56121',
+    articlePackage: {
+      root: 'articles/runtime/article_cli_existing_media',
+      digest: `sha256:${'d'.repeat(64)}`
+    },
+    document: {
+      schema_version: '1.0', title: 'Existing Draft media completion',
+      cover_asset_id: existingDraftCover.asset_id,
+      blocks: [
+        { kind: 'paragraph', runs: [{ text: 'The body is already complete.', marks: [], link: null }] },
+        { kind: 'image', asset_id: existingDraftInline.asset_id, alt_text: existingDraftInline.alt_text }
+      ]
+    },
+    visuals: [
+      { asset: existingDraftCover, placement: { kind: 'cover' } },
+      { asset: existingDraftInline, placement: { kind: 'block', block_ordinal: 2 } }
+    ],
+    plannedAt: '2026-08-27T09:00:00.000Z', provenance: {}
+  });
+}
+
+const existingDraftMediaCliCapabilities = {
+  ...materializationCliCapabilities,
+  capabilities: [...materializationCliCapabilities.capabilities, 'upload_article_cover']
+} as const;
+
+function existingDraftCliObservation(
+  overrides: Record<string, unknown> = {}
+) {
+  const plan = existingDraftMediaCliPlan();
+  const template = createXArticleImportTemplate(plan.intent.document);
+  const body = {
+    schema_version: '1.0', observation_id: 'observation_cli_existing_media',
+    execution_id: 'source_execution_cli_existing_media', command_id: 'source_command_cli_existing_media',
+    origin: 'https://x.com',
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    observed_at: '2026-08-27T09:00:00.000Z', account_handle: '@Glen56121',
+    page_kind: 'article_editor',
+    controls: [
+      { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+      { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+      { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
+    ],
+    editor: {
+      draft_id: '2092851979932647424', title: plan.intent.document.title,
+      blocks: plan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+      visuals: [],
+      import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors
+      },
+      has_unknown_content: false, autosave_state: 'saved'
+    },
+    preview: null, publish_review: null, public_article: null,
+    ...overrides
+  };
+  return { ...body, page_revision: computeXArticlePageRevision(body) };
+}
+
 describe('research-publish CLI', () => {
-  it('advertises the stable X Article V3.2 control-plane routes as machine-readable help', () => {
+  it('advertises the stable X Article V3.3 control-plane routes as machine-readable help', () => {
     const result = runSource(['--help']);
 
     expect(result.status).toBe(0);
@@ -96,6 +173,7 @@ describe('research-publish CLI', () => {
       artifact: {
         routes: [
           'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+          'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
           'x-article browser resume-editor --workspace <path> --execution <id> --output json',
           'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
           'x-article browser materialization-status --workspace <path> --execution <id> --output json'
@@ -107,6 +185,108 @@ describe('research-publish CLI', () => {
       state: 'ready'
     });
     expect(run(['--help']).stdout).toBe(result.stdout);
+  });
+
+  it('prepares a strictly bound existing Draft media-completion execution', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-existing-media-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const observationPath = join(parent, 'observation.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(existingDraftMediaCliPlan()));
+    await writeFile(observationPath, JSON.stringify(existingDraftCliObservation()));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare-existing-media',
+      '--workspace', workspace, '--plan', planPath, '--observation', observationPath,
+      '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    expect(prepared.status).toBe(0);
+    expect(prepared.stderr).toBe('');
+    const result = JSON.parse(prepared.stdout) as { artifact: { execution_id: string } };
+    expect(result).toMatchObject({
+      ok: true,
+      operation: 'x-article browser prepare-existing-media',
+      artifact: { state: 'created', draft_id: null },
+      state: 'created'
+    });
+
+    const base = join(workspace, 'runs', result.artifact.execution_id, 'x-article', 'browser');
+    const context = JSON.parse(await readFile(join(base, 'adapter-context.json'), 'utf8'));
+    expect(context).toMatchObject({
+      execution_mode: 'media_completion_v3_3',
+      materialization_plan: {
+        draft_binding: {
+          draft_id: '2092851979932647424', mode: 'adopt_existing',
+          binding_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)
+        }
+      }
+    });
+
+    const status = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', result.artifact.execution_id, '--output', 'json'
+    ]);
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      ok: true, operation: 'x-article browser materialization-status',
+      artifact: { phase: 'preflight_pending', publication_status: 'pre_public' },
+      state: 'pre_public'
+    });
+    expect(status.stdout).not.toMatch(/Existing Draft media completion|draft_id|command_id|account_handle|assets\//);
+  });
+
+  it('fails closed for malformed or unsafe existing Draft preparation inputs', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-existing-media-invalid-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(existingDraftMediaCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+
+    const inputs = [
+      { name: 'malformed', value: '{' },
+      { name: 'unsafe-execution', value: JSON.stringify(existingDraftCliObservation({ execution_id: '../escape' })) },
+      { name: 'wrong-account', value: JSON.stringify(existingDraftCliObservation({ account_handle: '@OtherAccount' })) },
+      { name: 'changed-revision', value: JSON.stringify({ ...existingDraftCliObservation(), page_revision: `sha256:${'0'.repeat(64)}` }) },
+      { name: 'existing-cover', value: JSON.stringify(existingDraftCliObservation({
+        editor: {
+          ...existingDraftCliObservation().editor,
+          visuals: [{
+            ref: 'cover', asset_id: existingDraftCover.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: existingDraftCover.alt_text, status: 'uploaded', owned_by_execution: false
+          }]
+        }
+      })) },
+      { name: 'unknown-inline', value: JSON.stringify(existingDraftCliObservation({
+        editor: { ...existingDraftCliObservation().editor, has_unknown_content: true }
+      })) }
+    ];
+
+    for (const input of inputs) {
+      const observationPath = join(parent, `${input.name}.json`);
+      await writeFile(observationPath, input.value);
+      const before = await filesystemSnapshot(parent);
+      const result = runSource([
+        'x-article', 'browser', 'prepare-existing-media', '--workspace', workspace,
+        '--plan', planPath, '--observation', observationPath,
+        '--capabilities', capabilitiesPath, '--output', 'json'
+      ]);
+      expect(result.status, input.name).not.toBe(0);
+      expect(JSON.parse(result.stdout), input.name).toMatchObject({ ok: false });
+      await expect(filesystemSnapshot(parent), input.name).resolves.toEqual(before);
+    }
+
+    const validObservationPath = join(parent, 'valid.json');
+    await writeFile(validObservationPath, JSON.stringify(existingDraftCliObservation()));
+    const extra = runSource([
+      'x-article', 'browser', 'prepare-existing-media', '--workspace', workspace,
+      '--plan', planPath, '--observation', validObservationPath,
+      '--capabilities', capabilitiesPath, '--execution', 'extra', '--output', 'json'
+    ]);
+    expect(extra.status).toBe(2);
+    expect(JSON.parse(extra.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
   });
 
   it('prepares V3.2 from separate validated files and reports redacted durable status', async () => {

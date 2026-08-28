@@ -1,18 +1,18 @@
 # X Article Materialization V3.2 Browser Host Protocol
 
-Use this reference only for an execution created by `x-article browser prepare`. It binds the Browser Host to protocol `x-article-materialization/v3.2`, strategy `rich_text_anchor_import/v1`, the packaged manifest, and one explicit existing Chrome session.
+Use this reference only for a new-Draft execution created by `x-article browser prepare`. The packaged manifest now advertises protocol `x-article-materialization/v3.3`; this flow is its compatibility-preserved `materialization_v3_2` mode and retains the `x-article-materialization/v3.2` execution semantics, bound to strategy `rich_text_anchor_import/v1` and one explicit existing Chrome session. Do not use this reference for `media_completion_v3_3`.
 
 ## Release and capability gate
 
 Before `prepare` or any Chrome Draft mutation, verify all of the following:
 
-- `registry/manifests/research-publishing.json` declares protocol `x-article-materialization/v3.2`, default strategy `rich_text_anchor_import/v1`, page contract `x-article-web/2026-08`, and the compatible runtime/Skill/manifest/Browser Host release set.
+- `registry/manifests/research-publishing.json` declares protocol `x-article-materialization/v3.3`, mode `new_draft=materialization_v3_2`, default strategy `rich_text_anchor_import/v1`, page contract `x-article-web/2026-08`, and the compatible runtime/Skill/manifest/Browser Host release set.
 - The Browser Host release declares the semantic transactions `set_article_title`, `import_article_document`, and `replace_article_visual_anchor` plus the wait behavior `materialization_progress`.
 - The JSON passed to CLI `--capabilities` is the exact Chrome command-capability manifest: `executor=codex-chrome`, a nonblank `executor_version`, `browser_family=chrome`, unique supported command kinds, and an ISO `observed_at`. It includes `import_article_document` and `replace_article_visual_anchor` plus every command kind required by the Plan.
 
 `materialization_progress` is a Host release-set behavior and persists as `x-article-materialization-progress/v1`; it is not an X Article Browser command kind. Do not add it to the CLI `capabilities` array and do not invent an `x-article browser progress` command.
 
-If the runtime, packaged Skill, registry manifest, Page Contract, or Browser Host release is not the same compatible V3.2 set, stop before `prepare` and surface `ARTICLE_RUNTIME_VERSION_MISMATCH`. If the CLI command-capability manifest lacks `import_article_document` or `replace_article_visual_anchor`, `prepare` fails before Draft mutation with `ARTICLE_BULK_IMPORT_REQUIRED`. Do not create, type into, upload to, or navigate a Draft after either error.
+If the runtime, packaged Skill, registry manifest, Page Contract, or Browser Host release is not the same compatible V3.3 package with `materialization_v3_2` support, stop before `prepare` and surface `ARTICLE_RUNTIME_VERSION_MISMATCH`. If the CLI command-capability manifest lacks `import_article_document` or `replace_article_visual_anchor`, `prepare` fails before Draft mutation with `ARTICLE_BULK_IMPORT_REQUIRED`. Do not create, type into, upload to, or navigate a Draft after either error.
 
 `block_materialization/v1` is a separately planned compatibility strategy with a different locked digest. During a prepared V3.2 execution, never switch to `block_materialization/v1`, `insert_article_block`, or legacy incremental recovery.
 

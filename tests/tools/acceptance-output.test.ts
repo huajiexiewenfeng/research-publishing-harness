@@ -1,8 +1,33 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it } from 'vitest';
 
 describe('offline acceptance', () => {
+  it('packages the bounded existing Draft media-completion Skill protocol', async () => {
+    const [skill, browserFlow, materialization, mediaCompletion] = await Promise.all([
+      readFile('skills/x-publishing-copilot/SKILL.md', 'utf8'),
+      readFile('skills/x-publishing-copilot/references/browser-adapter-flow.md', 'utf8'),
+      readFile('skills/x-publishing-copilot/references/x-article-materialization-v3-2.md', 'utf8'),
+      readFile(
+        'skills/x-publishing-copilot/references/x-article-existing-draft-media-completion-v3-3.md',
+        'utf8'
+      )
+    ]);
+
+    expect(skill).toContain('x-article-materialization/v3.3');
+    expect(skill).toContain('prepare-existing-media');
+    expect(skill).toContain('draft_reconciled');
+    expect(browserFlow).toContain('existing Draft media completion');
+    expect(materialization).toContain('x-article-materialization/v3.3');
+    expect(mediaCompletion).toContain('prepare-existing-media');
+    expect(mediaCompletion).toContain('durable normalized Observation');
+    expect(mediaCompletion).toContain('Never create a Draft or rewrite its title or body');
+    expect(mediaCompletion).toContain('draft_reconciled');
+    expect(mediaCompletion).toContain('Preview and Publish');
+    expect(mediaCompletion).toContain('one bounded retry');
+  });
+
   it('reports media-unverified publication evidence without laundering it into success', () => {
     const result = spawnSync(
       process.execPath,
