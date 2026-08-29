@@ -128,6 +128,8 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toContain('cover region');
     expect(reference).toContain('scripts/x-article-host-bridge.mjs');
     expect(reference).toContain('runXArticleHostBridge');
+    expect(reference).toMatch(/prefer.*input\[type=file\][\s\S]*filechooser[\s\S]*setFiles/is);
+    expect(reference).toMatch(/never.*directly.*runCoverUpload/is);
     expect(reference).toMatch(/do not call.*Cover.*Inline Host.*directly/is);
     expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
     expect(reference).toMatch(/do not locally retry/is);
@@ -145,9 +147,15 @@ describe('x-publishing-copilot boundary', () => {
       resolve('registry/manifests/research-publishing.json'),
       'utf8'
     )) as { files: Array<{ path: string }> };
-    expect(manifest.files.map((file) => file.path)).toContain(
-      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs'
-    );
+    const manifestPaths = manifest.files.map((file) => file.path);
+    for (const path of [
+      'skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-common.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs'
+    ]) expect(manifestPaths).toContain(path);
   });
 
   it('routes one-confirmation Publication Bundles through bind-before-next boundaries', async () => {

@@ -3,7 +3,7 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: V3.4 live smoke failed safely; Complete Host Bridge design confirmed
+- status: V3.5 development and offline verification done; separately approved Draft-only smoke pending
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: user review of the written Complete Host Bridge specification
+- next_gate: digest-bound action-time confirmation for one 15-minute Draft-only smoke
 - routed_at: 2026-08-29
 
 ## Source
@@ -46,6 +46,8 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 - The turn-specific Observation callback failed because its execution environment does not expose `process`; the Cover Host therefore returned `uncertain` even though a later fresh Observation proved zero effect.
 - The hard deadline stopped the execution at 905.985 seconds with zero duplicate media writes and zero Preview/Publish actions.
 - The merged TypeScript source exposed V3.4 while the committed `dist` CLI initially rejected `x-article fast-path audit` as an unknown operation; a local build made it available, proving packaged-output drift.
+- V3.5 now packages the bounded Editor Extractor, deterministic dual-Revision Observation Builder, runtime observer, reasoned cover and inline transactions, and the Draft-only Host Bridge dispatcher.
+- The pre-build parity gate first rejected the old CLI because `x-article-host-bridge/v3.5` was absent. A selective rebuild then exposed a second real failure: the new Adapter imported `createXArticleFastPathResult` from an old packaged dependency. Commit `802d14c` includes the minimal executable CLI dependency closure and the gate now passes before any build-capable test.
 
 ## Reproduction
 
@@ -65,7 +67,7 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 
 ## Diagnosis
 
-V3.4 now packages a bounded cover transaction and enforces the deadline, but it still lacks a packaged live Editor Observer and deterministic Host-to-Harness Observation bridge. The cover transaction must receive a turn-specific `observe` callback. In the live run that callback failed on an environment-specific assumption, converting a provable zero-effect result into `uncertain`. The browser transfer also produced no X media effect after `setFiles`; the current outcome has no stable reason field to distinguish a missing browser file binding from an accepted file with no X effect. Finally, source and committed `dist` can drift, allowing offline source tests to pass while the executable CLI remains old.
+The original failure had three independent layers: no packaged live Editor Observer, no deterministic Host-to-Harness Observation bridge, and no pre-build check for stale executable output. V3.5 closes those repository-owned gaps. It preserves legacy `page_revision` for command compatibility while adding semantic `page_state_revision` so consecutive equivalent reads remain stable across execution metadata changes. Media outcomes now persist stable reason codes, and one Draft-only dispatcher owns all allowed browser transactions. The remaining uncertainty is external: Chrome may still fail to bind the selected local file or X may reject the asset, which only the separately approved live smoke can distinguish.
 
 ## External Findings
 
@@ -73,32 +75,48 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Fix Plan
 
-1. Add a packaged Chrome Editor Extractor that returns only the bounded Article editor snapshot.
-2. Add a deterministic TypeScript Observation Builder that owns normalization, identity checks, asset mapping, and `page_revision`.
-3. Update the cover transaction to check file-input binding, wait through a bounded stability window, and return stable reason codes.
-4. Add the corresponding single-anchor inline-image transaction with Alt readback and ordinal verification.
-5. Add a Draft-only Host Bridge dispatcher for navigate, observe, cover, and inline commands.
-6. Preserve the existing attempt budget and hard deadline; never retry inside Host code.
-7. Add a packaged CLI parity gate that runs before build can mask stale `dist` artifacts.
-8. Rerun a separately approved 15-minute Draft-only smoke after offline verification.
+1. [done] Package a bounded Chrome Editor Extractor.
+2. [done] Build deterministic dual-Revision Observations with legacy `page_revision` compatibility and semantic `page_state_revision`.
+3. [done] Add file-binding evidence, bounded stability waits, and stable cover outcome reasons.
+4. [done] Add single-anchor inline replacement with exact Alt write/readback and ordinal verification.
+5. [done] Route navigate, observe, cover, and inline commands through one Draft-only Host Bridge.
+6. [done] Preserve the attempt budget and shared hard deadline; Host code never retries locally.
+7. [done] Run packaged CLI parity before any build can mask stale `dist` artifacts.
+8. [pending external confirmation] Run one 15-minute Draft-only live smoke.
+
+## RED / GREEN Ledger
+
+| Task | RED evidence | GREEN checkpoint |
+|---|---|---|
+| 1 | Editor extractor module and bounded snapshot contract absent | `bbd1d43` |
+| 2 | Deterministic Observation Builder and stable semantic Revision absent; legacy-only observations needed compatibility | `497c3fa` |
+| 3 | Packaged runtime observer absent | `98f3c0a` |
+| 4 | Cover transaction could not distinguish file binding from no X effect | `9432f10` |
+| 5 | Adapter did not persist stable Host outcome reasons | `008a547` |
+| 6 | Single-anchor inline replacement and Alt readback dispatcher absent | `b47da97` |
+| 7 | No complete Draft-only dispatcher; acceptance lacked complete Host dispatch evidence | `5ac8623` |
+| 8 | parity tool absent; old `dist` lacked V3.5, then selective output failed on a stale runtime export | `802d14c` |
+| 9 | Skill fallback/authority language and generated manifest were stale | this `chore: package complete X Article Host Bridge` packaging commit |
 
 ## Verification
 
-- status: offline-pass
-- commands_or_checks: RED/GREEN Host helper, media-attempt and deadline tests; `pnpm check`; 172-test planned suite; clean Skill/manifest validation; five Fast Path acceptance scenarios; Chrome local-page transport attempt
-- result_summary: Task 1 Host helper 18/18 passed; Task 2 full Adapter regression 118/118 passed; Task 3 Adapter/CLI suite 151/151 passed; planned suite 172/172 passed; final aggregate check passed lint, typecheck, build, 177 test files with 1218 tests passing and 1 skipped, plus full offline acceptance; five Fast Path scenarios (0, 1, 3, 10 inline images and disconnect recovery) passed with zero duplicate writes and no Preview/Publish commands
-- limitation: Chrome connected, but its URL safety policy rejected navigation to the local `file://` probe and explicitly forbade alternate-surface or local-server workarounds. The browser transport probe therefore remains unexecuted. No X navigation or mutation occurred.
-- residual_risk: a local transport probe cannot prove X accepts a specific asset; one separately approved Draft-only smoke remains necessary
+- status: offline_done
+- commands_or_checks: pre-build `pnpm check:packaged-cli`; full lint and typecheck; 16-file focused V3.5 suite; `pnpm acceptance:x-article-fast-path`; complete `pnpm check`; final `git diff --check`
+- result_summary: packaged CLI parity passed against `x-article-host-bridge/v3.5`; Skill/manifest validation passed 10/10; focused regression passed 16/16 files and 238/238 tests in 110.00 seconds; complete check passed 184 files with 1 skipped and 1280 tests with 1 skipped, with Vitest duration 180.09 seconds and end-to-end command time about 224 seconds; full acceptance passed with network unused
+- draft_only_command_set: `navigate`, `observe_article_page`, `upload_article_cover`, `replace_article_visual_anchor`; Host Bridge rejects Preview and Publish before dispatch
+- fast_path_acceptance: 0, 1, 3, 10 inline-image cases plus one disconnect recovery all reached `draft_reconciled`; duplicate Draft/upload/write counts were zero; Preview and Publish command counts were zero; exact inline Alt verification was complete
+- limitation: offline tests cannot prove that the installed Chrome extension can bind an approved local file or that X accepts it. If Chrome reports missing file binding, enable **Allow access to file URLs** for the ChatGPT browser extension before a later separately approved attempt.
+- residual_risk: one digest-bound, separately confirmed 15-minute Draft-only smoke remains necessary; no X navigation or mutation occurred during this offline verification
 
 ## Flow Record
 
 | Step | Status | Evidence | Updated |
 |---|---|---|---|
 | source | done | preserved execution reports and source inspection | 2026-08-29 |
-| design | review | Complete Host Bridge confirmed in conversation and written to `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md` | 2026-08-29 |
-| plan | pending | Implementation plan begins only after written-spec Review | 2026-08-29 |
-| development | pending | V3.4 remains the current implementation; V3.5 Host Bridge not started | 2026-08-29 |
-| testing | reproduced | live V3.4 Draft-only smoke stopped safely at 905.985 seconds with no media effect | 2026-08-29 |
+| design | done | Complete Host Bridge confirmed and written to `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md` | 2026-08-29 |
+| plan | done | Inline implementation plan completed through Task 9 offline packaging | 2026-08-29 |
+| development | done | V3.5 Complete Host Bridge and packaged CLI parity gate implemented | 2026-08-29 |
+| testing | offline_done | 238 focused and 1280 aggregate tests passed; five Draft-only Fast Path acceptance scenarios passed | 2026-08-29 |
 | archive | pending |  |  |
 
 ## Artifacts
@@ -107,6 +125,12 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 - `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md`
 - `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md`
 - `skills/x-publishing-copilot/scripts/x-article-cover-host.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-host-common.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs`
+- `tools/check-packaged-x-article-cli.ts`
 - `tests/fixtures/x-article/file-upload-probe.html`
 - `harnesses/research-publishing/adapters/x/article-browser/article-media-attempt-policy.ts`
 - `harnesses/research-publishing/core/x-article-fast-path-deadline.ts`

@@ -31,7 +31,7 @@ No Subagent is created for the Host loop. Keep page ownership, command state, an
 
 For `navigate`, `observe_article_page`, `upload_article_cover`, and `replace_article_visual_anchor`, import `scripts/x-article-host-bridge.mjs` and call `runXArticleHostBridge` with the selected Chrome tab, exact claimed command and claim, verified Host context, and at most one verified absolute asset path. Do not call Cover or Inline Host modules directly. Do not handwrite `evaluate`, `filechooser`, or `setFiles` logic. Report `outcome.report` exactly once, then discard all page locators.
 
-Prefer the actual scoped `input[type=file]`. Register the chooser before its causal click, verify the selected input binding without exposing a local path, and never use `locator.setInputFiles`. Do not locally retry a chooser or file selection in the same claim.
+Prefer the actual scoped `input[type=file]`. If no scoped input can accept the selection, only the Host Bridge may use one `filechooser` fallback. Register that chooser before its causal click and make one chooser `setFiles` call. Verify the selected input binding without exposing a local path, and never use `locator.setInputFiles`. Never directly call `runCoverUpload` or `runInlineImageUpload`; only `runXArticleHostBridge` may dispatch those helpers. Do not locally retry a chooser or file selection in the same claim.
 
 ## Recovery and stop conditions
 
