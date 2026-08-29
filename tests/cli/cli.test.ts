@@ -9,7 +9,7 @@ import { approvePublicationV2 } from '../../harnesses/research-publishing/core/a
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
-import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 import {
   createSupersedingXArticleMaterializationReceipt,
   createXArticleMaterializationReceipt,
@@ -127,6 +127,51 @@ const existingDraftMediaCliCapabilities = {
   capabilities: [...materializationCliCapabilities.capabilities, 'upload_article_cover']
 } as const;
 
+async function createFastPathCliPackage(store: WorkspaceStore) {
+  const root = 'articles/runtime-boundary/article_cli_fast_path';
+  const coverBytes = new Uint8Array([1, 2, 3]);
+  const cover = {
+    asset_id: 'cover_cli_fast', relative_path: 'assets/cover.png', digest: sha256Bytes(coverBytes),
+    mime_type: 'image/png' as const, alt_text: 'A governed Runtime boundary.',
+    claim_refs: ['claim:cover']
+  };
+  const manifestBase = {
+    schema_version: '1.0', article_run_id: 'article_cli_fast_path',
+    bindings: [{
+      slot_id: 'cover_slot', asset: cover, placement_ordinal: 1, width: 1600, height: 900,
+      byte_size: coverBytes.length, normalization_version: 'v1',
+      provenance: { method: 'generated', tool: 'test', source_digest: null }, editable_source: null
+    }]
+  };
+  const files = {
+    'article.md': '# Fast Path CLI\n\n![A governed Runtime boundary.](assets/cover.png)\n\nSkills own semantics.\n',
+    'visual-manifest.json': { ...manifestBase, manifest_digest: sha256(manifestBase) },
+    'draft-candidate.json': {
+      schema_version: '1.0', run_id: 'article_cli_fast_path', title: 'Fast Path CLI',
+      summary: 'Skills own semantics.', language: 'en',
+      sections: [{
+        section_id: 'boundary', heading: 'Boundary', markdown: 'Skills own semantics.',
+        claim_refs: [], source_refs: []
+      }],
+      visual_slots: [{
+        slot_id: 'cover_slot', placement: { kind: 'cover' }, purpose: 'cover', required: true,
+        brief: 'A governed Runtime boundary.', claim_refs: ['claim:cover']
+      }],
+      open_questions: []
+    },
+    'assets/cover.png': coverBytes
+  };
+  const digest = sha256(Object.entries(files).map(([path, value]) => ({
+    path,
+    digest: value instanceof Uint8Array ? sha256Bytes(value) : sha256(value)
+  })).sort((left, right) => left.path.localeCompare(right.path)));
+  const packageRef = {
+    root, digest, artifacts: Object.keys(files).map((path) => `${root}/${path}`), warnings: []
+  };
+  await store.writeNewDirectory(root, { ...files, 'package-ref.json': packageRef });
+  return packageRef;
+}
+
 function existingDraftCliObservation(
   overrides: Record<string, unknown> = {}
 ) {
@@ -162,7 +207,7 @@ function existingDraftCliObservation(
 }
 
 describe('research-publish CLI', () => {
-  it('advertises the stable X Article V3.3 control-plane routes as machine-readable help', () => {
+  it('advertises the stable X Article V3.4 control-plane routes as machine-readable help', () => {
     const result = runSource(['--help']);
 
     expect(result.status).toBe(0);
@@ -172,6 +217,11 @@ describe('research-publish CLI', () => {
       operation: 'help',
       artifact: {
         routes: [
+          'x-article fast-path audit --workspace <path> --input <input.json> --output json',
+          'x-article fast-path confirm --workspace <path> --input <input.json> --output json',
+          'x-article fast-path prepare --workspace <path> --audit <path> --confirmation <path> --capabilities <path> --release-set <path> [--observation <path>] --output json',
+          'x-article fast-path status --workspace <path> --execution <id> --output json',
+          'x-article fast-path recover --workspace <path> --execution <id> --output json',
           'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
           'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
           'x-article browser resume-editor --workspace <path> --execution <id> --output json',
@@ -185,6 +235,142 @@ describe('research-publish CLI', () => {
       state: 'ready'
     });
     expect(run(['--help']).stdout).toBe(result.stdout);
+  });
+
+  it('confirms, prepares, and reports a redacted X Article Fast Path without mode selection', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-fast-path-'));
+    const workspace = join(parent, 'workspace');
+    const store = await WorkspaceStore.open(workspace);
+    const packageRef = await createFastPathCliPackage(store);
+    const auditInput = join(parent, 'audit-input.json');
+    const confirmInput = join(parent, 'confirm.json');
+    const auditPath = join(parent, 'audit.json');
+    const confirmationPath = join(parent, 'confirmation.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    const releaseSetPath = join(parent, 'release-set.json');
+    await writeFile(auditInput, JSON.stringify({
+      package_ref: packageRef,
+      target_account: '@Glen56121',
+      draft_target: { kind: 'new' }
+    }));
+    const audited = runSource([
+      'x-article', 'fast-path', 'audit', '--workspace', workspace,
+      '--input', auditInput, '--output', 'json'
+    ]);
+    expect(audited.status, audited.stderr).toBe(0);
+    const audit = JSON.parse(audited.stdout).artifact;
+    expect(audit).toMatchObject({
+      protocol: 'x-article-materialization/v3.4', draft_target: { kind: 'new' }
+    });
+    await writeFile(auditPath, JSON.stringify(audit));
+    await writeFile(confirmInput, JSON.stringify({
+      audit, confirmed_by: 'human:Glen56121', ttl_ms: 3_600_000
+    }));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+    await writeFile(releaseSetPath, JSON.stringify({
+      harness_protocol: 'x-article-materialization/v3.4',
+      registry_protocol: 'x-article-materialization/v3.4',
+      skill_protocol: 'x-article-materialization/v3.4',
+      browser_host_protocol: 'x-article-materialization/v3.4'
+    }));
+
+    const confirmed = runSource([
+      'x-article', 'fast-path', 'confirm', '--workspace', workspace,
+      '--input', confirmInput, '--output', 'json'
+    ]);
+    expect(confirmed.status, confirmed.stderr).toBe(0);
+    const confirmation = JSON.parse(confirmed.stdout).artifact;
+    expect(confirmation).toMatchObject({ scope: 'materialize_draft_once' });
+    await writeFile(confirmationPath, JSON.stringify(confirmation));
+
+    const prepared = runSource([
+      'x-article', 'fast-path', 'prepare', '--workspace', workspace,
+      '--audit', auditPath, '--confirmation', confirmationPath,
+      '--capabilities', capabilitiesPath, '--release-set', releaseSetPath,
+      '--output', 'json'
+    ]);
+    expect(prepared.status, prepared.stderr).toBe(0);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+
+    const status = runSource([
+      'x-article', 'fast-path', 'status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(status.status, status.stderr).toBe(0);
+    const statusResult = JSON.parse(status.stdout);
+    expect(statusResult).toMatchObject({
+      operation: 'x-article fast-path status',
+      artifact: {
+        execution_id: executionId,
+        stage: 'Draft ready', cover: '0/1', inline_images: '0/0', alt: '0/1',
+        recovery_count: 0, terminal_state: 'created', draft_url: null
+      }
+    });
+    expect(Object.keys(statusResult.artifact).sort()).toEqual([
+      'alt', 'cover', 'draft_url', 'elapsed_seconds', 'evidence_paths',
+      'execution_id', 'inline_images', 'recovery_count', 'stage', 'terminal_state'
+    ]);
+    expect(JSON.stringify(statusResult)).not.toContain('materialization_v3_2');
+    expect(JSON.stringify(statusResult)).not.toContain('media_completion_v3_3');
+
+    const existingAuditInput = join(parent, 'audit-existing-input.json');
+    await writeFile(existingAuditInput, JSON.stringify({
+      package_ref: packageRef,
+      target_account: '@Glen56121',
+      draft_target: { kind: 'existing', draft_id: '2092851979932647424' }
+    }));
+    const existingAudited = runSource([
+      'x-article', 'fast-path', 'audit', '--workspace', workspace,
+      '--input', existingAuditInput, '--output', 'json'
+    ]);
+    expect(existingAudited.status, existingAudited.stderr).toBe(0);
+    const existingAudit = JSON.parse(existingAudited.stdout).artifact;
+    const existingConfirmInput = join(parent, 'confirm-existing.json');
+    await writeFile(existingConfirmInput, JSON.stringify({
+      audit: existingAudit, confirmed_by: 'human:Glen56121', ttl_ms: 3_600_000
+    }));
+    const existingConfirmed = runSource([
+      'x-article', 'fast-path', 'confirm', '--workspace', workspace,
+      '--input', existingConfirmInput, '--output', 'json'
+    ]);
+    expect(existingConfirmed.status, existingConfirmed.stderr).toBe(0);
+    const existingAuditPath = join(parent, 'audit-existing.json');
+    const existingConfirmationPath = join(parent, 'confirmation-existing.json');
+    const existingObservationPath = join(parent, 'observation-existing.json');
+    await writeFile(existingAuditPath, JSON.stringify(existingAudit));
+    await writeFile(existingConfirmationPath, JSON.stringify(JSON.parse(existingConfirmed.stdout).artifact));
+    const existingPlan = existingAudit.publication_plan;
+    const template = createXArticleImportTemplate(existingPlan.intent.document);
+    const observationBody = {
+      schema_version: '1.0', observation_id: 'observation_cli_fast_existing',
+      execution_id: 'source_cli_fast_existing', command_id: 'command_cli_fast_existing',
+      origin: 'https://x.com', canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+      observed_at: new Date().toISOString(), account_handle: '@Glen56121', page_kind: 'article_editor',
+      controls: [], editor: {
+        draft_id: '2092851979932647424', title: existingPlan.intent.document.title,
+        blocks: existingPlan.intent.document.blocks.filter((block: { kind: string }) => block.kind !== 'image'),
+        visuals: [], import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        }, has_unknown_content: false, autosave_state: 'saved'
+      }, preview: null, publish_review: null, public_article: null
+    };
+    await writeFile(existingObservationPath, JSON.stringify({
+      ...observationBody,
+      page_revision: computeXArticlePageRevision(observationBody as never)
+    }));
+    const existingPrepared = runSource([
+      'x-article', 'fast-path', 'prepare', '--workspace', workspace,
+      '--audit', existingAuditPath, '--confirmation', existingConfirmationPath,
+      '--capabilities', capabilitiesPath, '--release-set', releaseSetPath,
+      '--observation', existingObservationPath, '--output', 'json'
+    ]);
+    expect(existingPrepared.status, existingPrepared.stderr).toBe(0);
+    const existingExecutionId = JSON.parse(existingPrepared.stdout).artifact.execution_id as string;
+    await expect(store.readJson(
+      `runs/${existingExecutionId}/x-article/browser/adapter-context.json`
+    )).resolves.toMatchObject({ execution_mode: 'media_completion_v3_3' });
   });
 
   it('prepares a strictly bound existing Draft media-completion execution', async () => {
@@ -519,7 +705,7 @@ describe('research-publish CLI', () => {
         expect(JSON.parse(result.stdout)).toMatchObject({
           error: {
             code: 'CONTRACT_INVALID',
-            message: 'materialization-status requires a V3.2 prepared execution'
+            message: 'materialization-status requires a prepared compatibility or Fast Path execution'
           }
         });
         expect(result.stdout).not.toContain(parent);

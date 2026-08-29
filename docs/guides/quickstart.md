@@ -124,7 +124,27 @@ For a safe synthetic preview, run `x browser start`, inspect the returned read-o
 
 If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
 
-## 9. V3.2 X Article publishing
+## 9. V3.4 X Article Fast Path
+
+Fast Path prepares a complete saved Draft after one Audit confirmation. It does not ask the Human to choose V3.2 or V3.3: `{ "kind": "new" }` or `{ "kind": "existing", "draft_id": "..." }` in the Audit selects the internal compatibility path.
+
+```text
+x-article fast-path audit --input <package-target-and-draft-target.json>
+→ inspect one Audit
+→ x-article fast-path confirm --input <audit-confirmation.json>
+→ x-article fast-path prepare --audit <audit.json> --confirmation <confirmation.json>
+  --capabilities <capabilities.json> --release-set <release-set.json>
+  [--observation <existing-draft-observation.json>]
+→ one continuous Host loop
+→ x-article fast-path status --execution <id>
+→ draft_reconciled
+```
+
+All commands also require `--workspace <path> --output json`. The Host continues through the existing atomic `next → claim → one Chrome transaction → report` loop without per-image Human confirmation. If one write has an uncertain outcome, `x-article fast-path recover --execution <id>` permits one read-only reconciliation from the same checkpoint.
+
+The Fast Path confirmation authorizes Draft materialization once. It does not authorize Preview or Publish. The terminal output is a saved Draft URL plus redacted stage and evidence paths; publishing remains a separate future decision.
+
+### 9.1 V3.2/V3.3 compatibility publishing
 
 Keep long-form content as an X Article; do not split it into a Thread merely because the Post branch has older automation.
 

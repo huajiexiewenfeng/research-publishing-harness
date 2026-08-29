@@ -29,14 +29,27 @@ import {
 } from '../core/x-article-approval.js';
 import type { XArticlePublishConfirmationV1 } from '../core/x-article-publish-confirmation.js';
 import {
+  assertXArticleFastPathAudit,
+  confirmXArticleFastPath,
+  type XArticleFastPathAuditV1,
+  type XArticleFastPathConfirmationV1,
+  type XArticleFastPathDraftTargetV1
+} from '../core/x-article-fast-path.js';
+import {
+  assertXArticleFastPathReleaseSet,
+  type XArticleFastPathReleaseSetV1
+} from '../core/x-article-fast-path-release.js';
+import {
   assertXArticlePublicationPlan,
   type XArticlePublicationPlanV1
 } from '../core/x-article-publication-plan.js';
 import type {
   XArticleMaterializationCheckpointV1,
   XArticleMaterializationPlanV1,
-  XArticleMaterializationReceiptV1
+  XArticleMaterializationReceiptV1,
+  XArticleFastPathResultV1
 } from '../core/x-article-materialization.js';
+import { verifyXArticleFastPathResult } from '../core/x-article-materialization.js';
 import { createXArticleExistingDraftBinding } from '../core/x-article-existing-draft-binding.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
@@ -127,6 +140,8 @@ interface CliOptions {
   readonly capabilities?: string;
   readonly execution?: string;
   readonly confirmation?: string;
+  readonly audit?: string;
+  readonly releaseSet?: string;
   readonly adapter?: 'manual' | 'browser';
   readonly runtimeExecutable?: string;
   readonly runtimeLauncher?: 'console-script' | 'python-module';
@@ -137,9 +152,15 @@ const KNOWN_OPTIONS = new Set([
   'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
   'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
   'observation', 'execution', 'confirmation'
+  , 'audit', 'release-set'
 ]);
 
 const X_ARTICLE_CONTROL_ROUTES = [
+  'x-article fast-path audit --workspace <path> --input <input.json> --output json',
+  'x-article fast-path confirm --workspace <path> --input <input.json> --output json',
+  'x-article fast-path prepare --workspace <path> --audit <path> --confirmation <path> --capabilities <path> --release-set <path> [--observation <path>] --output json',
+  'x-article fast-path status --workspace <path> --execution <id> --output json',
+  'x-article fast-path recover --workspace <path> --execution <id> --output json',
   'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
   'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
   'x-article browser resume-editor --workspace <path> --execution <id> --output json',
@@ -229,6 +250,10 @@ function parseArguments(argv: readonly string[]): {
       ...(values['confirmation'] === undefined
         ? {}
         : { confirmation: resolve(values['confirmation']) }),
+      ...(values['audit'] === undefined ? {} : { audit: resolve(values['audit']) }),
+      ...(values['release-set'] === undefined
+        ? {}
+        : { releaseSet: resolve(values['release-set']) }),
       ...(adapter === undefined ? {} : { adapter }),
       ...(values['runtime-executable'] === undefined
         ? {}
@@ -238,6 +263,27 @@ function parseArguments(argv: readonly string[]): {
     },
     providedOptions: new Set(Object.keys(values))
   };
+}
+
+function validateOptionsWithOptional(
+  operation: string,
+  provided: ReadonlySet<string>,
+  required: readonly string[],
+  optional: readonly string[]
+): void {
+  const allowed = new Set(['workspace', 'output', ...required, ...optional]);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  for (const name of required) {
+    if (!provided.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `${operation} requires --${name}`);
+    }
+  }
 }
 
 function validateExactOptions(
@@ -397,7 +443,7 @@ async function readMaterializationStatus(
   ) {
     throw new HarnessError(
       'CONTRACT_INVALID',
-      'materialization-status requires a V3.2 prepared execution'
+      'materialization-status requires a prepared compatibility or Fast Path execution'
     );
   }
   const context = contextValue as {
@@ -420,7 +466,7 @@ async function readMaterializationStatus(
   ) {
     throw new HarnessError(
       'CONTRACT_INVALID',
-      'materialization-status requires a V3.2 prepared execution'
+      'materialization-status requires a prepared compatibility or Fast Path execution'
     );
   }
   assertXArticlePublicationPlan(context.plan as XArticlePublicationPlanV1);
@@ -1470,6 +1516,39 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
 
   if (operation.startsWith('x-article ')) {
     const input = articleInput;
+    if (operation === 'x-article fast-path audit') {
+      validateExactOptions(operation, providedOptions, ['input']);
+      const value = input as unknown as {
+        package_ref: Parameters<XArticleService['planFastPath']>[0];
+        target_account: string;
+        draft_target: XArticleFastPathDraftTargetV1;
+      };
+      const artifact = await new XArticleService(store).planFastPath(
+        value.package_ref,
+        value.target_account,
+        value.draft_target
+      );
+      return { ok: true, operation, artifact, state: 'confirmation_pending' };
+    }
+    if (operation === 'x-article fast-path confirm') {
+      validateExactOptions(operation, providedOptions, ['input']);
+      const value = input as unknown as {
+        audit: XArticleFastPathAuditV1;
+        confirmed_by: string;
+        ttl_ms: number;
+      };
+      assertXArticleFastPathAudit(value.audit);
+      const artifact = confirmXArticleFastPath(
+        value.audit,
+        value.confirmed_by,
+        value.ttl_ms
+      );
+      await store.writeNew(
+        `runs/${value.audit.publication_plan.run_id}/x-article/fast-path-confirmation-v1.json`,
+        artifact
+      );
+      return { ok: true, operation, artifact, state: 'confirmed' };
+    }
     if (operation === 'x-article plan') {
       const value = input as unknown as {
         package_ref: Parameters<XArticleService['plan']>[0];
@@ -1499,6 +1578,108 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         ? { executionId: () => executionId }
         : {}
     );
+    if (operation === 'x-article fast-path prepare') {
+      validateOptionsWithOptional(
+        operation,
+        providedOptions,
+        ['audit', 'confirmation', 'capabilities', 'release-set'],
+        ['observation']
+      );
+      const audit = await readJsonFile<XArticleFastPathAuditV1>(options.audit!, 'Fast Path Audit');
+      assertXArticleFastPathAudit(audit);
+      const confirmation = validateContract<XArticleFastPathConfirmationV1>(
+        'x-article-fast-path-confirmation',
+        await readJsonFile<unknown>(options.confirmation!, 'Fast Path confirmation')
+      );
+      const capabilities = await readJsonFile<unknown>(options.capabilities!, 'capabilities');
+      assertCapabilityManifest(capabilities);
+      const releaseSet = await readJsonFile<XArticleFastPathReleaseSetV1>(
+        options.releaseSet!,
+        'Fast Path release set'
+      );
+      assertXArticleFastPathReleaseSet(releaseSet);
+      const sourceObservation = options.observation === undefined
+        ? undefined
+        : validateContract<XArticleBrowserObservation>(
+            'x-article-browser-observation',
+            await readJsonFile<unknown>(options.observation, 'existing Draft observation')
+          );
+      const artifact = await browser.prepareFastPath({
+        audit,
+        confirmation,
+        capabilities,
+        release_set: releaseSet,
+        ...(sourceObservation === undefined ? {} : { source_observation: sourceObservation })
+      });
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article fast-path status') {
+      validateExactOptions(operation, providedOptions, ['execution']);
+      const id = requiredStableExecutionId(options);
+      const browserStatus = await browser.status(id);
+      if (browserStatus.fast_path_status === undefined) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'execution is not a Fast Path execution');
+      }
+      const context = await store.readJson<{
+        readonly plan: XArticlePublicationPlanV1;
+        readonly fast_path: {
+          readonly started_at: string;
+          readonly recovery_count: 0 | 1;
+        };
+      }>(`runs/${id}/x-article/browser/adapter-context.json`);
+      assertXArticlePublicationPlan(context.plan);
+      if (
+        !Number.isFinite(Date.parse(context.fast_path.started_at))
+        || (context.fast_path.recovery_count !== 0 && context.fast_path.recovery_count !== 1)
+      ) {
+        throw new HarnessError('CONTRACT_INVALID', 'Fast Path status binding is invalid');
+      }
+      const resultPath = `runs/${id}/x-article/browser/fast-path-result-v1.json`;
+      const result = await store.exists(resultPath)
+        ? verifyXArticleFastPathResult(await store.readJson<XArticleFastPathResultV1>(resultPath))
+        : null;
+      const checkpointPath = `runs/${id}/x-article/browser/materialization-checkpoint.json`;
+      const checkpoint = await store.exists(checkpointPath)
+        ? validateContract<XArticleMaterializationCheckpointV1>(
+            'x-article-materialization-checkpoint',
+            await store.readJson<unknown>(checkpointPath)
+          )
+        : null;
+      const verifiedInlineAlt = checkpoint?.media.filter((entry) =>
+        entry.status === 'completed'
+        && entry.observed_media_ref !== null
+        && entry.observed_context_digest !== null
+      ).length ?? 0;
+      const elapsedSeconds = result?.elapsed_seconds ?? Math.max(
+        0,
+        (Date.now() - Date.parse(context.fast_path.started_at)) / 1000
+      );
+      const artifact = {
+        execution_id: id,
+        stage: browserStatus.fast_path_status.stage,
+        elapsed_seconds: elapsedSeconds,
+        cover: browserStatus.fast_path_status.cover,
+        inline_images: browserStatus.fast_path_status.inline_images,
+        alt: result === null
+          ? `${verifiedInlineAlt}/${context.plan.intent.visuals.length}`
+          : `${result.alt.verified}/${result.alt.expected}`,
+        recovery_count: context.fast_path.recovery_count,
+        terminal_state: browserStatus.state,
+        draft_url: browserStatus.draft_id === null
+          ? null
+          : `https://x.com/compose/articles/edit/${browserStatus.draft_id}`,
+        evidence_paths: {
+          checkpoint: checkpoint === null ? null : checkpointPath,
+          result: result === null ? null : resultPath
+        }
+      };
+      return { ok: true, operation, artifact, state: browserStatus.state };
+    }
+    if (operation === 'x-article fast-path recover') {
+      validateExactOptions(operation, providedOptions, ['execution']);
+      const artifact = await browser.recoverFastPath(requiredStableExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.snapshot.state };
+    }
     if (operation === 'x-article browser prepare') {
       validateExactOptions(operation, providedOptions, ['plan', 'capabilities']);
       const plan = await readJsonFile<XArticlePublicationPlanV1>(options.plan!, 'plan');

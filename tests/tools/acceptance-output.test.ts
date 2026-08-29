@@ -4,6 +4,17 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 describe('offline acceptance', () => {
+  it('documents one-confirmation X Article Fast Path as Draft-only', async () => {
+    const quickstart = await readFile('docs/guides/quickstart.md', 'utf8');
+
+    expect(quickstart).toContain('x-article fast-path audit');
+    expect(quickstart).toContain('x-article fast-path confirm');
+    expect(quickstart).toContain('x-article fast-path prepare');
+    expect(quickstart).toContain('x-article fast-path status');
+    expect(quickstart).toContain('x-article fast-path recover');
+    expect(quickstart).toContain('does not authorize Preview or Publish');
+  });
+
   it('packages the bounded existing Draft media-completion Skill protocol', async () => {
     const [skill, browserFlow, materialization, mediaCompletion] = await Promise.all([
       readFile('skills/x-publishing-copilot/SKILL.md', 'utf8'),
