@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-fast-path-result/v1",
+  "title": "X Article Fast Path Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "protocol", "execution_id", "draft_id", "draft_url",
+    "audit_digest", "materialization_digest", "final_revision", "state",
+    "elapsed_seconds", "cover", "inline_images", "alt", "recovery_count",
+    "preview_command_count", "publish_command_count", "checkpoint_path",
+    "completed_at", "result_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-fast-path-result/v1" },
+    "protocol": { "const": "x-article-materialization/v3.4" },
+    "execution_id": { "$ref": "#/$defs/identity" },
+    "draft_id": { "$ref": "#/$defs/identity" },
+    "draft_url": { "type": "string", "pattern": "^https://x\\.com/compose/articles/edit/[A-Za-z0-9_-]+$" },
+    "audit_digest": { "$ref": "#/$defs/digest" },
+    "materialization_digest": { "$ref": "#/$defs/digest" },
+    "final_revision": { "$ref": "#/$defs/digest" },
+    "state": { "const": "draft_reconciled" },
+    "elapsed_seconds": { "type": "number", "minimum": 0 },
+    "cover": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected", "completed", "alt"],
+      "properties": {
+        "expected": { "const": 1 },
+        "completed": { "const": 1 },
+        "alt": { "enum": ["verified", "unobservable"] }
+      }
+    },
+    "inline_images": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected", "completed"],
+      "properties": {
+        "expected": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "completed": { "type": "integer", "minimum": 0, "maximum": 10 }
+      }
+    },
+    "alt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expected", "verified"],
+      "properties": {
+        "expected": { "type": "integer", "minimum": 0, "maximum": 11 },
+        "verified": { "type": "integer", "minimum": 0, "maximum": 11 }
+      }
+    },
+    "recovery_count": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "preview_command_count": { "const": 0 },
+    "publish_command_count": { "const": 0 },
+    "checkpoint_path": { "type": "string", "minLength": 1 },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "result_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

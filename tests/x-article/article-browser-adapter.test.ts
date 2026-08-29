@@ -1089,12 +1089,191 @@ describe('XArticleBrowserAdapter', () => {
 
     const execution = await adapter.prepareFastPath({ ...input, source_observation: source });
 
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
+      fast_path_status: { stage: 'Draft ready', cover: '0/1', inline_images: '0/1', result_path: null }
+    });
     await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
       .resolves.toMatchObject({ execution_mode: 'media_completion_v3_3' });
 
     const mismatched = fastPathInput({ kind: 'existing', draft_id: '9999999999999999999' });
     await expect(adapter.prepareFastPath({ ...mismatched, source_observation: source }))
       .rejects.toMatchObject({ code: 'ARTICLE_DRAFT_CONFLICT' });
+  });
+
+  it('allows one Fast Path read-only recovery without re-uploading media', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-recovery-')));
+    let commandNumber = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_fast_path_recovery_1',
+      commandId: () => `command_fast_path_recovery_${++commandNumber}`,
+      now: () => new Date('2026-08-21T09:02:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'existing', draft_id: '2092851979932647424' });
+    const execution = await adapter.prepareFastPath({
+      ...input,
+      source_observation: existingBodyCompleteObservation('source_recovery', 'source_recovery_command')
+    });
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(
+      adapter,
+      execution.execution_id,
+      next.command,
+      freshBodyCompleteObservation(
+        execution.execution_id,
+        next.command!.command_id,
+        '2026-08-21T09:02:00.000Z'
+      )
+    );
+    next = await adapter.next(execution.execution_id);
+    expect(next.command?.kind).toBe('upload_article_cover');
+    await adapter.claim(next.command!);
+    await adapter.report({ command: next.command!, status: 'uncertain', observation: null });
+    const mediaBefore = await mediaCommandCount(store, execution.execution_id, 'upload_article_cover');
+
+    const recovery = await adapter.recoverFastPath(execution.execution_id);
+
+    expect(recovery.command).toMatchObject({ kind: 'observe_article_page', side_effect: 'read' });
+    expect(await mediaCommandCount(store, execution.execution_id, 'upload_article_cover')).toBe(mediaBefore);
+    const template = createXArticleImportTemplate(coverInlinePlan.intent.document);
+    await reportSuccess(adapter, execution.execution_id, recovery.command, observed(
+      execution.execution_id, recovery.command.command_id, {
+        observed_at: '2026-08-21T09:02:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+          blocks: coverInlinePlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+          visuals: [{
+            ref: 'cover_recovered', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          }], has_unknown_content: false, autosave_state: 'saved',
+          import_state: {
+            template_digest: template.template_digest,
+            source_document_digest: template.source_document_digest,
+            unresolved_anchors: template.anchors
+          }
+        }
+      }
+    ));
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      command: { kind: 'replace_article_visual_anchor' }
+    });
+    expect(await mediaCommandCount(store, execution.execution_id, 'upload_article_cover')).toBe(mediaBefore);
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ fast_path: { recovery_count: 1 } });
+    await expect(adapter.recoverFastPath(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_NO_PROGRESS' });
+  });
+
+  it('blocks Fast Path recovery after its 120-second recovery budget', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-recovery-timeout-')));
+    let current = '2026-08-21T09:01:00.000Z';
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_fast_path_recovery_timeout_1',
+      now: () => new Date(current)
+    });
+    const input = fastPathInput({ kind: 'existing', draft_id: '2092851979932647424' });
+    const execution = await adapter.prepareFastPath({
+      ...input,
+      source_observation: existingBodyCompleteObservation('source_timeout', 'source_timeout_command')
+    });
+    current = '2026-08-21T09:03:01.000Z';
+
+    await expect(adapter.recoverFastPath(execution.execution_id))
+      .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_TIMEOUT' });
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ fast_path: { recovery_count: 0 } });
+  });
+
+  it('persists final Fast Path Draft evidence without Preview or Publish commands', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-result-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_fast_path_result_1',
+      now: () => new Date('2026-08-21T09:02:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'existing', draft_id: '2092851979932647424' });
+    const execution = await adapter.prepareFastPath({
+      ...input,
+      source_observation: existingBodyCompleteObservation(
+        'source_fast_result',
+        'source_fast_result_command',
+        '2026-08-21T09:01:00.000Z'
+      )
+    });
+    let next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command,
+      freshBodyCompleteObservation(execution.execution_id, next.command!.command_id));
+
+    next = await adapter.next(execution.execution_id);
+    const template = createXArticleImportTemplate(coverInlinePlan.intent.document);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:02:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+          blocks: coverInlinePlan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+          visuals: [{
+            ref: 'cover_fast_result', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: null, status: 'uploaded', owned_by_execution: true
+          }], has_unknown_content: false, autosave_state: 'saved',
+          import_state: {
+            template_digest: template.template_digest,
+            source_document_digest: template.source_document_digest,
+            unresolved_anchors: template.anchors
+          }
+        }
+      }
+    ));
+
+    next = await adapter.next(execution.execution_id);
+    await reportSuccess(adapter, execution.execution_id, next.command, observed(
+      execution.execution_id, next.command!.command_id, {
+        observed_at: '2026-08-21T09:02:00.000Z',
+        canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092851979932647424', title: coverInlinePlan.intent.document.title,
+          blocks: coverInlinePlan.intent.document.blocks,
+          visuals: [
+            {
+              ref: 'cover_fast_result', asset_id: coverAsset.asset_id, kind: 'cover', block_ordinal: null,
+              alt_text: null, status: 'uploaded', owned_by_execution: true
+            },
+            {
+              ref: 'inline_fast_result', asset_id: inlineAsset.asset_id, kind: 'inline', block_ordinal: 2,
+              alt_text: inlineAsset.alt_text, status: 'uploaded', owned_by_execution: true
+            }
+          ], has_unknown_content: false, autosave_state: 'saved', import_state: null
+        }
+      }
+    ));
+
+    await expect(adapter.next(execution.execution_id)).resolves.toMatchObject({
+      snapshot: { state: 'draft_reconciled', publish_command_count: 0 }, command: null
+    });
+    await expect(store.readJson(
+      `runs/${execution.execution_id}/x-article/browser/fast-path-result-v1.json`
+    )).resolves.toMatchObject({
+      state: 'draft_reconciled', audit_digest: input.audit.audit_digest,
+      cover: { expected: 1, completed: 1, alt: 'unobservable' },
+      inline_images: { expected: 1, completed: 1 },
+      preview_command_count: 0, publish_command_count: 0
+    });
+    const progress = await store.readText(
+      `runs/${execution.execution_id}/x-article/browser/materialization-progress.jsonl`
+    );
+    expect(progress).toContain('Fast Path: Draft ready');
+    expect(progress).toContain('Fast Path: Cover 1/1');
+    expect(progress).toContain('Fast Path: Inline images 1/1');
+    expect(progress).toContain('Fast Path: Final check');
+    await expect(adapter.status(execution.execution_id)).resolves.toMatchObject({
+      fast_path_status: {
+        stage: 'Final check', cover: '1/1', inline_images: '1/1',
+        result_path: `runs/${execution.execution_id}/x-article/browser/fast-path-result-v1.json`
+      }
+    });
   });
 
   it('adopts a body-complete Draft and issues the first media command without rewriting content', async () => {

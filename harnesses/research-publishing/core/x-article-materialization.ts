@@ -137,6 +137,81 @@ export interface XArticleMaterializationReceiptV1 {
   readonly receipt_digest: `sha256:${string}`;
 }
 
+export interface XArticleFastPathResultV1 {
+  readonly schema_version: 'x-article-fast-path-result/v1';
+  readonly protocol: 'x-article-materialization/v3.4';
+  readonly execution_id: string;
+  readonly draft_id: string;
+  readonly draft_url: string;
+  readonly audit_digest: `sha256:${string}`;
+  readonly materialization_digest: `sha256:${string}`;
+  readonly final_revision: `sha256:${string}`;
+  readonly state: 'draft_reconciled';
+  readonly elapsed_seconds: number;
+  readonly cover: {
+    readonly expected: 1;
+    readonly completed: 1;
+    readonly alt: 'verified' | 'unobservable';
+  };
+  readonly inline_images: { readonly expected: number; readonly completed: number };
+  readonly alt: { readonly expected: number; readonly verified: number };
+  readonly recovery_count: 0 | 1;
+  readonly preview_command_count: 0;
+  readonly publish_command_count: 0;
+  readonly checkpoint_path: string;
+  readonly completed_at: string;
+  readonly result_digest: `sha256:${string}`;
+}
+
+export type CreateXArticleFastPathResultInput = Omit<
+  XArticleFastPathResultV1,
+  'schema_version' | 'protocol' | 'state' | 'result_digest'
+>;
+
+function fastPathResultBody(
+  result: XArticleFastPathResultV1
+): Omit<XArticleFastPathResultV1, 'result_digest'> {
+  return Object.fromEntries(
+    Object.entries(result).filter(([key]) => key !== 'result_digest')
+  ) as Omit<XArticleFastPathResultV1, 'result_digest'>;
+}
+
+export function verifyXArticleFastPathResult(
+  result: XArticleFastPathResultV1
+): XArticleFastPathResultV1 {
+  const validated = validateContract<XArticleFastPathResultV1>(
+    'x-article-fast-path-result',
+    structuredClone(result)
+  );
+  const valid =
+    validated.protocol === 'x-article-materialization/v3.4'
+    && validated.state === 'draft_reconciled'
+    && validated.cover.expected === 1
+    && validated.cover.completed === 1
+    && validated.inline_images.completed === validated.inline_images.expected
+    && validated.alt.verified <= validated.alt.expected
+    && validated.recovery_count <= 1
+    && validated.preview_command_count === 0
+    && validated.publish_command_count === 0
+    && validated.result_digest === sha256(fastPathResultBody(validated));
+  if (!valid) {
+    throw new HarnessError('CONTRACT_INVALID', 'X Article Fast Path Result is internally inconsistent');
+  }
+  return validated;
+}
+
+export function createXArticleFastPathResult(
+  input: CreateXArticleFastPathResultInput
+): XArticleFastPathResultV1 {
+  const body: Omit<XArticleFastPathResultV1, 'result_digest'> = {
+    schema_version: 'x-article-fast-path-result/v1',
+    protocol: 'x-article-materialization/v3.4',
+    ...structuredClone(input),
+    state: 'draft_reconciled'
+  };
+  return verifyXArticleFastPathResult({ ...body, result_digest: sha256(body) });
+}
+
 export interface XArticleMaterializationStartEvidenceV1 {
   readonly schema_version: 'x-article-materialization-start/v1';
   readonly execution_id: string;

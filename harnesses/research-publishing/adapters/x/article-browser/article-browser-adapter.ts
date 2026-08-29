@@ -32,6 +32,7 @@ import {
   createAdoptedXArticleMaterializationCheckpoint,
   createSupersedingXArticleMaterializationReceipt,
   createXArticleMaterializationReceipt,
+  createXArticleFastPathResult,
   createXArticleMaterializationStartEvidence,
   createXArticleMaterializationPlan,
   createXArticleStageProgress,
@@ -40,6 +41,7 @@ import {
   type XArticleMaterializationPlanV1,
   type XArticleMaterializationReceiptV1,
   type XArticleMaterializationStartEvidenceV1,
+  type XArticleFastPathResultV1,
   type XArticleStageProgressV1
 } from '../../../core/x-article-materialization.js';
 import { createXArticleExistingDraftBinding, verifyXArticleExistingDraftBinding } from '../../../core/x-article-existing-draft-binding.js';
@@ -124,7 +126,7 @@ interface XArticleFastPathExecutionBindingV1 {
   readonly started_at: string;
   readonly time_budget_seconds: 600;
   readonly recovery_budget_seconds: 120;
-  readonly recovery_count: 0;
+  readonly recovery_count: 0 | 1;
 }
 
 interface XArticleFastPathConfirmationConsumptionV1 {
@@ -148,6 +150,17 @@ export interface PrepareXArticleFastPathInput {
   readonly release_set: XArticleFastPathReleaseSetV1;
   readonly source_observation?: XArticleBrowserObservation;
 }
+
+export interface XArticleFastPathStatusProjectionV1 {
+  readonly stage: 'Draft ready' | 'Cover' | 'Inline images' | 'Final check';
+  readonly cover: `${number}/${number}`;
+  readonly inline_images: `${number}/${number}`;
+  readonly result_path: string | null;
+}
+
+export type XArticleBrowserStatusV1 = XArticleExecutionSnapshotV1 & {
+  readonly fast_path_status?: XArticleFastPathStatusProjectionV1;
+};
 
 interface PendingIssueIntent {
   readonly command_id: string;
@@ -741,7 +754,10 @@ export class XArticleBrowserAdapter {
       return this.nextEditorCommand(context, observation);
     }
 
-    if (state === 'draft_reconciled') return { snapshot: context.snapshot, command: null };
+    if (state === 'draft_reconciled') {
+      await this.ensureFastPathResult(context);
+      return { snapshot: context.snapshot, command: null };
+    }
 
     if (state === 'materialization_reconciling') {
       if (context.needs_editor_observation) return this.issueEditorObservation(context);
@@ -1170,8 +1186,100 @@ export class XArticleBrowserAdapter {
     )).snapshot;
   }
 
-  async status(executionId: string): Promise<XArticleExecutionSnapshotV1> {
-    return (await this.readContext(executionId)).snapshot;
+  async status(executionId: string): Promise<XArticleBrowserStatusV1> {
+    const context = await this.readContext(executionId);
+    if (context.fast_path === null) return context.snapshot;
+    const checkpointPath = `${this.prefix(executionId)}/materialization-checkpoint.json`;
+    const checkpoint = await this.store.exists(checkpointPath)
+      ? await this.materializationStore.readCheckpoint(executionId)
+      : null;
+    const expectedInline = checkpoint?.media.length
+      ?? context.materialization_plan?.visual_anchors.length
+      ?? context.plan.intent.visuals.filter((binding) => binding.placement.kind === 'block').length;
+    const completedInline = checkpoint?.media.filter((entry) =>
+      entry.status === 'completed'
+      && entry.observed_media_ref !== null
+      && entry.observed_context_digest !== null
+    ).length ?? 0;
+    const covers = context.latest_observation?.editor?.visuals.filter((visual) =>
+      visual.kind === 'cover' && visual.status === 'uploaded'
+    ) ?? [];
+    const completedCover = covers.length === 1 ? 1 : 0;
+    const resultPath = this.fastPathResultPath(executionId);
+    const hasResult = await this.store.exists(resultPath);
+    const stage: XArticleFastPathStatusProjectionV1['stage'] = hasResult
+      ? 'Final check'
+      : checkpoint?.draft_id == null
+        ? 'Draft ready'
+        : completedCover === 0
+          ? 'Cover'
+          : completedInline < expectedInline ? 'Inline images' : 'Final check';
+    return {
+      ...context.snapshot,
+      fast_path_status: {
+        stage,
+        cover: `${completedCover}/1`,
+        inline_images: `${completedInline}/${expectedInline}`,
+        result_path: hasResult ? resultPath : null
+      }
+    };
+  }
+
+  async recoverFastPath(
+    executionId: string
+  ): Promise<{ readonly snapshot: XArticleExecutionSnapshotV1; readonly command: XArticleBrowserCommandV1 }> {
+    return this.withExecutionLock(executionId, async () => {
+      let context = await this.readContext(executionId);
+      const fastPath = context.fast_path;
+      if (fastPath === null) {
+        throw new HarnessError(
+          'ARTICLE_CHECKPOINT_CONFLICT',
+          'X Article execution is not bound to Fast Path recovery'
+        );
+      }
+      const recoveredAt = this.now().toISOString();
+      const elapsed = computeXArticleElapsedSeconds(fastPath.started_at, recoveredAt);
+      if (elapsed > fastPath.recovery_budget_seconds) {
+        throw new HarnessError(
+          'ARTICLE_MATERIALIZATION_TIMEOUT',
+          'X Article Fast Path recovery exceeded its 120-second budget'
+        );
+      }
+      if (fastPath.recovery_count >= 1) {
+        throw new HarnessError(
+          'ARTICLE_MATERIALIZATION_NO_PROGRESS',
+          'X Article Fast Path permits only one read-only recovery'
+        );
+      }
+      if (
+        context.snapshot.state !== 'materialization_reconciling'
+        || !context.needs_editor_observation
+        || context.pending_command !== null
+        || context.pending_issue !== null
+      ) {
+        throw new HarnessError(
+          'ARTICLE_MATERIALIZATION_NO_PROGRESS',
+          'X Article Fast Path has no uncertain media effect to recover'
+        );
+      }
+
+      context = {
+        ...context,
+        fast_path: { ...fastPath, recovery_count: 1 }
+      };
+      await this.writeContext(context);
+      await this.materializationStore.appendProgress(createXArticleStageProgress({
+        execution_id: executionId,
+        stage: 'fast_path_recovery#1',
+        asset_id: null,
+        elapsed_seconds: elapsed,
+        waiting_for: 'browser_effect_reconciliation',
+        retry_count: 0,
+        observed_effect: 'unknown',
+        recorded_at: recoveredAt
+      }));
+      return this.issueEditorObservation(context);
+    });
   }
 
   async confirmPublish(
@@ -1782,7 +1890,7 @@ export class XArticleBrowserAdapter {
       plan: context.plan,
       materialization_plan: persistedPlan,
       draft_id: context.snapshot.draft_id,
-      completion_target: context.execution_mode === 'media_completion_v3_3'
+      completion_target: context.execution_mode === 'media_completion_v3_3' || context.fast_path !== null
         ? 'draft_reconciled'
         : 'preview'
     }, observation, reconciliation, this.contract);
@@ -1792,14 +1900,23 @@ export class XArticleBrowserAdapter {
     }
     if (decision.kind === 'complete') {
       if (
-        context.execution_mode !== 'media_completion_v3_3'
+        (context.execution_mode !== 'media_completion_v3_3' && context.fast_path === null)
         || checkpoint.phase !== 'draft_reconciled'
         || checkpoint.publish_confirmation !== 'absent'
         || context.snapshot.publish_command_count !== 0
       ) {
         throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'Draft-only completion lacks reconciled media evidence');
       }
-      context = await this.transition(context, 'draft_reconciled', 'article_draft_reconciled');
+      const resultPath = context.fast_path === null
+        ? undefined
+        : this.fastPathResultPath(context.snapshot.execution_id);
+      context = await this.transition(
+        context,
+        'draft_reconciled',
+        'article_draft_reconciled',
+        resultPath === undefined ? {} : { latest_receipt_path: resultPath }
+      );
+      await this.ensureFastPathResult(context, checkpoint, observation);
       return { snapshot: context.snapshot, command: null };
     }
     await this.assertPreparedCommandBinding(context, persistedPlan, decision.input);
@@ -4087,6 +4204,158 @@ export class XArticleBrowserAdapter {
     return context.latest_observation;
   }
 
+  private async ensureFastPathResult(
+    context: AdapterContext,
+    suppliedCheckpoint?: XArticleMaterializationCheckpointV1,
+    suppliedObservation?: XArticleBrowserObservation
+  ): Promise<XArticleFastPathResultV1 | null> {
+    const fastPath = context.fast_path;
+    if (fastPath === null) return null;
+    const executionId = context.snapshot.execution_id;
+    const checkpoint = suppliedCheckpoint
+      ?? await this.materializationStore.readCheckpoint(executionId);
+    const observation = suppliedObservation ?? context.latest_observation;
+    const editor = observation?.editor ?? null;
+    const plan = await this.readBoundMaterializationPlan(context);
+    const reconciliation = observation === null
+      ? { kind: 'unverifiable' as const }
+      : this.reconcileMaterializationDraft(
+          plan,
+          checkpoint,
+          context.plan.intent.document,
+          observation
+        );
+    const completeMedia = checkpoint.media.every((entry) =>
+      entry.status === 'completed'
+      && entry.observed_media_ref !== null
+      && entry.observed_context_digest !== null
+    );
+    const coverBinding = context.plan.intent.visuals.find((binding) => binding.placement.kind === 'cover');
+    const coverVisuals = editor?.visuals.filter((visual) => visual.kind === 'cover') ?? [];
+    const cover = coverBinding === undefined || coverVisuals.length !== 1
+      ? null
+      : coverVisuals[0]!;
+    const coverAlt = this.contract.media_alt_capabilities.cover === 'unobservable'
+      ? 'unobservable' as const
+      : 'verified' as const;
+    const coverValid = coverBinding !== undefined
+      && cover !== null
+      && cover.asset_id === coverBinding.asset.asset_id
+      && cover.status === 'uploaded'
+      && cover.owned_by_execution
+      && cover.ref.length > 0
+      && (coverAlt === 'unobservable' || cover.alt_text === coverBinding.asset.alt_text);
+    if (
+      context.snapshot.state !== 'draft_reconciled'
+      || context.snapshot.draft_id === null
+      || checkpoint.phase !== 'draft_reconciled'
+      || checkpoint.publish_confirmation !== 'absent'
+      || !this.hasVerifiedMaterializationBody(checkpoint)
+      || !completeMedia
+      || observation === null
+      || editor === null
+      || editor.draft_id !== context.snapshot.draft_id
+      || editor.title !== context.plan.intent.document.title
+      || editor.import_state !== null
+      || editor.has_unknown_content
+      || editor.autosave_state !== 'saved'
+      || !coverValid
+      || (reconciliation.kind !== 'exact' && reconciliation.kind !== 'semantically_equivalent')
+      || context.snapshot.publish_command_count !== 0
+    ) {
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'X Article Fast Path cannot create Result before the Draft is fully reconciled'
+      );
+    }
+
+    const commandEntries = await this.store.list(`${this.prefix(executionId)}/commands`);
+    let previewCommandCount = 0;
+    let publishCommandCount = 0;
+    for (const entry of commandEntries) {
+      if (entry.kind !== 'directory') {
+        throw new HarnessError('CONTRACT_INVALID', 'Fast Path command ledger contains a non-directory');
+      }
+      const command = validateContract<XArticleBrowserCommandV1>(
+        'x-article-browser-command',
+        await this.store.readJson<unknown>(`${entry.relative_path}/command.json`)
+      );
+      if (command.execution_id !== executionId || command.command_id !== entry.name) {
+        throw new HarnessError('CONTRACT_INVALID', 'Fast Path command ledger identity changed');
+      }
+      if (command.kind === 'open_article_preview') previewCommandCount += 1;
+      if (command.kind === 'publish_article_once') publishCommandCount += 1;
+    }
+    if (previewCommandCount !== 0 || publishCommandCount !== 0) {
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'X Article Fast Path Result forbids Preview and Publish commands'
+      );
+    }
+
+    const startEvidence = verifyXArticleMaterializationStartEvidence(
+      await this.store.readJson<XArticleMaterializationStartEvidenceV1>(
+        this.materializationStartPath(executionId)
+      ),
+      plan
+    );
+    const inlineCompleted = checkpoint.media.filter((entry) => entry.status === 'completed').length;
+    const inlineAltVerified = checkpoint.media.filter((entry) =>
+      entry.status === 'completed' && entry.observed_context_digest !== null
+    ).length;
+    const result = createXArticleFastPathResult({
+      execution_id: executionId,
+      draft_id: context.snapshot.draft_id,
+      draft_url: `https://x.com/compose/articles/edit/${context.snapshot.draft_id}`,
+      audit_digest: fastPath.audit_digest,
+      materialization_digest: checkpoint.materialization_digest,
+      final_revision: observation.page_revision,
+      elapsed_seconds: computeXArticleElapsedSeconds(startEvidence.started_at, checkpoint.updated_at),
+      cover: { expected: 1, completed: 1, alt: coverAlt },
+      inline_images: { expected: checkpoint.media.length, completed: inlineCompleted },
+      alt: {
+        expected: context.plan.intent.visuals.length,
+        verified: inlineAltVerified + (coverAlt === 'verified' ? 1 : 0)
+      },
+      recovery_count: fastPath.recovery_count,
+      preview_command_count: 0,
+      publish_command_count: 0,
+      checkpoint_path: `${this.prefix(executionId)}/materialization-checkpoint.json`,
+      completed_at: checkpoint.updated_at
+    });
+    await this.ensureExactArtifact(this.fastPathResultPath(executionId), result);
+    await this.ensureFastPathCompletionProgress(result);
+    return result;
+  }
+
+  private async ensureFastPathCompletionProgress(result: XArticleFastPathResultV1): Promise<void> {
+    const stages = [
+      'Fast Path: Draft ready',
+      'Fast Path: Cover 1/1',
+      `Fast Path: Inline images ${result.inline_images.completed}/${result.inline_images.expected}`,
+      'Fast Path: Final check'
+    ] as const;
+    for (const stage of stages) {
+      const expected = createXArticleStageProgress({
+        execution_id: result.execution_id,
+        stage,
+        asset_id: null,
+        elapsed_seconds: result.elapsed_seconds,
+        waiting_for: null,
+        retry_count: 0,
+        observed_effect: 'complete',
+        recorded_at: result.completed_at
+      });
+      const progress = await this.materializationStore.readProgress(result.execution_id);
+      const existing = progress.find((entry) => entry.stage === stage);
+      if (existing === undefined) {
+        await this.materializationStore.appendProgress(expected);
+      } else if (!isDeepStrictEqual(existing, expected)) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'Fast Path progress stage changed on retry');
+      }
+    }
+  }
+
   private async readContext(executionId: string): Promise<AdapterContext> {
     this.assertId(executionId);
     return this.store.readJson<AdapterContext>(`${this.prefix(executionId)}/adapter-context.json`);
@@ -4111,6 +4380,10 @@ export class XArticleBrowserAdapter {
 
   private materializationStartPath(executionId: string): string {
     return `${this.prefix(executionId)}/materialization-start.json`;
+  }
+
+  private fastPathResultPath(executionId: string): string {
+    return `${this.prefix(executionId)}/fast-path-result-v1.json`;
   }
 
   private publicMaterializationReceiptPath(executionId: string): string {
