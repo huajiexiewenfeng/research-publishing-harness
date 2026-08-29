@@ -48,6 +48,7 @@ export const CONTRACT_NAMES = [
   'publish-receipt-v2-1',
   'x-article-document',
   'x-article-publication-plan',
+  'x-article-publication-preflight',
   'x-article-existing-draft-binding',
   'x-article-materialization-plan',
   'x-article-materialization-checkpoint',
