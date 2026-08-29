@@ -27,6 +27,10 @@ No Subagent is created for the Host loop. Keep page ownership, command state, an
 - Execute only the claimed transaction. Never combine cover upload, another image, navigation, Preview, or Publish in the same claim.
 - Report only the normalized semantic observation accepted by the Harness, then discard stale element references.
 
+### Cover Host binding
+
+For `upload_article_cover`, import `scripts/x-article-cover-host.mjs` and call `runCoverUpload` with the selected Chrome tab, exact claimed command, exact claim, verified absolute asset path, and one fresh normalized observe callback. Do not handwrite `waitForEvent('filechooser')` or `setFiles` calls, do not use direct `input[type=file]`, and do not locally retry. Report the helper result exactly once to the Harness.
+
 ## Recovery and stop conditions
 
 The Fast Path permits one recovery after a disconnect. Invoke `x-article fast-path recover` only when status requires it; recovery is read-only reconciliation and does not grant another write, reimport, or confirmation. If recovery is exhausted or the visible page cannot satisfy the scoped command, stop as blocked.

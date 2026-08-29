@@ -21,6 +21,8 @@ V3.2 new-Draft materialization requires `import_article_document` and `replace_a
 
 For V3.4, run Fast Path status and continuously consume the existing atomic `next` → verify → `claim` → one complete Chrome transaction → one normalized observation → `report` loop without per-image Human prompts or a Subagent. The Fast Path permits one recovery only when the Harness requires it. Display only stage progress and stop at `draft_reconciled`; this confirmation does not authorize Preview or Publish. For a legacy direct V3.2 or V3.3 execution, follow its version-bound `x-article browser next` → `x-article browser claim` → one transaction → `x-article browser report` loop and stop condition instead.
 
+For a claimed `upload_article_cover` command, use the packaged cover Host helper exactly as defined by the V3.4 reference; do not recreate its browser transaction in the task.
+
 ## Single, Thread, and Reply Browser Adapter required flow
 
 1. Run `scripts/invoke.mjs doctor --workspace <path> --output json` and stop if the Harness is unavailable or incompatible.

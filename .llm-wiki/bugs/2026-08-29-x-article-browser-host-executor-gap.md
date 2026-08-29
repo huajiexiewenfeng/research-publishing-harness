@@ -3,7 +3,7 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: planned
+- status: implemented; environment verification pending
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: implementation plan review
+- next_gate: clean-environment verification and separately approved Draft-only smoke
 - routed_at: 2026-08-29
 
 ## Source
@@ -77,10 +77,10 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Verification
 
-- status: not-run
-- commands_or_checks: RED/GREEN focused Host helper tests; adapter retry/deadline tests; typecheck; focused X Article suite; Skill validation; local non-X upload probe
-- result_summary: pending implementation
-- limitation: no new live X mutation is authorized by this Bug Brief
+- status: partial-pass
+- commands_or_checks: RED/GREEN Host helper, media-attempt and deadline tests; task-scoped ESLint; `pnpm typecheck`; 172-test planned offline suite; `pnpm acceptance:x-article-fast-path`; Skill/manifest validation
+- result_summary: Task 1 Host helper 18/18 passed; Task 2 full Adapter regression 118/118 passed; Task 3 Adapter/CLI suite 151/151 passed; final planned suite 172/172 passed; typecheck and task-scoped ESLint passed; five local Fast Path acceptance scenarios (0, 1, 3, 10 inline images and disconnect recovery) passed with zero duplicate writes and no Preview/Publish commands
+- limitation: repository-wide `pnpm lint` and therefore `pnpm check` are blocked only by four lint errors in the pre-existing untracked `dist-live/` generated declarations. Per the gate, the non-X Chrome transport probe was not run. No X navigation or mutation occurred.
 - residual_risk: a local transport probe cannot prove X accepts a specific asset; one separately approved Draft-only smoke remains necessary
 
 ## Flow Record
@@ -89,15 +89,19 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 |---|---|---|---|
 | source | done | preserved execution reports and source inspection | 2026-08-29 |
 | design | done | `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md` | 2026-08-29 |
-| plan | active | `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md` awaiting execution choice | 2026-08-29 |
-| development | pending |  |  |
-| testing | pending |  |  |
+| plan | done | Inline Execution selected; no Subagent used | 2026-08-29 |
+| development | done | `4d8d5f2`, `b141cdc`, `9cec5e0`; packaged cover helper, bounded attempts, hard deadline | 2026-08-29 |
+| testing | partial | 172/172 planned tests, typecheck, scoped lint and acceptance pass; global lint blocked by pre-existing `dist-live/`; Chrome probe skipped | 2026-08-29 |
 | archive | pending |  |  |
 
 ## Artifacts
 
 - `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md`
 - `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md`
+- `skills/x-publishing-copilot/scripts/x-article-cover-host.mjs`
+- `tests/fixtures/x-article/file-upload-probe.html`
+- `harnesses/research-publishing/adapters/x/article-browser/article-media-attempt-policy.ts`
+- `harnesses/research-publishing/core/x-article-fast-path-deadline.ts`
 
 ## Open Questions
 

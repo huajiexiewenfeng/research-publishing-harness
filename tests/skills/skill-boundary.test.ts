@@ -125,12 +125,24 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toContain('No Subagent');
     expect(reference).toContain('Insert -> Media');
     expect(reference).toContain('cover region');
+    expect(reference).toContain('scripts/x-article-cover-host.mjs');
+    expect(reference).toContain('runCoverUpload');
+    expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
+    expect(reference).toMatch(/do not locally retry/is);
     expect(reference).toContain('stage progress');
     expect(reference).toContain('one recovery');
     expect(reference).toContain('draft_reconciled');
     expect(reference).toMatch(/ban.*Preview.*Publish/is);
     expect(browserFlow).toContain('x-article-fast-path-v3-4.md');
     expect(browserFlow).toContain('continuous command consumption');
+
+    const manifest = JSON.parse(await readFile(
+      resolve('registry/manifests/research-publishing.json'),
+      'utf8'
+    )) as { files: Array<{ path: string }> };
+    expect(manifest.files.map((file) => file.path)).toContain(
+      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs'
+    );
   });
 
   it('routes one-confirmation Publication Bundles through bind-before-next boundaries', async () => {
