@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-fast-path-confirmation/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scope",
+    "audit_digest",
+    "target_account",
+    "confirmed_by",
+    "confirmed_at",
+    "expires_at",
+    "confirmation_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-fast-path-confirmation/v1" },
+    "scope": { "const": "materialize_draft_once" },
+    "audit_digest": { "$ref": "#/$defs/digest" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "confirmed_by": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
+    "confirmed_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "confirmation_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

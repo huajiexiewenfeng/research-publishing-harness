@@ -40,6 +40,14 @@ export interface CreateXArticlePublicationPreflightInput {
   readonly visuals: readonly XArticleVisualBindingV1[];
 }
 
+function preflightDigestBody(
+  preflight: XArticlePublicationPreflightV1
+): Omit<XArticlePublicationPreflightV1, 'preflight_digest'> {
+  const { preflight_digest: _preflightDigest, ...body } = preflight;
+  void _preflightDigest;
+  return body;
+}
+
 const KNOWN_DRAFT_STATUS = /^Status:\s*X Article Draft(?:\s*\(v\d+(?:\.\d+)*\))?(?:\s*[·•|—-]\s*Derived from a longer evidence note)?(?:\s*[·•|—-]\s*Evidence review date:\s*\d{4}-\d{2}-\d{2})?$/i;
 const KNOWN_EVIDENCE_REVIEW_DATE = /^Evidence review date:\s*\d{4}-\d{2}-\d{2}$/i;
 const SUSPICIOUS_EDITORIAL_MARKER = /^(?:Status|Evidence review date|Internal note)\s*:/i;
@@ -212,4 +220,38 @@ export function createXArticlePublicationPreflight(
     ...body,
     preflight_digest: sha256(body)
   });
+}
+
+export function assertXArticlePublicationPreflight(
+  preflight: XArticlePublicationPreflightV1
+): void {
+  validateContract<XArticlePublicationPreflightV1>('x-article-publication-preflight', preflight);
+  validateContract<XArticleDocumentV1>('x-article-document', preflight.sanitized_document);
+  const documentImages = preflight.sanitized_document.blocks.flatMap((block, index) =>
+    block.kind === 'image'
+      ? [{ asset_id: block.asset_id, block_ordinal: index + 1, alt_text: block.alt_text }]
+      : []
+  );
+  const inlineImages = preflight.inline_assets.map((asset) => ({
+    asset_id: asset.asset_id,
+    block_ordinal: asset.block_ordinal,
+    alt_text: asset.alt_text
+  }));
+  const removalOrdinals = preflight.removals.map((removal) => removal.block_ordinal);
+  const valid =
+    preflight.sanitized_document_digest === sha256(preflight.sanitized_document)
+    && preflight.preflight_digest === sha256(preflightDigestBody(preflight))
+    && preflight.sanitized_document.cover_asset_id === preflight.cover.asset_id
+    && sha256(documentImages) === sha256(inlineImages)
+    && new Set([
+      preflight.cover.asset_id,
+      ...preflight.inline_assets.map((asset) => asset.asset_id)
+    ]).size === preflight.inline_assets.length + 1
+    && removalOrdinals.every((ordinal, index) => index === 0 || ordinal > removalOrdinals[index - 1]!);
+  if (!valid) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'X Article publication preflight is internally inconsistent'
+    );
+  }
 }

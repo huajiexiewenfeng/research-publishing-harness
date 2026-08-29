@@ -49,6 +49,8 @@ export const CONTRACT_NAMES = [
   'x-article-document',
   'x-article-publication-plan',
   'x-article-publication-preflight',
+  'x-article-fast-path-audit',
+  'x-article-fast-path-confirmation',
   'x-article-existing-draft-binding',
   'x-article-materialization-plan',
   'x-article-materialization-checkpoint',
