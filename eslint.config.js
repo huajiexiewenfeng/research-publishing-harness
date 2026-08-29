@@ -2,7 +2,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', '.worktrees/**']
+    ignores: ['dist/**', 'dist-live/**', 'node_modules/**', '.worktrees/**']
   },
   ...tseslint.configs.recommended,
   {

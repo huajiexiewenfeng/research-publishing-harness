@@ -106,16 +106,25 @@ export async function createPreparedPublicationBundleFixture(
     }
   }));
   next = await adapter.next(execution.execution_id);
-  await claimAndReport(adapter, next.command!, observed(execution.execution_id, next.command!.command_id, {
-    canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
-    page_kind: 'article_editor', controls: editorControls,
-    editor: {
-      draft_id: '2092246293603373056', title: plan.article_plan.intent.document.title,
-      blocks: plan.article_plan.intent.document.blocks, visuals: [], import_state: null,
-      has_unknown_content: false, autosave_state: 'saved'
-    }
-  }));
-  next = await adapter.next(execution.execution_id);
+  if (
+    next.command?.kind === 'observe_article_page'
+    && next.command.purpose === 'reconcile_article_import_completion'
+  ) {
+    await claimAndReport(adapter, next.command, observed(
+      execution.execution_id,
+      next.command.command_id,
+      {
+        canonical_url: 'https://x.com/compose/articles/edit/2092246293603373056',
+        page_kind: 'article_editor', controls: editorControls,
+        editor: {
+          draft_id: '2092246293603373056', title: plan.article_plan.intent.document.title,
+          blocks: plan.article_plan.intent.document.blocks, visuals: [], import_state: null,
+          has_unknown_content: false, autosave_state: 'saved'
+        }
+      }
+    ));
+    next = await adapter.next(execution.execution_id);
+  }
   const coverBinding = plan.article_plan.intent.visuals.find(
     (binding) => binding.placement.kind === 'cover'
   );
