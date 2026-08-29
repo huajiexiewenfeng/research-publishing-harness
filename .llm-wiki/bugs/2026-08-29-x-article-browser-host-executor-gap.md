@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: written design review
+- next_gate: implementation plan review
 - routed_at: 2026-08-29
 
 ## Source
@@ -89,7 +89,7 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 |---|---|---|---|
 | source | done | preserved execution reports and source inspection | 2026-08-29 |
 | design | done | `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md` | 2026-08-29 |
-| plan | active | written design awaiting user review before implementation plan | 2026-08-29 |
+| plan | active | `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md` awaiting execution choice | 2026-08-29 |
 | development | pending |  |  |
 | testing | pending |  |  |
 | archive | pending |  |  |
@@ -97,6 +97,7 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 ## Artifacts
 
 - `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md`
+- `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md`
 
 ## Open Questions
 
