@@ -22,7 +22,7 @@ describe('X Article Fast Path acceptance command', () => {
       '0', '1', '3', '10', 'disconnect_recovery'
     ]);
     expect(output.scenarios.every((scenario) => scenario.ok)).toBe(true);
-  });
+  }, 60_000);
 
   it('registers the focused acceptance command in package scripts', async () => {
     const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as {

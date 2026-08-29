@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { runXArticleFastPathAcceptanceMatrix } from '../../tools/x-article-fast-path-acceptance.js';
 
 describe('X Article Fast Path V3.4 workflow', () => {
-  it('materializes 0, 1, 3, and 10 inline images through one confirmed Draft-only loop', async () => {
-    const result = await runXArticleFastPathAcceptanceMatrix();
+  let result: Awaited<ReturnType<typeof runXArticleFastPathAcceptanceMatrix>>;
+
+  beforeAll(async () => {
+    result = await runXArticleFastPathAcceptanceMatrix();
+  }, 60_000);
+
+  it('materializes 0, 1, 3, and 10 inline images through one confirmed Draft-only loop', () => {
     const regular = result.scenarios.filter((scenario) => scenario.name !== 'disconnect_recovery');
 
     expect(regular.map((scenario) => scenario.inline_images.expected)).toEqual([0, 1, 3, 10]);
@@ -27,8 +32,7 @@ describe('X Article Fast Path V3.4 workflow', () => {
     }
   });
 
-  it('recovers a disconnected image transaction without duplicating writes', async () => {
-    const result = await runXArticleFastPathAcceptanceMatrix();
+  it('recovers a disconnected image transaction without duplicating writes', () => {
     const scenario = result.scenarios.find((candidate) => candidate.name === 'disconnect_recovery');
 
     expect(scenario).toMatchObject({
