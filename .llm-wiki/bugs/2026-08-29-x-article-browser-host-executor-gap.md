@@ -3,7 +3,7 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: implemented; environment verification pending
+- status: implemented; live browser smoke pending
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: clean-environment verification and separately approved Draft-only smoke
+- next_gate: separately approved Draft-only smoke on an allowed HTTPS page
 - routed_at: 2026-08-29
 
 ## Source
@@ -77,10 +77,10 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Verification
 
-- status: partial-pass
-- commands_or_checks: RED/GREEN Host helper, media-attempt and deadline tests; task-scoped ESLint; `pnpm typecheck`; 172-test planned offline suite; `pnpm acceptance:x-article-fast-path`; Skill/manifest validation
-- result_summary: Task 1 Host helper 18/18 passed; Task 2 full Adapter regression 118/118 passed; Task 3 Adapter/CLI suite 151/151 passed; final planned suite 172/172 passed; typecheck and task-scoped ESLint passed; five local Fast Path acceptance scenarios (0, 1, 3, 10 inline images and disconnect recovery) passed with zero duplicate writes and no Preview/Publish commands
-- limitation: repository-wide `pnpm lint` and therefore `pnpm check` are blocked only by four lint errors in the pre-existing untracked `dist-live/` generated declarations. Per the gate, the non-X Chrome transport probe was not run. No X navigation or mutation occurred.
+- status: offline-pass
+- commands_or_checks: RED/GREEN Host helper, media-attempt and deadline tests; `pnpm check`; 172-test planned suite; clean Skill/manifest validation; five Fast Path acceptance scenarios; Chrome local-page transport attempt
+- result_summary: Task 1 Host helper 18/18 passed; Task 2 full Adapter regression 118/118 passed; Task 3 Adapter/CLI suite 151/151 passed; planned suite 172/172 passed; final aggregate check passed lint, typecheck, build, 177 test files with 1218 tests passing and 1 skipped, plus full offline acceptance; five Fast Path scenarios (0, 1, 3, 10 inline images and disconnect recovery) passed with zero duplicate writes and no Preview/Publish commands
+- limitation: Chrome connected, but its URL safety policy rejected navigation to the local `file://` probe and explicitly forbade alternate-surface or local-server workarounds. The browser transport probe therefore remains unexecuted. No X navigation or mutation occurred.
 - residual_risk: a local transport probe cannot prove X accepts a specific asset; one separately approved Draft-only smoke remains necessary
 
 ## Flow Record
@@ -91,7 +91,7 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 | design | done | `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md` | 2026-08-29 |
 | plan | done | Inline Execution selected; no Subagent used | 2026-08-29 |
 | development | done | `4d8d5f2`, `b141cdc`, `9cec5e0`; packaged cover helper, bounded attempts, hard deadline | 2026-08-29 |
-| testing | partial | 172/172 planned tests, typecheck, scoped lint and acceptance pass; global lint blocked by pre-existing `dist-live/`; Chrome probe skipped | 2026-08-29 |
+| testing | done | aggregate `pnpm check` passed: lint, typecheck, build, 1218 tests, and acceptance; Chrome `file://` probe blocked by host policy and recorded as a live-smoke limitation | 2026-08-29 |
 | archive | pending |  |  |
 
 ## Artifacts
