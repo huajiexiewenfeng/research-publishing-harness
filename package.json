@@ -29,6 +29,7 @@
     "test:watch": "vitest",
     "manifest": "tsx tools/build-manifest.ts",
     "acceptance": "tsx tools/acceptance.ts",
+    "acceptance:x-article-fast-path": "tsx tools/x-article-fast-path-acceptance.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm acceptance"
   },
   "dependencies": {

@@ -1,0 +1,465 @@
+import { sha256 } from './digest.js';
+import { HarnessError } from './errors.js';
+import { createResearchTopicRevision, createWeeklyCandidateSet, createWeeklyCycleCancellation, createWeeklyCycleStatus, createWeeklyPublicationBundleBinding, createWeeklyResearchCycle, createWeeklyTopicSelection } from './research-program-contracts.js';
+import { STABLE_ID_PATTERN } from './research-memory-contracts.js';
+import { validateContract } from './schema-validator.js';
+import { assertPublicationBundlePlan } from './publication-bundle-contracts.js';
+import { assertWeeklyOutcomeClosure, assertWeeklyPublicationOutcome, outcomeReleaseReason } from './weekly-outcome-contracts.js';
+const ROADMAP_REF_PATTERN = /^program\/roadmaps\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
+const TOPIC_REF_PATTERN = /^program\/backlog\/topics\/([a-z0-9][a-z0-9_-]*)\/revisions\/([1-9][0-9]*)\.json$/;
+const PHASE_ORDER = {
+    opened: 0, blocked: 0, candidates_submitted: 1, topic_selected: 2,
+    package_compiled: 3, package_frozen: 4, article_finalized: 5,
+    publication_planned: 6, published: 7, cancelled: 8
+};
+function fail(code, message) {
+    throw new HarnessError(code, message);
+}
+function cycleRoot(cycleId) {
+    if (!STABLE_ID_PATTERN.test(cycleId)) {
+        fail('CONTRACT_INVALID', 'Weekly Cycle id must be an ASCII-safe stable id');
+    }
+    return `program/weeks/${cycleId}`;
+}
+function exactRef(left, right) {
+    return left.path === right.path && left.digest === right.digest;
+}
+function exactValue(left, right) {
+    return sha256(left) === sha256(right);
+}
+function roadmapRef(roadmap) {
+    return {
+        path: `program/roadmaps/${roadmap.roadmap_id}/revisions/${roadmap.revision}.json`,
+        digest: roadmap.roadmap_digest
+    };
+}
+function artifactRef(path, digest) {
+    return { path, digest };
+}
+function omitFields(value, fields) {
+    const body = { ...value };
+    for (const field of fields)
+        delete body[field];
+    return body;
+}
+export class WeeklyResearchCycleService {
+    store;
+    roadmaps;
+    backlog;
+    constructor(store, roadmaps, backlog) {
+        this.store = store;
+        this.roadmaps = roadmaps;
+        this.backlog = backlog;
+    }
+    async open(input) {
+        const cycle = createWeeklyResearchCycle(input);
+        const roadmapMatch = ROADMAP_REF_PATTERN.exec(cycle.roadmap_ref.path);
+        if (roadmapMatch === null) {
+            fail('APPROVAL_STALE', 'Weekly Cycle requires a canonical current Roadmap ref');
+        }
+        const roadmap = await this.roadmaps.current(roadmapMatch[1]);
+        if (!exactRef(cycle.roadmap_ref, roadmapRef(roadmap))) {
+            fail('APPROVAL_STALE', 'Weekly Cycle does not bind the current Roadmap revision');
+        }
+        await this.backlog.assertCadenceReady(roadmap.roadmap_id);
+        await this.verifyContext(cycle);
+        await this.assertNoActiveCycle(cycle);
+        const root = cycleRoot(cycle.cycle_id);
+        return this.store.withLock(`${root}/cycle.lock`, async () => {
+            await this.store.writeNew(`${root}/cycle.json`, cycle);
+            const installed = await this.readCycle(cycle.cycle_id);
+            await this.projectStatus(installed, 'opened', input.opened_at);
+            return installed;
+        });
+    }
+    async submitCandidates(input) {
+        const cycle = await this.readCycle(input.cycle_id);
+        if (!exactRef(input.roadmap_ref, cycle.roadmap_ref) ||
+            !exactValue(input.context_binding, cycle.context_binding)) {
+            fail('APPROVAL_STALE', 'Candidate Set must bind the exact Weekly Cycle Roadmap and Context');
+        }
+        const candidateSet = createWeeklyCandidateSet(input);
+        const roadmapId = this.roadmapId(cycle.roadmap_ref);
+        for (const candidate of candidateSet.candidates) {
+            const topic = await this.readTopic(candidate.topic_ref);
+            if (topic.roadmap_id !== roadmapId) {
+                fail('APPROVAL_STALE', 'Candidate Topic belongs to a foreign Roadmap');
+            }
+            if (topic.backlog_state !== 'evidence_ready' || topic.availability !== 'available') {
+                fail('RESEARCH_GATE_BLOCKED', 'Every Candidate requires an available Evidence Ready Topic');
+            }
+        }
+        if (cycle.context_binding.application_status === 'reviewed_not_applied' &&
+            candidateSet.candidates.some((candidate) => candidate.evidence_refs.length === 0 || candidate.source_refs.length === 0)) {
+            await this.projectStatus(cycle, 'blocked', input.created_at, 'Runtime Context was not applied and independent Candidate evidence is incomplete');
+            fail('RESEARCH_GATE_BLOCKED', 'Independent Candidate evidence is required without applied Context');
+        }
+        const root = cycleRoot(cycle.cycle_id);
+        await this.store.writeNew(`${root}/candidates.json`, candidateSet);
+        const installed = await this.readCandidateSet(cycle.cycle_id);
+        await this.projectStatus(cycle, 'candidates_submitted', input.created_at, null, installed);
+        return installed;
+    }
+    async select(input) {
+        const root = cycleRoot(input.cycle_id);
+        const cycle = await this.readCycle(input.cycle_id);
+        const candidateSet = await this.readCandidateSet(input.cycle_id);
+        if (await this.store.exists(`${root}/selection.json`)) {
+            fail('STATE_TRANSITION_INVALID', 'Weekly Cycle already has an immutable Human Selection');
+        }
+        const selection = createWeeklyTopicSelection(candidateSet, input);
+        await this.store.writeNew(`${root}/selection.json`, selection);
+        const installed = await this.readSelection(input.cycle_id, candidateSet);
+        const selected = candidateSet.candidates.find((candidate) => candidate.brief_id === installed.selected_brief_id);
+        await this.backlog.reserve({
+            topic_ref: selected.topic_ref,
+            selection_ref: artifactRef(`${root}/selection.json`, installed.selection_digest),
+            changed_by: installed.selected_by,
+            changed_at: installed.selected_at
+        });
+        await this.projectStatus(cycle, 'topic_selected', input.selected_at, null, candidateSet, installed);
+        return installed;
+    }
+    async cancel(input) {
+        const root = cycleRoot(input.cycle_id);
+        const cycle = await this.readCycle(input.cycle_id);
+        const candidateSet = await this.readCandidateSet(input.cycle_id);
+        const selection = await this.readSelection(input.cycle_id, candidateSet);
+        const current = await this.status(input.cycle_id);
+        if (['publication_planned', 'published'].includes(current.phase)) {
+            fail('STATE_TRANSITION_INVALID', 'Weekly Cycle cannot be cancelled after publication planning');
+        }
+        let cancellation;
+        if (await this.store.exists(`${root}/cancellation.json`)) {
+            cancellation = await this.readCancellation(input.cycle_id, cycle, selection);
+            if (cancellation.reason !== input.reason || cancellation.cancelled_by !== input.cancelled_by ||
+                cancellation.cancelled_at !== input.cancelled_at ||
+                input.confirmed_selection_digest !== selection.selection_digest) {
+                fail('APPROVAL_STALE', 'Cancellation retry does not match the immutable Cancellation event');
+            }
+        }
+        else {
+            cancellation = createWeeklyCycleCancellation(cycle, selection, input);
+            await this.store.writeNew(`${root}/cancellation.json`, cancellation);
+            cancellation = await this.readCancellation(input.cycle_id, cycle, selection);
+        }
+        const selected = candidateSet.candidates.find((candidate) => candidate.brief_id === selection.selected_brief_id);
+        const topicId = this.topicId(selected.topic_ref);
+        const catalog = await this.backlog.catalog(this.roadmapId(cycle.roadmap_ref));
+        const currentTopic = catalog.entries.find((entry) => entry.topic_id === topicId);
+        if (currentTopic === undefined)
+            fail('APPROVAL_STALE', 'Selected Topic is absent from the current Backlog');
+        if (currentTopic.availability === 'reserved') {
+            await this.backlog.release({
+                topic_ref: currentTopic.current_revision_ref,
+                release_reason: input.reason,
+                changed_by: input.cancelled_by,
+                changed_at: input.cancelled_at
+            });
+        }
+        else if (currentTopic.availability !== 'available') {
+            fail('STATE_TRANSITION_INVALID', 'Selected Topic cannot be released from its current state');
+        }
+        return this.projectStatus(cycle, 'cancelled', input.cancelled_at, null, candidateSet, selection, cancellation);
+    }
+    async status(cycleId) {
+        const root = cycleRoot(cycleId);
+        const cycle = await this.readCycle(cycleId);
+        const candidateSet = await this.optionalCandidateSet(cycleId);
+        const selection = candidateSet === null ? null : await this.optionalSelection(cycleId, candidateSet);
+        const cancellation = selection === null
+            ? null
+            : await this.optionalCancellation(cycleId, cycle, selection);
+        const bundleBinding = await this.store.exists(`${root}/publication-bundle-binding.json`)
+            ? await this.readPublicationBundleBinding(cycleId)
+            : null;
+        if (await this.store.exists(`${root}/outcome-closure.json`)) {
+            if (bundleBinding === null || candidateSet === null || selection === null || cancellation !== null) {
+                fail('APPROVAL_STALE', 'Weekly Outcome Closure requires complete publication lineage');
+            }
+            const outcome = await this.readContract(`${root}/outcome.json`, 'weekly-publication-outcome');
+            const closure = await this.readContract(`${root}/outcome-closure.json`, 'weekly-outcome-closure');
+            assertWeeklyPublicationOutcome(outcome);
+            assertWeeklyOutcomeClosure(closure);
+            const outcomeArtifact = await this.store.readContainedArtifact(`${root}/outcome.json`);
+            const bundlePlanArtifact = await this.store.readContainedArtifact(bundleBinding.bundle_plan_ref.path);
+            let bundlePlanValue;
+            try {
+                bundlePlanValue = JSON.parse(bundlePlanArtifact.content.toString('utf8'));
+            }
+            catch {
+                fail('CONTRACT_INVALID', 'Weekly Publication Bundle Plan is not valid JSON');
+            }
+            const bundlePlan = validateContract('publication-bundle-plan', bundlePlanValue);
+            assertPublicationBundlePlan(bundlePlan);
+            const releasedTopic = await this.readTopic(closure.released_topic_ref);
+            const closureMismatches = [
+                closure.outcome_ref.path !== `${root}/outcome.json` ? 'outcome_path' : null,
+                closure.outcome_ref.digest !== outcomeArtifact.digest ? 'outcome_digest' : null,
+                !exactRef(outcome.cycle_ref, {
+                    path: `${root}/cycle.json`, digest: cycle.cycle_digest
+                }) ? 'cycle_ref' : null,
+                !exactRef(outcome.selection_ref, {
+                    path: `${root}/selection.json`, digest: selection.selection_digest
+                }) ? 'selection_ref' : null,
+                bundleBinding.bundle_plan_ref.path !== outcome.bundle_plan_ref.path
+                    ? 'bundle_plan_path' : null,
+                bundleBinding.bundle_plan_ref.digest !== bundlePlan.bundle_digest
+                    ? 'bundle_plan_semantic_digest' : null,
+                outcome.bundle_plan_ref.digest !== bundlePlanArtifact.digest
+                    ? 'bundle_plan_byte_digest' : null,
+                releasedTopic.availability !== 'available' ? 'topic_availability' : null,
+                releasedTopic.previous_revision_ref === null ? 'topic_previous_missing' : null,
+                releasedTopic.previous_revision_ref !== null &&
+                    !exactRef(releasedTopic.previous_revision_ref, outcome.topic_ref)
+                    ? 'topic_previous_ref' : null,
+                releasedTopic.change_reason !== outcomeReleaseReason(outcome)
+                    ? 'topic_release_reason' : null
+            ].filter((item) => item !== null);
+            if (closureMismatches.length > 0) {
+                fail('APPROVAL_STALE', `Weekly Outcome Closure lineage is stale: ${closureMismatches.join(', ')}`);
+            }
+            return this.projectPublished(cycle, candidateSet, selection, bundleBinding, closure);
+        }
+        if (bundleBinding !== null) {
+            if (candidateSet === null || selection === null || cancellation !== null ||
+                !exactRef(bundleBinding.cycle_ref, {
+                    path: `${root}/cycle.json`, digest: cycle.cycle_digest
+                }) ||
+                !exactRef(bundleBinding.selection_ref, {
+                    path: `${root}/selection.json`, digest: selection.selection_digest
+                })) {
+                fail('APPROVAL_STALE', 'Weekly Publication Bundle Binding lineage is stale');
+            }
+            return this.projectPublicationPlanned(cycle, candidateSet, selection, bundleBinding);
+        }
+        const phase = cancellation !== null
+            ? 'cancelled'
+            : selection !== null
+                ? 'topic_selected'
+                : candidateSet !== null
+                    ? 'candidates_submitted'
+                    : 'opened';
+        if (await this.store.exists(`${root}/status.json`)) {
+            const existing = await this.readStatus(cycleId);
+            if (PHASE_ORDER[existing.phase] >= PHASE_ORDER[phase])
+                return existing;
+        }
+        return this.projectStatus(cycle, phase, new Date().toISOString(), null, candidateSet, selection, cancellation);
+    }
+    async verifyContext(cycle) {
+        const root = `memory/queries-v2/${cycle.context_binding.query_id}`;
+        const plan = await this.readSemantic(`${root}/plan.json`, 'research-query-plan-v2', 'plan_digest');
+        const snapshot = await this.readSemantic(`${root}/snapshot.json`, 'research-context-snapshot-v2', 'snapshot_digest');
+        const review = await this.readSemantic(`${root}/review.json`, 'research-context-review-v2', 'review_digest');
+        const binding = cycle.context_binding;
+        if (plan.query_id !== binding.query_id || plan.plan_digest !== binding.plan_digest ||
+            snapshot.query_id !== plan.query_id || snapshot.query_plan_digest !== plan.plan_digest ||
+            snapshot.snapshot_digest !== binding.snapshot_digest ||
+            review.query_id !== plan.query_id || review.query_plan_digest !== plan.plan_digest ||
+            review.snapshot_digest !== snapshot.snapshot_digest || review.review_digest !== binding.review_digest ||
+            snapshot.query_status !== binding.query_status || snapshot.runtime_version !== binding.runtime_version ||
+            !exactValue(review.selected_context_refs, binding.selected_context_refs)) {
+            fail('APPROVAL_STALE', 'Weekly Context binding does not match the reviewed Query artifact chain');
+        }
+    }
+    async assertNoActiveCycle(candidate) {
+        for (const entry of await this.store.list('program/weeks')) {
+            if (entry.kind !== 'directory' || !STABLE_ID_PATTERN.test(entry.name))
+                continue;
+            const path = `${entry.relative_path}/cycle.json`;
+            if (!await this.store.exists(path))
+                continue;
+            const existing = await this.readCycle(entry.name);
+            if (existing.week_number === candidate.week_number &&
+                exactRef(existing.roadmap_ref, candidate.roadmap_ref) &&
+                !await this.store.exists(`${entry.relative_path}/cancellation.json`)) {
+                fail('STATE_TRANSITION_INVALID', 'Roadmap week already has a non-cancelled Weekly Cycle');
+            }
+        }
+    }
+    async projectStatus(cycle, phase, updatedAt, blockedReason = null, candidateSet = null, selection = null, cancellation = null) {
+        const root = cycleRoot(cycle.cycle_id);
+        const input = {
+            cycle_ref: artifactRef(`${root}/cycle.json`, cycle.cycle_digest),
+            phase,
+            candidate_set_ref: candidateSet === null
+                ? null
+                : artifactRef(`${root}/candidates.json`, candidateSet.candidate_set_digest),
+            selection_ref: selection === null
+                ? null
+                : artifactRef(`${root}/selection.json`, selection.selection_digest),
+            cancellation_ref: cancellation === null
+                ? null
+                : artifactRef(`${root}/cancellation.json`, cancellation.cancellation_digest),
+            package_ref: null, article_ref: null, bundle_ref: null, outcome_ref: null,
+            blocked_reason: blockedReason,
+            updated_at: updatedAt
+        };
+        const status = createWeeklyCycleStatus(input);
+        await this.store.replaceAtomic(`${root}/status.json`, status);
+        return this.readStatus(cycle.cycle_id);
+    }
+    async projectPublicationPlanned(cycle, candidateSet, selection, binding) {
+        const root = cycleRoot(cycle.cycle_id);
+        const status = createWeeklyCycleStatus({
+            cycle_ref: { path: `${root}/cycle.json`, digest: cycle.cycle_digest },
+            phase: 'publication_planned',
+            candidate_set_ref: {
+                path: `${root}/candidates.json`,
+                digest: candidateSet.candidate_set_digest
+            },
+            selection_ref: {
+                path: `${root}/selection.json`,
+                digest: selection.selection_digest
+            },
+            cancellation_ref: null,
+            package_ref: binding.research_content_package_ref,
+            article_ref: binding.weekly_article_ref,
+            bundle_ref: {
+                path: `${root}/publication-bundle-binding.json`,
+                digest: binding.binding_digest
+            },
+            outcome_ref: null,
+            blocked_reason: null,
+            updated_at: binding.bound_at
+        });
+        await this.store.replaceAtomic(`${root}/status.json`, status);
+        return this.readStatus(cycle.cycle_id);
+    }
+    async projectPublished(cycle, candidateSet, selection, binding, closure) {
+        const root = cycleRoot(cycle.cycle_id);
+        const status = createWeeklyCycleStatus({
+            cycle_ref: { path: `${root}/cycle.json`, digest: cycle.cycle_digest },
+            phase: 'published',
+            candidate_set_ref: {
+                path: `${root}/candidates.json`, digest: candidateSet.candidate_set_digest
+            },
+            selection_ref: {
+                path: `${root}/selection.json`, digest: selection.selection_digest
+            },
+            cancellation_ref: null,
+            package_ref: binding.research_content_package_ref,
+            article_ref: binding.weekly_article_ref,
+            bundle_ref: {
+                path: `${root}/publication-bundle-binding.json`, digest: binding.binding_digest
+            },
+            outcome_ref: closure.outcome_ref,
+            blocked_reason: null,
+            updated_at: closure.closed_at
+        });
+        await this.store.replaceAtomic(`${root}/status.json`, status);
+        return this.readStatus(cycle.cycle_id);
+    }
+    async readCycle(cycleId) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/cycle.json`, 'weekly-research-cycle');
+        const verified = createWeeklyResearchCycle(omitFields(value, ['schema_version', 'cycle_digest']));
+        if (verified.cycle_digest !== value.cycle_digest || value.cycle_id !== cycleId) {
+            fail('APPROVAL_STALE', 'Weekly Cycle content does not match its immutable path or digest');
+        }
+        return value;
+    }
+    async readCandidateSet(cycleId) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/candidates.json`, 'weekly-candidate-set');
+        const verified = createWeeklyCandidateSet(omitFields(value, ['schema_version', 'candidate_set_digest']));
+        if (verified.candidate_set_digest !== value.candidate_set_digest || value.cycle_id !== cycleId) {
+            fail('APPROVAL_STALE', 'Candidate Set content does not match its immutable path or digest');
+        }
+        return value;
+    }
+    async readSelection(cycleId, candidateSet) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/selection.json`, 'weekly-topic-selection');
+        const verified = createWeeklyTopicSelection(candidateSet, omitFields(value, ['schema_version', 'selection_id', 'selection_digest']));
+        if (verified.selection_digest !== value.selection_digest || value.cycle_id !== cycleId) {
+            fail('APPROVAL_STALE', 'Topic Selection content does not match its immutable path or digest');
+        }
+        return value;
+    }
+    async readCancellation(cycleId, cycle, selection) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/cancellation.json`, 'weekly-cycle-cancellation');
+        const verified = createWeeklyCycleCancellation(cycle, selection, {
+            cycle_id: cycleId, confirmed_selection_digest: selection.selection_digest,
+            reason: value.reason, cancelled_by: value.cancelled_by, cancelled_at: value.cancelled_at
+        });
+        if (verified.cancellation_digest !== value.cancellation_digest) {
+            fail('APPROVAL_STALE', 'Cancellation content does not match its immutable digest');
+        }
+        return value;
+    }
+    async readStatus(cycleId) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/status.json`, 'weekly-cycle-status');
+        const verified = createWeeklyCycleStatus(omitFields(value, ['schema_version', 'projection_digest']));
+        if (verified.projection_digest !== value.projection_digest) {
+            fail('APPROVAL_STALE', 'Weekly Cycle Status digest no longer matches its content');
+        }
+        return value;
+    }
+    async readPublicationBundleBinding(cycleId) {
+        const value = await this.readContract(`${cycleRoot(cycleId)}/publication-bundle-binding.json`, 'weekly-publication-bundle-binding');
+        const verified = createWeeklyPublicationBundleBinding(omitFields(value, ['schema_version', 'binding_digest']));
+        if (verified.binding_digest !== value.binding_digest) {
+            fail('APPROVAL_STALE', 'Weekly Publication Bundle Binding digest is stale');
+        }
+        return value;
+    }
+    async readTopic(ref) {
+        const match = TOPIC_REF_PATTERN.exec(ref.path);
+        if (match === null)
+            fail('APPROVAL_STALE', 'Candidate Topic ref is not canonical');
+        const value = await this.readContract(ref.path, 'research-topic-revision');
+        const verified = createResearchTopicRevision(omitFields(value, ['schema_version', 'revision_digest']));
+        if (verified.revision_digest !== value.revision_digest || !exactRef(ref, {
+            path: `program/backlog/topics/${value.topic_id}/revisions/${value.revision}.json`,
+            digest: value.revision_digest
+        })) {
+            fail('APPROVAL_STALE', 'Candidate Topic ref does not bind an exact immutable revision');
+        }
+        return value;
+    }
+    async readSemantic(path, contract, digestField) {
+        const value = await this.readContract(path, contract);
+        if (value[digestField] !== sha256(omitFields(value, [digestField]))) {
+            fail('APPROVAL_STALE', `${contract} semantic digest no longer matches its content`);
+        }
+        return value;
+    }
+    async readContract(path, contract) {
+        const artifact = await this.store.readContainedArtifact(path);
+        let value;
+        try {
+            value = JSON.parse(artifact.content.toString('utf8'));
+        }
+        catch {
+            fail('CONTRACT_INVALID', `${contract} is not valid JSON`);
+        }
+        return validateContract(contract, value);
+    }
+    async optionalCandidateSet(cycleId) {
+        return await this.store.exists(`${cycleRoot(cycleId)}/candidates.json`)
+            ? this.readCandidateSet(cycleId)
+            : null;
+    }
+    async optionalSelection(cycleId, candidateSet) {
+        return await this.store.exists(`${cycleRoot(cycleId)}/selection.json`)
+            ? this.readSelection(cycleId, candidateSet)
+            : null;
+    }
+    async optionalCancellation(cycleId, cycle, selection) {
+        return await this.store.exists(`${cycleRoot(cycleId)}/cancellation.json`)
+            ? this.readCancellation(cycleId, cycle, selection)
+            : null;
+    }
+    roadmapId(ref) {
+        const match = ROADMAP_REF_PATTERN.exec(ref.path);
+        if (match === null)
+            fail('APPROVAL_STALE', 'Roadmap ref is not canonical');
+        return match[1];
+    }
+    topicId(ref) {
+        const match = TOPIC_REF_PATTERN.exec(ref.path);
+        if (match === null)
+            fail('APPROVAL_STALE', 'Topic ref is not canonical');
+        return match[1];
+    }
+}
+//# sourceMappingURL=weekly-research-cycle-service.js.map

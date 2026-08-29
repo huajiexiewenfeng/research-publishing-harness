@@ -24,6 +24,19 @@ describe('Publication Bundle state machine', () => {
     }
   });
 
+  it('supports reversible prepared-Article phases before the one confirmation', () => {
+    expect(transitionPublicationBundle('planned', 'article_materializing'))
+      .toBe('article_materializing');
+    expect(transitionPublicationBundle('article_materializing', 'article_preview_ready'))
+      .toBe('article_preview_ready');
+    expect(transitionPublicationBundle('article_preview_ready', 'article_materializing'))
+      .toBe('article_materializing');
+    expect(transitionPublicationBundle('article_preview_ready', 'confirmation_pending'))
+      .toBe('confirmation_pending');
+    expect(transitionPublicationBundle('confirmation_pending', 'article_authorized'))
+      .toBe('article_authorized');
+  });
+
   it('does not advance an unknown Article outcome to Single materialization', () => {
     expect(() => transitionPublicationBundle('article_outcome_unknown', 'single_materialized'))
       .toThrowError(/invalid Publication Bundle transition/);

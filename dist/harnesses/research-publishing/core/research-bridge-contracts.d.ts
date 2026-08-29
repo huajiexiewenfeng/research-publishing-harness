@@ -1,0 +1,13 @@
+import type { ClaimProjectionV1, CreateClaimProjectionInput, CreateWeeklyResearchBridgeStatusInput, CreateWeeklyResearchIncrementBindingInput, WeeklyResearchBridgeStatusV1, WeeklyResearchIncrementBindingV1 } from './research-bridge-types.js';
+import type { ClaimBoundaryStatus } from './research-program-types.js';
+import type { LegacyClaimStatus } from './types.js';
+import type { WeeklyPublicationOutcomeV1 } from './weekly-outcome-types.js';
+export declare function projectPackageClaimStatus(status: ClaimBoundaryStatus): LegacyClaimStatus;
+export declare function candidateClaimRef(projectionId: string, sourceClaimId: string): string;
+export declare function incrementIdForOutcome(outcome: WeeklyPublicationOutcomeV1): string;
+export declare function createClaimProjection(input: CreateClaimProjectionInput): ClaimProjectionV1;
+export declare function assertClaimProjection(value: ClaimProjectionV1): void;
+export declare function createWeeklyResearchIncrementBinding(input: CreateWeeklyResearchIncrementBindingInput): WeeklyResearchIncrementBindingV1;
+export declare function assertWeeklyResearchIncrementBinding(value: WeeklyResearchIncrementBindingV1): void;
+export declare function createWeeklyResearchBridgeStatus(input: CreateWeeklyResearchBridgeStatusInput): WeeklyResearchBridgeStatusV1;
+export declare function assertWeeklyResearchBridgeStatus(value: WeeklyResearchBridgeStatusV1): void;

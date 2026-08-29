@@ -1,0 +1,10 @@
+import type { ResearchArtifactRefV1 } from './research-program-types.js';
+import type { CreateResearchContinuationProposalInput, CreateResearchSynthesisAttemptInput, CreateResearchSynthesisRevisionInput, CreateResearchSynthesisStatusInput, CreateSynthesisInputSnapshotInput, ResearchContinuationProposalV1, ResearchSynthesisAttemptV1, ResearchSynthesisCandidateV1, ResearchSynthesisRevisionV1, ResearchSynthesisStatusV1, SynthesisInputSnapshotV1 } from './research-synthesis-types.js';
+export declare function synthesisSourceRef(ref: ResearchArtifactRefV1): string;
+export declare function createSynthesisInputSnapshot(input: CreateSynthesisInputSnapshotInput): SynthesisInputSnapshotV1;
+export declare function assertSynthesisInputSnapshot(value: SynthesisInputSnapshotV1): void;
+export declare function assertResearchSynthesisCandidate(candidate: ResearchSynthesisCandidateV1, snapshot: SynthesisInputSnapshotV1): void;
+export declare function createResearchSynthesisAttempt(input: CreateResearchSynthesisAttemptInput): ResearchSynthesisAttemptV1;
+export declare function createResearchSynthesisRevision(input: CreateResearchSynthesisRevisionInput, snapshot: SynthesisInputSnapshotV1): ResearchSynthesisRevisionV1;
+export declare function createResearchContinuationProposal(input: CreateResearchContinuationProposalInput, allowedOriginRefs: readonly string[]): ResearchContinuationProposalV1;
+export declare function createResearchSynthesisStatus(input: CreateResearchSynthesisStatusInput): ResearchSynthesisStatusV1;

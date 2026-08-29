@@ -7,12 +7,89 @@ import {
 } from 'ajv/dist/2020.js';
 import formatsModule, { type FormatsPlugin } from 'ajv-formats';
 
+import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
 import type { ContractName } from './types.js';
 import { CONTRACT_NAMES } from './types.js';
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 (formatsModule as unknown as FormatsPlugin)(ajv);
+ajv.addKeyword({
+  keyword: 'orderedUniqueAnchorIds',
+  type: 'array',
+  schemaType: 'boolean',
+  errors: false,
+  validate: (enabled: boolean, value: unknown[]): boolean => {
+    if (!enabled) return true;
+
+    const anchorIds = new Set<string>();
+    let previousOrdinal = 0;
+    for (const item of value) {
+      if (typeof item !== 'object' || item === null) return false;
+      const anchorId = Reflect.get(item, 'anchor_id');
+      const blockOrdinal = Reflect.get(item, 'block_ordinal');
+      if (
+        typeof anchorId !== 'string'
+        || typeof blockOrdinal !== 'number'
+        || anchorIds.has(anchorId)
+        || blockOrdinal <= previousOrdinal
+      ) {
+        return false;
+      }
+      anchorIds.add(anchorId);
+      previousOrdinal = blockOrdinal;
+    }
+    return true;
+  }
+});
+ajv.addKeyword({
+  keyword: 'materializationPlanConsistent',
+  type: 'object',
+  schemaType: 'boolean',
+  errors: false,
+  validate: (enabled: boolean, value: object): boolean => {
+    if (!enabled) return true;
+
+    try {
+      const visualAnchors = Reflect.get(value, 'visual_anchors');
+      const draftBinding = Reflect.get(value, 'draft_binding');
+      const existingDraft = draftBinding !== null;
+      const commandCeiling = Reflect.get(value, 'expected_command_ceiling');
+      const observationCeiling = Reflect.get(value, 'expected_observation_ceiling');
+      const materializationDigest = Reflect.get(value, 'materialization_digest');
+      if (
+        !Array.isArray(visualAnchors)
+        || commandCeiling !== (existingDraft ? 4 : 12) + visualAnchors.length
+        || observationCeiling !== (existingDraft ? 3 : 9) + visualAnchors.length
+        || typeof materializationDigest !== 'string'
+      ) {
+        return false;
+      }
+
+      if (existingDraft) {
+        if (typeof draftBinding !== 'object' || draftBinding === null) return false;
+        const bindingBody = Object.fromEntries(
+          Object.entries(draftBinding).filter(([key]) => key !== 'binding_digest')
+        );
+        if (
+          Reflect.get(draftBinding, 'binding_digest') !== sha256(bindingBody)
+          || Reflect.get(draftBinding, 'expected_account') !== Reflect.get(value, 'target_account')
+          || Reflect.get(draftBinding, 'expected_document_digest') !== Reflect.get(value, 'document_digest')
+          || Reflect.get(draftBinding, 'expected_import_template_digest') !== Reflect.get(value, 'import_template_digest')
+        ) {
+          return false;
+        }
+      }
+
+      const body = Object.fromEntries(
+        Object.entries(value).filter(([key]) => key !== 'materialization_digest')
+      );
+      return materializationDigest === sha256(body);
+    } catch {
+      return false;
+    }
+  }
+});
 
 const validators = new Map<ContractName, ValidateFunction>();
 

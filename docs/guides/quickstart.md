@@ -124,20 +124,60 @@ For a safe synthetic preview, run `x browser start`, inspect the returned read-o
 
 If Browser execution fails before Submit, Manual remains available only through a new Manual Plan, Preview, and explicit Approval. After Submit is attempted, recovery is read-only through `x browser resume-verification`.
 
-## 9. V3 X Article publishing
+## 9. V3.4 X Article Fast Path
+
+Fast Path prepares a complete saved Draft after one Audit confirmation. It does not ask the Human to choose V3.2 or V3.3: `{ "kind": "new" }` or `{ "kind": "existing", "draft_id": "..." }` in the Audit selects the internal compatibility path.
+
+```text
+x-article fast-path audit --input <package-target-and-draft-target.json>
+→ inspect one Audit
+→ x-article fast-path confirm --input <audit-confirmation.json>
+→ x-article fast-path prepare --audit <audit.json> --confirmation <confirmation.json>
+  --capabilities <capabilities.json> --release-set <release-set.json>
+  [--observation <existing-draft-observation.json>]
+→ one continuous Host loop
+→ x-article fast-path status --execution <id>
+→ draft_reconciled
+```
+
+All commands also require `--workspace <path> --output json`. The Host continues through the existing atomic `next → claim → one Chrome transaction → report` loop without per-image Human confirmation. If one write has an uncertain outcome, `x-article fast-path recover --execution <id>` permits one read-only reconciliation from the same checkpoint.
+
+The Fast Path confirmation authorizes Draft materialization once. It does not authorize Preview or Publish. The terminal output is a saved Draft URL plus redacted stage and evidence paths; publishing remains a separate future decision.
+
+### 9.1 V3.2/V3.3 compatibility publishing
 
 Keep long-form content as an X Article; do not split it into a Thread merely because the Post branch has older automation.
 
+The default path separates reversible Draft preparation from the irreversible Publish command:
+
 ```text
 x-article plan
-→ exact Article Audit block
-→ one publish_once confirmation
-→ x-article approve
-→ x-article browser start
-→ x-article browser next → claim → one Chrome action → report
+→ x-article browser prepare --plan <path> --capabilities <path>
+→ next → claim → fake/offline or explicitly selected Chrome Host action → report
+→ verified Preview and immutable materialization receipt
+→ one exact Preview-bound confirmation
+→ x-article browser confirm-publish --execution <id> --confirmation <path>
+→ next → claim the one publish_article_once command → report
 ```
 
-Use action-time Human approval before a real file upload and before claiming the final public Publish command. `cancel-before-publish` is valid only before that barrier. After Publish is issued, use `resume-verification`; never issue a second Publish.
+All commands also require `--workspace <path> --output json`. Inspect progress without mutation with `x-article browser materialization-status --execution <id>`. After a recoverable Editor interruption, use `x-article browser resume-editor --execution <id>`; recovery observes the actual saved Draft and checkpoint before deciding what remains.
+
+For a Host advertising `import_article_document`, `replace_article_visual_anchor`, structured rich-text paste, inline Alt read/write, Preview observation, and the matching release set, the V3.2 bulk path is:
+
+```text
+Harness import command
+→ Host pastes the digest-bound structured document once
+→ Harness verifies template digest and ordered anchors
+→ Host replaces each approved visual anchor
+→ Harness verifies the final Article Document
+→ Preview receipt → action-time confirmation → publish_once
+```
+
+The observed X editor has no `.md` file-upload path. The Host performs the import as one controlled, claimed structured-document action; it does not paste raw or unplanned Markdown. Temporary anchors reserve approved inline-image positions and are replaced separately at their approved block ordinals, never appended to the end. Unresolved anchors cannot reach Preview. After materialization begins, the Host must not switch strategy. Crash recovery re-observes the exact persisted import state, preserves unknown Human content, and resumes the next safe anchor transaction; it never reimports observed content.
+
+V3.2 `prepare` fails with `ARTICLE_BULK_IMPORT_REQUIRED` when the complete bulk capability set is absent. The legacy `block_materialization/v1` path is explicit compatibility only: it must be selected before execution, has a different locked Plan digest, and cannot be chosen as a runtime fallback.
+
+Automated acceptance never opens a public browser session or publishes. It models Draft, checkpoint, confirmation, and at-most-once Publish boundaries in a temporary workspace; live Chrome performance is validated only by the companion Browser Host plan.
 
 ## 10. V2.1 visual handoff
 

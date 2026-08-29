@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -6,20 +6,839 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
+import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
+import { computeXArticlePageRevision } from '../../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
 import { XService } from '../../harnesses/research-publishing/branches/x-harness/x-service.js';
-import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
+import {
+  createSupersedingXArticleMaterializationReceipt,
+  createXArticleMaterializationReceipt,
+  type XArticleMaterializationCheckpointV1,
+  type XArticleMaterializationPlanV1
+} from '../../harnesses/research-publishing/core/x-article-materialization.js';
+import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { publicationPlanV2Fixture } from '../fixtures/publication-plan-v2.js';
 import { publicationPlanV2_1Fixture } from '../fixtures/publication-plan-v2-1.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
 const cli = resolve('dist/harnesses/research-publishing/cli/index.js');
+const sourceCli = resolve('harnesses/research-publishing/cli/index.ts');
 
 function run(args: readonly string[]) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
 }
 
+function runSource(args: readonly string[]) {
+  return spawnSync(process.execPath, ['--import', 'tsx', sourceCli, ...args], { encoding: 'utf8' });
+}
+
+async function filesystemSnapshot(root: string): Promise<readonly string[]> {
+  const entries: string[] = [];
+  async function visit(path: string, relativePath: string): Promise<void> {
+    const metadata = await stat(path);
+    entries.push([
+      relativePath || '.', metadata.isDirectory() ? 'directory' : 'file',
+      metadata.size, metadata.mtimeMs
+    ].join('|'));
+    if (!metadata.isDirectory()) return;
+    for (const name of (await readdir(path)).sort()) {
+      await visit(join(path, name), relativePath.length === 0 ? name : `${relativePath}/${name}`);
+    }
+  }
+  await visit(root, '');
+  return entries;
+}
+
+function materializationCliPlan() {
+  return createXArticlePublicationPlan({
+    planId: 'plan_cli_materialization',
+    runId: 'run_cli_materialization',
+    targetAccount: '@Glen56121',
+    articlePackage: {
+      root: 'articles/runtime/article_cli_materialization',
+      digest: `sha256:${'a'.repeat(64)}`
+    },
+    document: {
+      schema_version: '1.0',
+      title: 'Fast materialization',
+      cover_asset_id: null,
+      blocks: [{
+        kind: 'paragraph',
+        runs: [{ text: 'Bulk import remains evidence-bound.', marks: [], link: null }]
+      }]
+    },
+    visuals: [],
+    plannedAt: '2026-08-27T09:00:00.000Z',
+    provenance: {}
+  });
+}
+
+const materializationCliCapabilities = {
+  executor: 'codex-chrome',
+  executor_version: '26.820.60940',
+  browser_family: 'chrome',
+  capabilities: [
+    'observe_article_page', 'create_article_draft', 'set_article_title', 'import_article_document',
+    'replace_article_visual_anchor', 'open_article_preview', 'open_publish_review',
+    'publish_article_once'
+  ],
+  observed_at: '2026-08-27T09:00:00.000Z'
+} as const;
+
+const existingDraftCover = {
+  asset_id: 'asset_cli_existing_cover', relative_path: 'assets/cover.png',
+  digest: `sha256:${'b'.repeat(64)}` as `sha256:${string}`, mime_type: 'image/png' as const,
+  alt_text: 'A durable publication boundary.', claim_refs: ['claim_cli_existing_media']
+};
+const existingDraftInline = {
+  ...existingDraftCover,
+  asset_id: 'asset_cli_existing_inline', relative_path: 'assets/inline.png',
+  digest: `sha256:${'c'.repeat(64)}` as `sha256:${string}`,
+  alt_text: 'A locked inline visual anchor.'
+};
+
+function existingDraftMediaCliPlan() {
+  return createXArticlePublicationPlan({
+    planId: 'plan_cli_existing_media', runId: 'run_cli_existing_media',
+    targetAccount: '@Glen56121',
+    articlePackage: {
+      root: 'articles/runtime/article_cli_existing_media',
+      digest: `sha256:${'d'.repeat(64)}`
+    },
+    document: {
+      schema_version: '1.0', title: 'Existing Draft media completion',
+      cover_asset_id: existingDraftCover.asset_id,
+      blocks: [
+        { kind: 'paragraph', runs: [{ text: 'The body is already complete.', marks: [], link: null }] },
+        { kind: 'image', asset_id: existingDraftInline.asset_id, alt_text: existingDraftInline.alt_text }
+      ]
+    },
+    visuals: [
+      { asset: existingDraftCover, placement: { kind: 'cover' } },
+      { asset: existingDraftInline, placement: { kind: 'block', block_ordinal: 2 } }
+    ],
+    plannedAt: '2026-08-27T09:00:00.000Z', provenance: {}
+  });
+}
+
+const existingDraftMediaCliCapabilities = {
+  ...materializationCliCapabilities,
+  capabilities: [...materializationCliCapabilities.capabilities, 'upload_article_cover']
+} as const;
+
+async function createFastPathCliPackage(store: WorkspaceStore) {
+  const root = 'articles/runtime-boundary/article_cli_fast_path';
+  const coverBytes = new Uint8Array([1, 2, 3]);
+  const cover = {
+    asset_id: 'cover_cli_fast', relative_path: 'assets/cover.png', digest: sha256Bytes(coverBytes),
+    mime_type: 'image/png' as const, alt_text: 'A governed Runtime boundary.',
+    claim_refs: ['claim:cover']
+  };
+  const manifestBase = {
+    schema_version: '1.0', article_run_id: 'article_cli_fast_path',
+    bindings: [{
+      slot_id: 'cover_slot', asset: cover, placement_ordinal: 1, width: 1600, height: 900,
+      byte_size: coverBytes.length, normalization_version: 'v1',
+      provenance: { method: 'generated', tool: 'test', source_digest: null }, editable_source: null
+    }]
+  };
+  const files = {
+    'article.md': '# Fast Path CLI\n\n![A governed Runtime boundary.](assets/cover.png)\n\nSkills own semantics.\n',
+    'visual-manifest.json': { ...manifestBase, manifest_digest: sha256(manifestBase) },
+    'draft-candidate.json': {
+      schema_version: '1.0', run_id: 'article_cli_fast_path', title: 'Fast Path CLI',
+      summary: 'Skills own semantics.', language: 'en',
+      sections: [{
+        section_id: 'boundary', heading: 'Boundary', markdown: 'Skills own semantics.',
+        claim_refs: [], source_refs: []
+      }],
+      visual_slots: [{
+        slot_id: 'cover_slot', placement: { kind: 'cover' }, purpose: 'cover', required: true,
+        brief: 'A governed Runtime boundary.', claim_refs: ['claim:cover']
+      }],
+      open_questions: []
+    },
+    'assets/cover.png': coverBytes
+  };
+  const digest = sha256(Object.entries(files).map(([path, value]) => ({
+    path,
+    digest: value instanceof Uint8Array ? sha256Bytes(value) : sha256(value)
+  })).sort((left, right) => left.path.localeCompare(right.path)));
+  const packageRef = {
+    root, digest, artifacts: Object.keys(files).map((path) => `${root}/${path}`), warnings: []
+  };
+  await store.writeNewDirectory(root, { ...files, 'package-ref.json': packageRef });
+  return packageRef;
+}
+
+function existingDraftCliObservation(
+  overrides: Record<string, unknown> = {}
+) {
+  const plan = existingDraftMediaCliPlan();
+  const template = createXArticleImportTemplate(plan.intent.document);
+  const body = {
+    schema_version: '1.0', observation_id: 'observation_cli_existing_media',
+    execution_id: 'source_execution_cli_existing_media', command_id: 'source_command_cli_existing_media',
+    origin: 'https://x.com',
+    canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+    observed_at: '2026-08-27T09:00:00.000Z', account_handle: '@Glen56121',
+    page_kind: 'article_editor',
+    controls: [
+      { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
+      { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
+      { ref: 'preview', role: 'link', name: 'Preview', test_id: null, disabled: false }
+    ],
+    editor: {
+      draft_id: '2092851979932647424', title: plan.intent.document.title,
+      blocks: plan.intent.document.blocks.filter((block) => block.kind !== 'image'),
+      visuals: [],
+      import_state: {
+        template_digest: template.template_digest,
+        source_document_digest: template.source_document_digest,
+        unresolved_anchors: template.anchors
+      },
+      has_unknown_content: false, autosave_state: 'saved'
+    },
+    preview: null, publish_review: null, public_article: null,
+    ...overrides
+  };
+  return { ...body, page_revision: computeXArticlePageRevision(body) };
+}
+
 describe('research-publish CLI', () => {
+  it('advertises the stable X Article V3.4 control-plane routes as machine-readable help', () => {
+    const result = runSource(['--help']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      operation: 'help',
+      artifact: {
+        routes: [
+          'x-article fast-path audit --workspace <path> --input <input.json> --output json',
+          'x-article fast-path confirm --workspace <path> --input <input.json> --output json',
+          'x-article fast-path prepare --workspace <path> --audit <path> --confirmation <path> --capabilities <path> --release-set <path> [--observation <path>] --output json',
+          'x-article fast-path status --workspace <path> --execution <id> --output json',
+          'x-article fast-path recover --workspace <path> --execution <id> --output json',
+          'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+          'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
+          'x-article browser resume-editor --workspace <path> --execution <id> --output json',
+          'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
+          'x-article browser materialization-status --workspace <path> --execution <id> --output json'
+        ],
+        compatibility_aliases: [
+          'x-article browser resume-editor --execution-id <id>'
+        ]
+      },
+      state: 'ready'
+    });
+    expect(run(['--help']).stdout).toBe(result.stdout);
+  });
+
+  it('confirms, prepares, and reports a redacted X Article Fast Path without mode selection', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-fast-path-'));
+    const workspace = join(parent, 'workspace');
+    const store = await WorkspaceStore.open(workspace);
+    const packageRef = await createFastPathCliPackage(store);
+    const auditInput = join(parent, 'audit-input.json');
+    const confirmInput = join(parent, 'confirm.json');
+    const auditPath = join(parent, 'audit.json');
+    const confirmationPath = join(parent, 'confirmation.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    const releaseSetPath = join(parent, 'release-set.json');
+    await writeFile(auditInput, JSON.stringify({
+      package_ref: packageRef,
+      target_account: '@Glen56121',
+      draft_target: { kind: 'new' }
+    }));
+    const audited = runSource([
+      'x-article', 'fast-path', 'audit', '--workspace', workspace,
+      '--input', auditInput, '--output', 'json'
+    ]);
+    expect(audited.status, audited.stderr).toBe(0);
+    const audit = JSON.parse(audited.stdout).artifact;
+    expect(audit).toMatchObject({
+      protocol: 'x-article-materialization/v3.4', draft_target: { kind: 'new' }
+    });
+    await writeFile(auditPath, JSON.stringify(audit));
+    await writeFile(confirmInput, JSON.stringify({
+      audit, confirmed_by: 'human:Glen56121', ttl_ms: 3_600_000
+    }));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+    await writeFile(releaseSetPath, JSON.stringify({
+      harness_protocol: 'x-article-materialization/v3.4',
+      registry_protocol: 'x-article-materialization/v3.4',
+      skill_protocol: 'x-article-materialization/v3.4',
+      browser_host_protocol: 'x-article-materialization/v3.4'
+    }));
+
+    const confirmed = runSource([
+      'x-article', 'fast-path', 'confirm', '--workspace', workspace,
+      '--input', confirmInput, '--output', 'json'
+    ]);
+    expect(confirmed.status, confirmed.stderr).toBe(0);
+    const confirmation = JSON.parse(confirmed.stdout).artifact;
+    expect(confirmation).toMatchObject({ scope: 'materialize_draft_once' });
+    await writeFile(confirmationPath, JSON.stringify(confirmation));
+
+    const prepared = runSource([
+      'x-article', 'fast-path', 'prepare', '--workspace', workspace,
+      '--audit', auditPath, '--confirmation', confirmationPath,
+      '--capabilities', capabilitiesPath, '--release-set', releaseSetPath,
+      '--output', 'json'
+    ]);
+    expect(prepared.status, prepared.stderr).toBe(0);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+
+    const status = runSource([
+      'x-article', 'fast-path', 'status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(status.status, status.stderr).toBe(0);
+    const statusResult = JSON.parse(status.stdout);
+    expect(statusResult).toMatchObject({
+      operation: 'x-article fast-path status',
+      artifact: {
+        execution_id: executionId,
+        stage: 'Draft ready', cover: '0/1', inline_images: '0/0', alt: '0/1',
+        recovery_count: 0, terminal_state: 'created', draft_url: null, timed_out: false
+      }
+    });
+    expect(Object.keys(statusResult.artifact).sort()).toEqual([
+      'alt', 'cover', 'draft_url', 'elapsed_seconds', 'evidence_paths',
+      'execution_id', 'inline_images', 'recovery_count', 'stage', 'terminal_state', 'timed_out'
+    ]);
+    expect(JSON.stringify(statusResult)).not.toContain('materialization_v3_2');
+    expect(JSON.stringify(statusResult)).not.toContain('media_completion_v3_3');
+
+    const contextPath = `runs/${executionId}/x-article/browser/adapter-context.json`;
+    const expiredContext = await store.readJson<Record<string, unknown>>(contextPath);
+    await store.replaceAtomic(contextPath, {
+      ...expiredContext,
+      fast_path: {
+        ...(expiredContext.fast_path as Record<string, unknown>),
+        started_at: '2000-01-01T00:00:00.000Z'
+      }
+    });
+    const expiredStatus = runSource([
+      'x-article', 'fast-path', 'status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(expiredStatus.status, expiredStatus.stderr).toBe(0);
+    expect(JSON.parse(expiredStatus.stdout)).toMatchObject({
+      artifact: { stage: 'Timed out', timed_out: true }
+    });
+
+    const existingAuditInput = join(parent, 'audit-existing-input.json');
+    await writeFile(existingAuditInput, JSON.stringify({
+      package_ref: packageRef,
+      target_account: '@Glen56121',
+      draft_target: { kind: 'existing', draft_id: '2092851979932647424' }
+    }));
+    const existingAudited = runSource([
+      'x-article', 'fast-path', 'audit', '--workspace', workspace,
+      '--input', existingAuditInput, '--output', 'json'
+    ]);
+    expect(existingAudited.status, existingAudited.stderr).toBe(0);
+    const existingAudit = JSON.parse(existingAudited.stdout).artifact;
+    const existingConfirmInput = join(parent, 'confirm-existing.json');
+    await writeFile(existingConfirmInput, JSON.stringify({
+      audit: existingAudit, confirmed_by: 'human:Glen56121', ttl_ms: 3_600_000
+    }));
+    const existingConfirmed = runSource([
+      'x-article', 'fast-path', 'confirm', '--workspace', workspace,
+      '--input', existingConfirmInput, '--output', 'json'
+    ]);
+    expect(existingConfirmed.status, existingConfirmed.stderr).toBe(0);
+    const existingAuditPath = join(parent, 'audit-existing.json');
+    const existingConfirmationPath = join(parent, 'confirmation-existing.json');
+    const existingObservationPath = join(parent, 'observation-existing.json');
+    await writeFile(existingAuditPath, JSON.stringify(existingAudit));
+    await writeFile(existingConfirmationPath, JSON.stringify(JSON.parse(existingConfirmed.stdout).artifact));
+    const existingPlan = existingAudit.publication_plan;
+    const template = createXArticleImportTemplate(existingPlan.intent.document);
+    const observationBody = {
+      schema_version: '1.0', observation_id: 'observation_cli_fast_existing',
+      execution_id: 'source_cli_fast_existing', command_id: 'command_cli_fast_existing',
+      origin: 'https://x.com', canonical_url: 'https://x.com/compose/articles/edit/2092851979932647424',
+      observed_at: new Date().toISOString(), account_handle: '@Glen56121', page_kind: 'article_editor',
+      controls: [], editor: {
+        draft_id: '2092851979932647424', title: existingPlan.intent.document.title,
+        blocks: existingPlan.intent.document.blocks.filter((block: { kind: string }) => block.kind !== 'image'),
+        visuals: [], import_state: {
+          template_digest: template.template_digest,
+          source_document_digest: template.source_document_digest,
+          unresolved_anchors: template.anchors
+        }, has_unknown_content: false, autosave_state: 'saved'
+      }, preview: null, publish_review: null, public_article: null
+    };
+    await writeFile(existingObservationPath, JSON.stringify({
+      ...observationBody,
+      page_revision: computeXArticlePageRevision(observationBody as never)
+    }));
+    const existingPrepared = runSource([
+      'x-article', 'fast-path', 'prepare', '--workspace', workspace,
+      '--audit', existingAuditPath, '--confirmation', existingConfirmationPath,
+      '--capabilities', capabilitiesPath, '--release-set', releaseSetPath,
+      '--observation', existingObservationPath, '--output', 'json'
+    ]);
+    expect(existingPrepared.status, existingPrepared.stderr).toBe(0);
+    const existingExecutionId = JSON.parse(existingPrepared.stdout).artifact.execution_id as string;
+    await expect(store.readJson(
+      `runs/${existingExecutionId}/x-article/browser/adapter-context.json`
+    )).resolves.toMatchObject({ execution_mode: 'media_completion_v3_3' });
+  });
+
+  it('prepares a strictly bound existing Draft media-completion execution', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-existing-media-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const observationPath = join(parent, 'observation.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(existingDraftMediaCliPlan()));
+    await writeFile(observationPath, JSON.stringify(existingDraftCliObservation()));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare-existing-media',
+      '--workspace', workspace, '--plan', planPath, '--observation', observationPath,
+      '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    expect(prepared.status).toBe(0);
+    expect(prepared.stderr).toBe('');
+    const result = JSON.parse(prepared.stdout) as { artifact: { execution_id: string } };
+    expect(result).toMatchObject({
+      ok: true,
+      operation: 'x-article browser prepare-existing-media',
+      artifact: { state: 'created', draft_id: null },
+      state: 'created'
+    });
+
+    const base = join(workspace, 'runs', result.artifact.execution_id, 'x-article', 'browser');
+    const context = JSON.parse(await readFile(join(base, 'adapter-context.json'), 'utf8'));
+    expect(context).toMatchObject({
+      execution_mode: 'media_completion_v3_3',
+      materialization_plan: {
+        draft_binding: {
+          draft_id: '2092851979932647424', mode: 'adopt_existing',
+          binding_digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)
+        }
+      }
+    });
+
+    const status = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', result.artifact.execution_id, '--output', 'json'
+    ]);
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      ok: true, operation: 'x-article browser materialization-status',
+      artifact: { phase: 'preflight_pending', publication_status: 'pre_public' },
+      state: 'pre_public'
+    });
+    expect(status.stdout).not.toMatch(/Existing Draft media completion|draft_id|command_id|account_handle|assets\//);
+  });
+
+  it('fails closed for malformed or unsafe existing Draft preparation inputs', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-existing-media-invalid-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(existingDraftMediaCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(existingDraftMediaCliCapabilities));
+
+    const inputs = [
+      { name: 'malformed', value: '{' },
+      { name: 'unsafe-execution', value: JSON.stringify(existingDraftCliObservation({ execution_id: '../escape' })) },
+      { name: 'wrong-account', value: JSON.stringify(existingDraftCliObservation({ account_handle: '@OtherAccount' })) },
+      { name: 'changed-revision', value: JSON.stringify({ ...existingDraftCliObservation(), page_revision: `sha256:${'0'.repeat(64)}` }) },
+      { name: 'existing-cover', value: JSON.stringify(existingDraftCliObservation({
+        editor: {
+          ...existingDraftCliObservation().editor,
+          visuals: [{
+            ref: 'cover', asset_id: existingDraftCover.asset_id, kind: 'cover', block_ordinal: null,
+            alt_text: existingDraftCover.alt_text, status: 'uploaded', owned_by_execution: false
+          }]
+        }
+      })) },
+      { name: 'unknown-inline', value: JSON.stringify(existingDraftCliObservation({
+        editor: { ...existingDraftCliObservation().editor, has_unknown_content: true }
+      })) }
+    ];
+
+    for (const input of inputs) {
+      const observationPath = join(parent, `${input.name}.json`);
+      await writeFile(observationPath, input.value);
+      const before = await filesystemSnapshot(parent);
+      const result = runSource([
+        'x-article', 'browser', 'prepare-existing-media', '--workspace', workspace,
+        '--plan', planPath, '--observation', observationPath,
+        '--capabilities', capabilitiesPath, '--output', 'json'
+      ]);
+      expect(result.status, input.name).not.toBe(0);
+      expect(JSON.parse(result.stdout), input.name).toMatchObject({ ok: false });
+      await expect(filesystemSnapshot(parent), input.name).resolves.toEqual(before);
+    }
+
+    const validObservationPath = join(parent, 'valid.json');
+    await writeFile(validObservationPath, JSON.stringify(existingDraftCliObservation()));
+    const extra = runSource([
+      'x-article', 'browser', 'prepare-existing-media', '--workspace', workspace,
+      '--plan', planPath, '--observation', validObservationPath,
+      '--capabilities', capabilitiesPath, '--execution', 'extra', '--output', 'json'
+    ]);
+    expect(extra.status).toBe(2);
+    expect(JSON.parse(extra.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+  });
+
+  it('prepares V3.2 from separate validated files and reports redacted durable status', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-materialization-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare', '--workspace', workspace,
+      '--plan', planPath, '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    expect(prepared.status).toBe(0);
+    expect(prepared.stderr).toBe('');
+    const preparedJson = JSON.parse(prepared.stdout) as {
+      artifact: { execution_id: string; state: string };
+    };
+    expect(preparedJson).toMatchObject({
+      ok: true, operation: 'x-article browser prepare',
+      artifact: { state: 'created' }, state: 'created'
+    });
+
+    const statusArgs = [
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', preparedJson.artifact.execution_id, '--output', 'json'
+    ];
+    const beforeStatus = await filesystemSnapshot(workspace);
+    const firstStatus = runSource(statusArgs);
+    const secondStatus = runSource(statusArgs);
+    expect(firstStatus.status).toBe(0);
+    expect(secondStatus.stdout).toBe(firstStatus.stdout);
+    const status = JSON.parse(firstStatus.stdout);
+    expect(status).toMatchObject({
+      ok: true,
+      operation: 'x-article browser materialization-status',
+      artifact: {
+        execution_id: preparedJson.artifact.execution_id,
+        phase: 'preflight_pending',
+        publication_plan_digest: expect.stringMatching(/^sha256:/),
+        materialization_digest: expect.stringMatching(/^sha256:/),
+        receipt: { present: false, status: 'absent', receipt_digest: null },
+        confirmation: { state: 'absent', confirmation_digest: null },
+        publication_status: 'pre_public'
+      },
+      state: 'pre_public'
+    });
+    expect(run(statusArgs).stdout).toBe(firstStatus.stdout);
+    await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeStatus);
+    expect(Object.keys(status.artifact).sort()).toEqual([
+      'confirmation', 'execution_id', 'materialization_digest', 'phase',
+      'publication_plan_digest', 'publication_status', 'receipt'
+    ]);
+    expect(firstStatus.stdout).not.toContain('confirmed_by');
+    expect(firstStatus.stdout).not.toContain('Bulk import remains evidence-bound.');
+    expect(firstStatus.stdout).not.toMatch(/run_id|plan_id|draft_id|attempt_id|command_id|observation_id|latest_receipt_path/);
+
+    const base = join(
+      workspace, 'runs', preparedJson.artifact.execution_id, 'x-article', 'browser'
+    );
+    const context = JSON.parse(await readFile(join(base, 'adapter-context.json'), 'utf8'));
+    await writeFile(join(base, 'adapter-context.json'), JSON.stringify({
+      ...context,
+      snapshot: { ...context.snapshot, state: 'finalized' }
+    }));
+    const contextOnly = runSource(statusArgs);
+    expect(JSON.parse(contextOnly.stdout)).toMatchObject({
+      artifact: { publication_status: 'pre_public', receipt: { present: false } },
+      state: 'pre_public'
+    });
+
+    const materializationPlan = JSON.parse(
+      await readFile(join(base, 'materialization-plan.json'), 'utf8')
+    ) as XArticleMaterializationPlanV1;
+    const storedCheckpoint = JSON.parse(
+      await readFile(join(base, 'materialization-checkpoint.json'), 'utf8')
+    ) as XArticleMaterializationCheckpointV1;
+    const previewCheckpoint: XArticleMaterializationCheckpointV1 = {
+      ...storedCheckpoint,
+      draft_id: 'draft_cli_materialization',
+      phase: 'preview_verified',
+      body: { status: 'verified', observed_digest: materializationPlan.import_template_digest },
+      last_editor_revision: `sha256:${'b'.repeat(64)}`,
+      updated_at: '2026-08-27T09:01:00.000Z'
+    };
+    await writeFile(join(base, 'materialization-checkpoint.json'), JSON.stringify(previewCheckpoint));
+    const previewReceipt = createXArticleMaterializationReceipt({
+      plan: materializationPlan,
+      checkpoint: previewCheckpoint,
+      progress: [],
+      cover_asset_id: null,
+      body_block_count: 1,
+      command_count: 0,
+      observation_count: 0,
+      automation_started_at: '2026-08-27T09:00:00.000Z',
+      preview_verified_at: previewCheckpoint.updated_at,
+      human_wait_seconds: 0,
+      preview_revision: `sha256:${'c'.repeat(64)}`,
+      issued_at: previewCheckpoint.updated_at
+    });
+    const publicReceipt = createSupersedingXArticleMaterializationReceipt({
+      preview_receipt: previewReceipt,
+      expected_preview_receipt_digest: previewReceipt.receipt_digest,
+      human_wait_seconds: 5,
+      issued_at: '2026-08-27T09:02:00.000Z'
+    });
+    await writeFile(join(base, 'materialization-receipt.json'), JSON.stringify(previewReceipt));
+    const previewStatus = runSource(statusArgs);
+    expect(JSON.parse(previewStatus.stdout)).toMatchObject({
+      artifact: {
+        receipt: { present: true, status: 'preview_verified' },
+        publication_status: 'pre_public'
+      },
+      state: 'pre_public'
+    });
+    await writeFile(join(base, 'materialization-receipt-public.json'), JSON.stringify(publicReceipt));
+    const publicStatus = runSource(statusArgs);
+    expect(JSON.parse(publicStatus.stdout)).toMatchObject({
+      artifact: {
+        receipt: {
+          present: true,
+          status: 'public_verified',
+          receipt_digest: publicReceipt.receipt_digest
+        },
+        publication_status: 'public_verified'
+      },
+      state: 'public_verified'
+    });
+    expect(run(statusArgs).stdout).toBe(publicStatus.stdout);
+  });
+
+  it('keeps missing status lookups strictly read-only and redacts filesystem paths', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-client-alpha-'));
+    const missingWorkspace = join(parent, 'secret-workspace-name');
+    const beforeParent = await filesystemSnapshot(parent);
+    const missing = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', missingWorkspace,
+      '--execution', 'missing_execution', '--output', 'json'
+    ]);
+    expect(missing.status).toBe(5);
+    expect(missing.stdout).not.toContain(parent);
+    expect(missing.stdout).not.toContain('secret-workspace-name');
+    expect(JSON.parse(missing.stdout)).toMatchObject({
+      error: { code: 'ARTIFACT_NOT_FOUND', message: 'workspace is unavailable' }
+    });
+    await expect(filesystemSnapshot(parent)).resolves.toEqual(beforeParent);
+
+    const workspace = join(parent, 'existing');
+    await mkdir(workspace);
+    const beforeWorkspace = await filesystemSnapshot(workspace);
+    const missingExecution = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', 'missing_execution', '--output', 'json'
+    ]);
+    expect(missingExecution.status).toBe(5);
+    expect(missingExecution.stdout).not.toContain(workspace);
+    await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeWorkspace);
+  });
+
+  it('returns stable redacted errors for malformed and non-file status artifacts', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-artifact-'));
+    const workspace = join(parent, 'workspace-secret');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare', '--workspace', workspace,
+      '--plan', planPath, '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+    const base = join(workspace, 'runs', executionId, 'x-article', 'browser');
+    const originalPlan = await readFile(join(base, 'materialization-plan.json'), 'utf8');
+    await writeFile(join(base, 'materialization-plan.json'), '{');
+    const malformed = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(JSON.parse(malformed.stdout)).toMatchObject({
+      error: { code: 'CONTRACT_INVALID', message: 'materialization plan contains malformed JSON' }
+    });
+    expect(malformed.stdout).not.toContain(parent);
+    expect(malformed.stdout).not.toMatch(/SyntaxError|Unexpected|position|stack/i);
+
+    await writeFile(join(base, 'materialization-plan.json'), originalPlan);
+    await mkdir(join(base, 'materialization-receipt.json'));
+    const unreadable = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(JSON.parse(unreadable.stdout)).toMatchObject({
+      error: {
+        code: 'ARTIFACT_NOT_FOUND',
+        message: 'Preview materialization receipt is unavailable'
+      }
+    });
+    expect(unreadable.stdout).not.toContain(parent);
+    expect(unreadable.stdout).not.toMatch(/EISDIR|EACCES|EPERM|stack/i);
+  });
+
+  it('rejects non-object adapter contexts without mutation or path leakage in source and dist', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-secret-context-'));
+    const workspace = join(parent, 'workspace-secret');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+    const prepared = runSource([
+      'x-article', 'browser', 'prepare', '--workspace', workspace,
+      '--plan', planPath, '--capabilities', capabilitiesPath, '--output', 'json'
+    ]);
+    const executionId = JSON.parse(prepared.stdout).artifact.execution_id as string;
+    const contextPath = join(
+      workspace, 'runs', executionId, 'x-article', 'browser', 'adapter-context.json'
+    );
+    const statusArgs = [
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ];
+
+    for (const invalidContext of [null, []] as const) {
+      await writeFile(contextPath, JSON.stringify(invalidContext));
+      const beforeStatus = await filesystemSnapshot(workspace);
+      const sourceResult = runSource(statusArgs);
+      const distResult = run(statusArgs);
+
+      for (const result of [sourceResult, distResult]) {
+        expect(result.status).toBe(2);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          error: {
+            code: 'CONTRACT_INVALID',
+            message: 'materialization-status requires a prepared compatibility or Fast Path execution'
+          }
+        });
+        expect(result.stdout).not.toContain(parent);
+        expect(result.stdout).not.toContain('workspace-secret');
+        expect(result.stdout).not.toMatch(/TypeError|Cannot read|stack|cause/i);
+      }
+      expect(distResult.stdout).toBe(sourceResult.stdout);
+      await expect(filesystemSnapshot(workspace)).resolves.toEqual(beforeStatus);
+    }
+  });
+
+  it('rejects unknown, extra, unsafe, malformed, and wrong-schema V3.2 CLI inputs', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-materialization-invalid-'));
+    const workspace = join(parent, 'workspace');
+    const planPath = join(parent, 'plan.json');
+    const capabilitiesPath = join(parent, 'capabilities.json');
+    const malformedPath = join(parent, 'malformed.json');
+    const wrongSchemaPath = join(parent, 'wrong-schema.json');
+    const unknownCapabilityPath = join(parent, 'unknown-capability.json');
+    await writeFile(planPath, JSON.stringify(materializationCliPlan()));
+    await writeFile(capabilitiesPath, JSON.stringify(materializationCliCapabilities));
+    await writeFile(malformedPath, '{');
+    await writeFile(wrongSchemaPath, JSON.stringify({ schema_version: 'wrong' }));
+    await writeFile(unknownCapabilityPath, JSON.stringify({
+      ...materializationCliCapabilities,
+      capabilities: [...materializationCliCapabilities.capabilities, 'read_hidden_session_secret']
+    }));
+
+    const cases = [
+      runSource([
+        'x-article', 'browser', 'prepare', '--workspace', workspace,
+        '--plan', planPath, '--capabilities', capabilitiesPath, '--mystery', 'value', '--output', 'json'
+      ]),
+      runSource([
+        'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+        '--execution', 'safe_id', '--plan', planPath, '--output', 'json'
+      ]),
+      runSource([
+        'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+        '--execution', '../escape', '--output', 'json'
+      ]),
+      runSource([
+        'x-article', 'browser', 'prepare', '--workspace', workspace,
+        '--plan', malformedPath, '--capabilities', capabilitiesPath, '--output', 'json'
+      ]),
+      runSource([
+        'x-article', 'browser', 'prepare', '--workspace', workspace,
+        '--plan', wrongSchemaPath, '--capabilities', capabilitiesPath, '--output', 'json'
+      ]),
+      runSource([
+        'x-article', 'browser', 'prepare', '--workspace', workspace,
+        '--plan', planPath, '--capabilities', unknownCapabilityPath, '--output', 'json'
+      ])
+    ];
+
+    for (const result of cases) {
+      expect(result.status).not.toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false });
+    }
+    expect(JSON.parse(cases[0]!.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+    expect(JSON.parse(cases[1]!.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+    expect(JSON.parse(cases[2]!.stdout)).toMatchObject({ error: { code: 'WORKSPACE_PATH_INVALID' } });
+    expect(JSON.parse(cases[3]!.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+    expect(JSON.parse(cases[4]!.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+    expect(JSON.parse(cases[5]!.stdout)).toMatchObject({ error: { code: 'CONTRACT_INVALID' } });
+  });
+
+  it('routes resume and confirmation through the prepared V3.2 adapter APIs', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'rph-cli-materialization-controls-'));
+    const workspace = join(parent, 'workspace');
+    const confirmationPath = join(parent, 'confirmation.json');
+    await writeFile(confirmationPath, JSON.stringify({ schema_version: 'wrong' }));
+
+    for (const operation of ['resume-editor', 'materialization-status']) {
+      const result = runSource([
+        'x-article', 'browser', operation, '--workspace', workspace,
+        '--execution', 'missing_execution', '--output', 'json'
+      ]);
+      expect(result.status).toBe(5);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        operation: `x-article browser ${operation}`,
+        error: { code: 'ARTIFACT_NOT_FOUND' }
+      });
+    }
+
+    const resumeAlias = runSource([
+      'x-article', 'browser', 'resume-editor', '--workspace', workspace,
+      '--execution-id', 'missing_execution', '--output', 'json'
+    ]);
+    expect(resumeAlias.status).toBe(5);
+    expect(JSON.parse(resumeAlias.stdout)).toMatchObject({
+      operation: 'x-article browser resume-editor',
+      error: { code: 'ARTIFACT_NOT_FOUND' }
+    });
+    const conflictingAliases = runSource([
+      'x-article', 'browser', 'resume-editor', '--workspace', workspace,
+      '--execution', 'missing_execution', '--execution-id', 'missing_execution',
+      '--output', 'json'
+    ]);
+    expect(conflictingAliases.status).toBe(2);
+    expect(JSON.parse(conflictingAliases.stdout)).toMatchObject({
+      operation: 'x-article browser resume-editor',
+      error: { code: 'CONTRACT_INVALID' }
+    });
+
+    const confirm = runSource([
+      'x-article', 'browser', 'confirm-publish', '--workspace', workspace,
+      '--execution', 'missing_execution', '--confirmation', confirmationPath, '--output', 'json'
+    ]);
+    expect(confirm.status).toBe(2);
+    expect(JSON.parse(confirm.stdout)).toMatchObject({
+      operation: 'x-article browser confirm-publish',
+      error: { code: 'CONTRACT_INVALID' }
+    });
+  });
   it('exposes the Phase 1 program command surface with JSON-only routing', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'rph-cli-program-routes-'));
     const workspace = join(parent, 'workspace');
@@ -191,7 +1010,62 @@ describe('research-publish CLI', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, operation: 'doctor' });
+    const doctor = JSON.parse(result.stdout) as {
+      artifact: { contracts: string[] };
+    };
+    expect(doctor).toMatchObject({ ok: true, operation: 'doctor', state: 'ready' });
+    expect(doctor.artifact.contracts).toEqual(expect.arrayContaining([
+      'x-article-browser-command',
+      'x-article-browser-observation'
+    ]));
+  });
+
+  it('packages the executable X Article V3.2 Browser Host protocol', async () => {
+    const [
+      manifestText, browserReference, materializationReference,
+      articleReference, bundleReference
+    ] = await Promise.all([
+      readFile(resolve('registry/manifests/research-publishing.json'), 'utf8'),
+      readFile(resolve('skills/x-publishing-copilot/references/browser-adapter-flow.md'), 'utf8'),
+      readFile(
+        resolve('skills/x-publishing-copilot/references/x-article-materialization-v3-2.md'),
+        'utf8'
+      ),
+      readFile(resolve('skills/x-publishing-copilot/references/x-article-browser-flow.md'), 'utf8'),
+      readFile(resolve('skills/x-publishing-copilot/references/publication-bundle-flow.md'), 'utf8')
+    ]);
+    const manifest = JSON.parse(manifestText) as {
+      interfaces: { x_article_browser: { capabilities: Record<string, string> } };
+    };
+
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('import_article_document');
+    expect(manifest.interfaces.x_article_browser.capabilities).toHaveProperty('replace_article_visual_anchor');
+    expect(browserReference).toContain('import_article_document');
+    expect(browserReference).toContain('replace_article_visual_anchor');
+    expect(materializationReference).toContain('x-article-materialization/v3.2');
+    expect(materializationReference).toContain('rich_text_anchor_import/v1');
+    expect(materializationReference).toContain('import_article_document');
+    expect(materializationReference).toContain('replace_article_visual_anchor');
+    expect(materializationReference).toContain('materialization_progress');
+    expect(materializationReference).toContain('confirm-publish');
+    expect(materializationReference).toContain('never switch to `block_materialization/v1`');
+    expect(materializationReference).not.toMatch(/^x-article browser progress\b/m);
+    expect(articleReference).toContain(
+      '[the Publication Bundle flow](publication-bundle-flow.md)'
+    );
+    expect(articleReference).toContain(
+      'A content or Draft approval alone is not publication authority'
+    );
+    expect(articleReference).toContain('control-plane-verified publication approval');
+    expect(articleReference).toContain('When that approval is Bundle-derived');
+    expect(articleReference).toContain('do not ask for a second publication confirmation');
+    expect(articleReference).toContain('The Browser Host never interprets approval authority');
+    expect(articleReference).not.toContain(
+      'content approval does not replace action-time approval'
+    );
+    expect(bundleReference).toContain(
+      'do not ask for a second publication confirmation'
+    );
   });
 
   it('captures a Candidate only below the selected workspace', async () => {
@@ -431,7 +1305,7 @@ describe('research-publish CLI', () => {
 
     const planInput = join(parent, 'plan.json');
     await writeFile(planInput, JSON.stringify({ package_ref: packageRef, target_account: '@Glen56121' }));
-    const planned = run([
+    const planned = runSource([
       'x-article', 'plan', '--workspace', workspace, '--input', planInput, '--output', 'json'
     ]);
     expect(planned.status).toBe(0);
@@ -445,7 +1319,7 @@ describe('research-publish CLI', () => {
     await writeFile(approveInput, JSON.stringify({
       plan: planResult.artifact, approved_by: 'human', ttl_ms: 600_000
     }));
-    const approved = run([
+    const approved = runSource([
       'x-article', 'approve', '--workspace', workspace, '--input', approveInput, '--output', 'json'
     ]);
     expect(approved.status).toBe(0);
@@ -453,27 +1327,36 @@ describe('research-publish CLI', () => {
     expect(approval).toMatchObject({ scope: 'publish_once', target_account: '@Glen56121' });
 
     const startInput = join(parent, 'start.json');
+    const capabilities = [
+      'observe_article_page', 'create_article_draft', 'set_article_title',
+      'import_article_document', 'replace_article_visual_anchor',
+      'insert_article_block', 'open_article_preview', 'open_publish_review',
+      'publish_article_once'
+    ];
     await writeFile(startInput, JSON.stringify({
       execution_id: 'exec_cli_x_article', plan: planResult.artifact, approval,
       capability_manifest: {
         executor: 'codex-chrome', executor_version: '26.818.31338', browser_family: 'chrome',
-        capabilities: [
-          'observe_article_page', 'create_article_draft', 'set_article_title',
-          'insert_article_block', 'open_article_preview', 'open_publish_review',
-          'publish_article_once'
-        ], observed_at: new Date().toISOString()
+        capabilities, observed_at: new Date().toISOString()
       }
     }));
-    const started = run([
+    const started = runSource([
       'x-article', 'browser', 'start', '--workspace', workspace, '--input', startInput, '--output', 'json'
     ]);
     expect(started.status).toBe(0);
     expect(JSON.parse(started.stdout)).toMatchObject({
       operation: 'x-article browser start',
-      artifact: { execution_id: 'exec_cli_x_article' }, state: 'created'
+      artifact: {
+        execution_id: 'exec_cli_x_article',
+        capability_manifest: { capabilities }
+      },
+      state: 'created'
     });
+    await expect(store.readJson(
+      'runs/exec_cli_x_article/x-article/browser/capabilities.json'
+    )).resolves.toMatchObject({ capabilities });
 
-    const status = run([
+    const status = runSource([
       'x-article', 'browser', 'status', '--workspace', workspace,
       '--execution-id', 'exec_cli_x_article', '--output', 'json'
     ]);
@@ -482,8 +1365,18 @@ describe('research-publish CLI', () => {
       operation: 'x-article browser status', artifact: { state: 'created' }, state: 'created'
     });
 
-    for (const operation of ['resume-verification', 'cancel-before-publish']) {
-      const missing = run([
+    const wrongModeStatus = runSource([
+      'x-article', 'browser', 'materialization-status', '--workspace', workspace,
+      '--execution', 'exec_cli_x_article', '--output', 'json'
+    ]);
+    expect(wrongModeStatus.status).toBe(2);
+    expect(JSON.parse(wrongModeStatus.stdout)).toMatchObject({
+      operation: 'x-article browser materialization-status',
+      error: { code: 'CONTRACT_INVALID' }
+    });
+
+    for (const operation of ['resume-verification', 'resume-editor', 'cancel-before-publish']) {
+      const missing = runSource([
         'x-article', 'browser', operation, '--workspace', workspace,
         '--execution-id', 'missing_execution', '--output', 'json'
       ]);
@@ -493,5 +1386,17 @@ describe('research-publish CLI', () => {
         error: { code: 'ARTIFACT_NOT_FOUND' }
       });
     }
-  });
+
+    const refreshInput = join(parent, 'refresh-approval.json');
+    await writeFile(refreshInput, JSON.stringify({ approval }));
+    const missingRefresh = runSource([
+      'x-article', 'browser', 'refresh-approval', '--workspace', workspace,
+      '--execution-id', 'missing_execution', '--input', refreshInput, '--output', 'json'
+    ]);
+    expect(missingRefresh.status).toBe(5);
+    expect(JSON.parse(missingRefresh.stdout)).toMatchObject({
+      ok: false, operation: 'x-article browser refresh-approval',
+      error: { code: 'ARTIFACT_NOT_FOUND' }
+    });
+  }, 30_000);
 });

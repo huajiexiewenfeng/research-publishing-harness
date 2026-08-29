@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Article Cover Host File Upload Probe</title>
+</head>
+<body>
+  <main>
+    <h1>Local file upload probe</h1>
+    <button id="choose-file" type="button">Choose File</button>
+    <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    <output id="selected-file" aria-live="polite">No file selected</output>
+  </main>
+  <script>
+    const button = document.querySelector('#choose-file');
+    const input = document.querySelector('#file-input');
+    const output = document.querySelector('#selected-file');
+    button.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      output.textContent = input.files.length === 1 ? input.files[0].name : 'No file selected';
+    });
+  </script>
+</body>
+</html>

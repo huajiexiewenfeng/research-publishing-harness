@@ -75,14 +75,97 @@ export interface PublicationBundleApprovalV1 {
   readonly approval_digest: BundleDigest;
 }
 
-export interface ApprovePublicationBundleInput {
+export interface PublicationBundleApprovalV2 {
+  readonly schema_version: 'publication-bundle-approval/v2';
+  readonly approval_id: string;
+  readonly bundle_id: string;
+  readonly bundle_digest: BundleDigest;
+  readonly target_account: string;
+  readonly scope: 'publish_bundle_once';
+  readonly confirmed_preview_revision: BundleDigest;
+  readonly prepared_article_binding_ref: ResearchArtifactRefV1;
+  readonly approved_by: string;
+  readonly approved_at: string;
+  readonly expires_at: string;
+  readonly approval_digest: BundleDigest;
+}
+
+export type PublicationBundleApproval = PublicationBundleApprovalV1 | PublicationBundleApprovalV2;
+
+export interface ApprovePublicationBundleV1Input {
   readonly bundle_id: string;
   readonly confirmed_bundle_digest: BundleDigest;
   readonly approved_by: string;
 }
 
+export interface ApprovePublicationBundleV2Input extends ApprovePublicationBundleV1Input {
+  readonly confirmed_preview_revision: BundleDigest;
+}
+
+export type ApprovePublicationBundleInput =
+  | ApprovePublicationBundleV1Input
+  | ApprovePublicationBundleV2Input;
+
+export interface BindPreparedArticleInput {
+  readonly bundle_id: string;
+  readonly execution_id: string;
+  readonly preview_revision: BundleDigest;
+  readonly materialization_receipt_ref: ResearchArtifactRefV1;
+  readonly bound_at: string;
+}
+
+export interface PreparedArticleBindingV1 {
+  readonly schema_version: 'publication-bundle-prepared-article-binding/v1';
+  readonly binding_version: number;
+  readonly bundle_id: string;
+  readonly bundle_plan_ref: ResearchArtifactRefV1;
+  readonly execution_id: string;
+  readonly run_id: string;
+  readonly plan_id: string;
+  readonly child_plan_ref: ResearchArtifactRefV1;
+  readonly child_plan_digest: BundleDigest;
+  readonly materialization_plan_ref: ResearchArtifactRefV1;
+  readonly materialization_digest: BundleDigest;
+  readonly draft_id: string;
+  readonly target_account: string;
+  readonly audience: 'everyone';
+  readonly document_digest: BundleDigest;
+  readonly preview_observation_ref: ResearchArtifactRefV1;
+  readonly preview_observed_at: string;
+  readonly preview_revision: BundleDigest;
+  readonly materialization_receipt_ref: ResearchArtifactRefV1;
+  readonly materialization_receipt_digest: BundleDigest;
+  readonly asset_digests: readonly BundleDigest[];
+  readonly bound_at: string;
+  readonly binding_digest: BundleDigest;
+}
+
+export interface BoundPreparedArticleV1 extends PreparedArticleBindingV1 {
+  readonly binding_ref: ResearchArtifactRefV1;
+}
+
+export interface PreparedArticleBindingProjectionV1 {
+  readonly schema_version: 'publication-bundle-prepared-article-projection/v1';
+  readonly bundle_id: string;
+  readonly revision: number;
+  readonly active_binding_ref: ResearchArtifactRefV1 | null;
+  readonly updated_at: string;
+  readonly projection_digest: BundleDigest;
+}
+
+export interface PreparedArticleUnbindingV1 {
+  readonly schema_version: 'publication-bundle-prepared-article-unbinding/v1';
+  readonly bundle_id: string;
+  readonly binding_ref: ResearchArtifactRefV1;
+  readonly unbound_at: string;
+  readonly unbinding_digest: BundleDigest;
+}
+
 export type PublicationBundlePhase =
   | 'planned'
+  | 'article_materializing'
+  | 'article_preview_ready'
+  | 'confirmation_pending'
   | 'approved'
   | 'article_authorized'
   | 'article_in_progress'

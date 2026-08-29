@@ -35,14 +35,94 @@
     },
     "editor": {
       "type": "object", "additionalProperties": false,
-      "required": ["draft_id", "title", "blocks", "visuals", "has_unknown_content", "autosave_state"],
+      "required": ["draft_id", "title", "blocks", "visuals", "import_state", "has_unknown_content", "autosave_state"],
       "properties": {
         "draft_id": { "type": "string", "pattern": "^[0-9]+$" },
         "title": { "type": "string" },
-        "blocks": { "type": "array", "items": { "type": "object" } },
-        "visuals": { "type": "array", "items": { "type": "object" } },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+        "visuals": { "type": "array", "items": { "$ref": "#/$defs/visual" } },
+        "import_state": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/importState" }] },
         "has_unknown_content": { "type": "boolean" },
         "autosave_state": { "enum": ["saving", "saved", "failed"] }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "marks", "link"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "marks": { "type": "array", "uniqueItems": true, "items": { "enum": ["bold", "italic"] } },
+          "link": { "type": ["string", "null"], "format": "uri", "pattern": "^https://" }
+        }
+      }
+    },
+    "block": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "runs"],
+          "properties": {
+            "kind": { "enum": ["heading", "subheading", "paragraph", "quote"] },
+            "runs": { "$ref": "#/$defs/runs" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "items"],
+          "properties": {
+            "kind": { "enum": ["bullet_list", "ordered_list"] },
+            "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/runs" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "asset_id", "alt_text"],
+          "properties": {
+            "kind": { "const": "image" },
+            "asset_id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+$" },
+            "alt_text": { "type": "string", "minLength": 1, "maxLength": 1000 }
+          }
+        }
+      ]
+    },
+    "visual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "asset_id", "kind", "block_ordinal", "alt_text", "status", "owned_by_execution"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
+        "asset_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_-]+$" },
+        "kind": { "enum": ["cover", "inline"] },
+        "block_ordinal": { "type": ["integer", "null"], "minimum": 1 },
+        "alt_text": { "type": ["string", "null"], "maxLength": 1000 },
+        "status": { "enum": ["processing", "uploaded", "failed"] },
+        "owned_by_execution": { "type": "boolean" }
+      }
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["anchor_id", "asset_id", "block_ordinal", "marker"],
+      "properties": {
+        "anchor_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "asset_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "block_ordinal": { "type": "integer", "minimum": 1 },
+        "marker": { "type": "string", "pattern": "^RPH_VISUAL_ANCHOR:[A-Za-z0-9_-]+:[1-9][0-9]*$" }
+      }
+    },
+    "importState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["template_digest", "source_document_digest", "unresolved_anchors"],
+      "properties": {
+        "template_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "source_document_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "unresolved_anchors": { "type": "array", "orderedUniqueAnchorIds": true, "uniqueItems": true, "items": { "$ref": "#/$defs/anchor" } }
       }
     }
   }

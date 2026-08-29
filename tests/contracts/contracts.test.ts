@@ -23,6 +23,7 @@ const names = [
   'publication-plan-v2-1',
   'approval-v2-1',
   'publish-receipt-v2-1',
+  'x-article-existing-draft-binding',
   'memory-query-plan',
   'context-snapshot',
   'publication-feedback-snapshot',
@@ -173,8 +174,10 @@ describe('public contracts', () => {
         ? '1.0'
         : name.endsWith('v2-1')
           ? '2.1'
-          : name.startsWith('visual-')
+        : name.startsWith('visual-')
             ? '1.0'
+            : name === 'x-article-existing-draft-binding'
+              ? 'v1'
             : '2.0';
       expect(schema.$id).toBe(`rph://contracts/${name}/${version}`);
       expect(schema.additionalProperties).toBe(false);

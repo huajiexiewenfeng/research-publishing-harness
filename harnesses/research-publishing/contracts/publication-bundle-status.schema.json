@@ -10,7 +10,7 @@
     "bundle_id": { "$ref": "#/$defs/stableId" },
     "cycle_id": { "$ref": "#/$defs/stableId" },
     "bundle_plan_ref": { "$ref": "#/$defs/artifactRef" },
-    "phase": { "enum": ["planned", "approved", "article_authorized", "article_in_progress", "article_outcome_unknown", "article_verification_conflict", "article_terminal_failure", "article_verified", "single_materialized", "single_authorized", "single_in_progress", "single_outcome_unknown", "single_verification_conflict", "single_terminal_failure", "approval_expired", "completed"] },
+    "phase": { "enum": ["planned", "article_materializing", "article_preview_ready", "confirmation_pending", "approved", "article_authorized", "article_in_progress", "article_outcome_unknown", "article_verification_conflict", "article_terminal_failure", "article_verified", "single_materialized", "single_authorized", "single_in_progress", "single_outcome_unknown", "single_verification_conflict", "single_terminal_failure", "approval_expired", "completed"] },
     "article_execution_binding_ref": { "$ref": "#/$defs/nullableRef" },
     "article_receipt_binding_ref": { "$ref": "#/$defs/nullableRef" },
     "single_execution_binding_ref": { "$ref": "#/$defs/nullableRef" },

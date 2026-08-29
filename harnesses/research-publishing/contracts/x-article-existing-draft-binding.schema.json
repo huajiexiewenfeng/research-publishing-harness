@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-existing-draft-binding/v1",
+  "title": "X Article Existing Draft Binding V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mode",
+    "draft_id",
+    "expected_account",
+    "expected_editor_revision",
+    "expected_title_digest",
+    "expected_document_digest",
+    "expected_import_template_digest",
+    "expected_anchor_manifest_digest",
+    "expected_cover_count",
+    "expected_inline_media_count",
+    "source_observation_digest",
+    "observed_at",
+    "binding_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-existing-draft-binding/v1" },
+    "mode": { "const": "adopt_existing" },
+    "draft_id": { "type": "string", "pattern": "^[0-9]+$" },
+    "expected_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "expected_editor_revision": { "$ref": "#/$defs/digest" },
+    "expected_title_digest": { "$ref": "#/$defs/digest" },
+    "expected_document_digest": { "$ref": "#/$defs/digest" },
+    "expected_import_template_digest": { "$ref": "#/$defs/digest" },
+    "expected_anchor_manifest_digest": { "$ref": "#/$defs/digest" },
+    "expected_cover_count": { "const": 0 },
+    "expected_inline_media_count": { "const": 0 },
+    "source_observation_digest": { "$ref": "#/$defs/digest" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "binding_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

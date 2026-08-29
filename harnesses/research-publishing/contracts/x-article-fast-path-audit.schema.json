@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-fast-path-audit/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol",
+    "target_account",
+    "draft_target",
+    "preflight",
+    "publication_plan",
+    "time_budget_seconds",
+    "recovery_budget_seconds",
+    "audit_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-fast-path-audit/v1" },
+    "protocol": { "const": "x-article-materialization/v3.4" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "draft_target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "new" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "draft_id"],
+          "properties": {
+            "kind": { "const": "existing" },
+            "draft_id": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+$" }
+          }
+        }
+      ]
+    },
+    "preflight": { "type": "object" },
+    "publication_plan": { "type": "object" },
+    "time_budget_seconds": { "enum": [600, 900] },
+    "recovery_budget_seconds": { "const": 120 },
+    "audit_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

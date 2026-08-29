@@ -5,6 +5,7 @@ import type { XArticleDocumentV1 } from '../../../../branches/x-article-harness/
 import type {
   XArticleBrowserObservation,
   XArticleControlObservation,
+  XArticleEditorImportStateV1,
   XArticleEditorObservation,
   XArticlePreviewObservation,
   XArticlePublicObservation,
@@ -23,6 +24,10 @@ const PREVIEW_URL = /^https:\/\/x\.com\/compose\/articles\/edit\/(\d+)\/preview$
 export class XArticleWeb2026_08Contract implements XArticlePageContract {
   readonly id = 'x-article-web';
   readonly version = '2026-08';
+  readonly media_alt_capabilities = {
+    cover: 'unobservable',
+    inline: 'editable'
+  } as const;
 
   detectPage(observation: XArticleBrowserObservation): XArticleDetectedPage {
     this.assertObservation(observation);
@@ -68,6 +73,10 @@ export class XArticleWeb2026_08Contract implements XArticlePageContract {
       throw new HarnessError('ARTICLE_DRAFT_CONFLICT', 'Article editor contains unknown existing content');
     }
     return observation.editor;
+  }
+
+  readEditorImportState(observation: XArticleBrowserObservation): XArticleEditorImportStateV1 | null {
+    return this.detectEditor(observation).import_state;
   }
 
   readEditorDocument(observation: XArticleBrowserObservation): XArticleDocumentV1 {

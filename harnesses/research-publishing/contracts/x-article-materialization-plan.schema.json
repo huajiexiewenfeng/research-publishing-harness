@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-materialization-plan/v1",
+  "title": "X Article Materialization Plan V1",
+  "type": "object",
+  "materializationPlanConsistent": true,
+  "allOf": [
+    {
+      "if": {
+        "required": ["draft_binding"],
+        "properties": {
+          "draft_binding": { "type": "object" }
+        }
+      },
+      "then": {
+        "properties": {
+          "strategy": { "const": "rich_text_anchor_import/v1" }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "execution_id",
+    "publication_plan_digest",
+    "target_account",
+    "strategy",
+    "document_digest",
+    "import_template_digest",
+    "draft_binding",
+    "visual_anchors",
+    "expected_command_ceiling",
+    "expected_observation_ceiling",
+    "budget",
+    "materialization_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-materialization-plan/v1" },
+    "execution_id": { "$ref": "#/$defs/identity" },
+    "publication_plan_digest": { "$ref": "#/$defs/digest" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "strategy": { "enum": ["rich_text_anchor_import/v1", "block_materialization/v1"] },
+    "document_digest": { "$ref": "#/$defs/digest" },
+    "import_template_digest": { "$ref": "#/$defs/digest" },
+    "draft_binding": {
+      "anyOf": [
+        { "$ref": "#/$defs/existingDraftBinding" },
+        { "type": "null" }
+      ]
+    },
+    "visual_anchors": {
+      "type": "array",
+      "orderedUniqueAnchorIds": true,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/anchor" }
+    },
+    "expected_command_ceiling": { "type": "integer", "minimum": 4 },
+    "expected_observation_ceiling": { "type": "integer", "minimum": 3 },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixed_seconds", "per_inline_visual_seconds", "no_progress_seconds"],
+      "properties": {
+        "fixed_seconds": { "const": 180 },
+        "per_inline_visual_seconds": { "const": 60 },
+        "no_progress_seconds": { "const": 20 }
+      }
+    },
+    "materialization_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "existingDraftBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "mode", "draft_id", "expected_account", "expected_editor_revision", "expected_title_digest", "expected_document_digest", "expected_import_template_digest", "expected_anchor_manifest_digest", "expected_cover_count", "expected_inline_media_count", "source_observation_digest", "observed_at", "binding_digest"],
+      "properties": {
+        "schema_version": { "const": "x-article-existing-draft-binding/v1" },
+        "mode": { "const": "adopt_existing" },
+        "draft_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "expected_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+        "expected_editor_revision": { "$ref": "#/$defs/digest" },
+        "expected_title_digest": { "$ref": "#/$defs/digest" },
+        "expected_document_digest": { "$ref": "#/$defs/digest" },
+        "expected_import_template_digest": { "$ref": "#/$defs/digest" },
+        "expected_anchor_manifest_digest": { "$ref": "#/$defs/digest" },
+        "expected_cover_count": { "const": 0 },
+        "expected_inline_media_count": { "const": 0 },
+        "source_observation_digest": { "$ref": "#/$defs/digest" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "binding_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor_id", "asset_id", "block_ordinal", "asset_digest", "alt_text", "context_digest"],
+      "properties": {
+        "anchor_id": { "$ref": "#/$defs/identity" },
+        "asset_id": { "$ref": "#/$defs/identity" },
+        "block_ordinal": { "type": "integer", "minimum": 1 },
+        "asset_digest": { "$ref": "#/$defs/digest" },
+        "alt_text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "context_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/x-article-materialization-checkpoint/v1",
+  "title": "X Article Materialization Checkpoint V1",
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": { "draft_origin": { "const": "adopted_existing" } },
+        "required": ["draft_origin"]
+      },
+      "then": {
+        "properties": {
+          "draft_id": { "type": "string" },
+          "source_execution_id": { "type": "null" },
+          "phase": { "enum": ["draft_bound", "body_verified", "media_materializing", "draft_reconciled", "preview_verified", "human_confirmed", "publish_submitted", "public_verified", "blocked"] },
+          "body": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "adopted_verified" },
+              "observed_digest": { "$ref": "#/$defs/digest" }
+            }
+          },
+          "last_editor_revision": { "$ref": "#/$defs/digest" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "draft_origin": { "const": "created_new" } },
+        "required": ["draft_origin"]
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "status": { "not": { "const": "adopted_verified" } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "execution_id",
+    "draft_id",
+    "draft_origin",
+    "source_execution_id",
+    "materialization_digest",
+    "revision",
+    "phase",
+    "body",
+    "media",
+    "last_editor_revision",
+    "publish_confirmation",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "x-article-materialization-checkpoint/v1" },
+    "execution_id": { "$ref": "#/$defs/identity" },
+    "draft_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "draft_origin": { "enum": ["created_new", "adopted_existing"] },
+    "source_execution_id": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "materialization_digest": { "$ref": "#/$defs/digest" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "phase": {
+      "enum": [
+        "preflight_pending",
+        "preflight_passed",
+        "draft_bound",
+        "article_shell_ready",
+        "body_imported",
+        "body_verified",
+        "media_materializing",
+        "draft_reconciled",
+        "preview_verified",
+        "human_confirmed",
+        "publish_submitted",
+        "public_verified",
+        "blocked"
+      ]
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observed_digest"],
+      "properties": {
+        "status": { "enum": ["pending", "issued", "verified", "adopted_verified"] },
+        "observed_digest": {
+          "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        }
+      }
+    },
+    "media": {
+      "type": "array",
+      "orderedUniqueAnchorIds": true,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/media" }
+    },
+    "last_editor_revision": {
+      "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+    },
+    "publish_confirmation": { "enum": ["absent", "armed", "consumed"] },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor_id",
+        "asset_id",
+        "block_ordinal",
+        "asset_digest",
+        "status",
+        "observed_media_ref",
+        "observed_context_digest"
+      ],
+      "properties": {
+        "anchor_id": { "$ref": "#/$defs/identity" },
+        "asset_id": { "$ref": "#/$defs/identity" },
+        "block_ordinal": { "type": "integer", "minimum": 1 },
+        "asset_digest": { "$ref": "#/$defs/digest" },
+        "status": { "enum": ["pending", "upload_started", "inserted", "alt_verified", "completed", "ambiguous"] },
+        "observed_media_ref": { "type": ["string", "null"], "minLength": 1 },
+        "observed_context_digest": {
+          "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

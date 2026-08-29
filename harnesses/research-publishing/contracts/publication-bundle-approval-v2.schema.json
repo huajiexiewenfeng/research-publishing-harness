@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rph://contracts/publication-bundle-approval/2.0",
+  "title": "Publication Bundle Approval v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "bundle_id", "bundle_digest", "target_account", "scope", "confirmed_preview_revision", "prepared_article_binding_ref", "approved_by", "approved_at", "expires_at", "approval_digest"],
+  "properties": {
+    "schema_version": { "const": "publication-bundle-approval/v2" },
+    "approval_id": { "$ref": "#/$defs/stableId" },
+    "bundle_id": { "$ref": "#/$defs/stableId" },
+    "bundle_digest": { "$ref": "#/$defs/digest" },
+    "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
+    "scope": { "const": "publish_bundle_once" },
+    "confirmed_preview_revision": { "$ref": "#/$defs/digest" },
+    "prepared_article_binding_ref": { "$ref": "#/$defs/artifactRef" },
+    "approved_by": { "type": "string", "minLength": 1 },
+    "approved_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "approval_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "artifactRef": { "type": "object", "additionalProperties": false, "required": ["path", "digest"], "properties": { "path": { "type": "string", "minLength": 1 }, "digest": { "$ref": "#/$defs/digest" } } }
+  }
+}

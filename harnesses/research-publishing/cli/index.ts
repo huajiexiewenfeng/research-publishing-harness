@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { ManualAdapter, type ManualPublicResult, type PublishReceipt } from '../adapters/x/manual/manual-adapter.js';
@@ -14,6 +14,7 @@ import {
   type XArticleBrowserCapabilityManifestV1,
   type XArticleBrowserReportInput
 } from '../adapters/x/article-browser/article-browser-adapter.js';
+import type { XArticleBrowserObservation } from '../adapters/x/article-browser/article-browser-protocol.js';
 import type { XArticleBrowserCommandV1 } from '../adapters/x/article-browser/article-command-broker.js';
 import { XArticleWeb2026_08Contract } from '../adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { ArticleService, type ArticleBrief, type ArticleDraft, type VisualReviewInput, type XHandoff } from '../branches/article-harness/article-service.js';
@@ -26,10 +27,33 @@ import {
   approveXArticlePublication,
   type XArticleApprovalV1
 } from '../core/x-article-approval.js';
-import type { XArticlePublicationPlanV1 } from '../core/x-article-publication-plan.js';
+import type { XArticlePublishConfirmationV1 } from '../core/x-article-publish-confirmation.js';
+import {
+  assertXArticleFastPathAudit,
+  confirmXArticleFastPath,
+  type XArticleFastPathAuditV1,
+  type XArticleFastPathConfirmationV1,
+  type XArticleFastPathDraftTargetV1
+} from '../core/x-article-fast-path.js';
+import {
+  assertXArticleFastPathReleaseSet,
+  type XArticleFastPathReleaseSetV1
+} from '../core/x-article-fast-path-release.js';
+import {
+  assertXArticlePublicationPlan,
+  type XArticlePublicationPlanV1
+} from '../core/x-article-publication-plan.js';
+import type {
+  XArticleMaterializationCheckpointV1,
+  XArticleMaterializationPlanV1,
+  XArticleMaterializationReceiptV1,
+  XArticleFastPathResultV1
+} from '../core/x-article-materialization.js';
+import { verifyXArticleFastPathResult } from '../core/x-article-materialization.js';
+import { createXArticleExistingDraftBinding } from '../core/x-article-existing-draft-binding.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
-import { sha256Bytes } from '../core/digest.js';
+import { sha256, sha256Bytes } from '../core/digest.js';
 import { MemoryFeedbackService, type CaptureFeedbackInput } from '../core/memory-feedback-service.js';
 import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpointInput } from '../core/memory-ingest-service.js';
 import { MemoryInsightService, type ProposeInsightInput } from '../core/memory-insight-service.js';
@@ -97,7 +121,7 @@ import { ExecutionStore } from '../core/execution-store.js';
 import type { PublicationPlanV2 } from '../core/publication-plan-v2.js';
 import type { PublicationPlanV2_1 } from '../core/publication-plan-v2-1.js';
 import type { AttachVisualInput } from '../core/visual-assets.js';
-import { assertContractsAvailable } from '../core/schema-validator.js';
+import { assertContractsAvailable, validateContract } from '../core/schema-validator.js';
 import type {
   Candidate,
   CompileWeeklyPackageInput,
@@ -111,11 +135,47 @@ interface CliOptions {
   readonly runId?: string;
   readonly executionId?: string;
   readonly commandId?: string;
+  readonly plan?: string;
+  readonly observation?: string;
+  readonly capabilities?: string;
+  readonly execution?: string;
+  readonly confirmation?: string;
+  readonly audit?: string;
+  readonly releaseSet?: string;
   readonly adapter?: 'manual' | 'browser';
   readonly runtimeExecutable?: string;
   readonly runtimeLauncher?: 'console-script' | 'python-module';
   readonly output: string;
 }
+
+const KNOWN_OPTIONS = new Set([
+  'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
+  'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
+  'observation', 'execution', 'confirmation'
+  , 'audit', 'release-set'
+]);
+
+const X_ARTICLE_CONTROL_ROUTES = [
+  'x-article fast-path audit --workspace <path> --input <input.json> --output json',
+  'x-article fast-path confirm --workspace <path> --input <input.json> --output json',
+  'x-article fast-path prepare --workspace <path> --audit <path> --confirmation <path> --capabilities <path> --release-set <path> [--observation <path>] --output json',
+  'x-article fast-path status --workspace <path> --execution <id> --output json',
+  'x-article fast-path recover --workspace <path> --execution <id> --output json',
+  'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
+  'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
+  'x-article browser resume-editor --workspace <path> --execution <id> --output json',
+  'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
+  'x-article browser materialization-status --workspace <path> --execution <id> --output json'
+] as const;
+const V3_2_COMPATIBILITY_ALIASES = [
+  'x-article browser resume-editor --execution-id <id>'
+] as const;
+const X_ARTICLE_BROWSER_CAPABILITIES = new Set([
+  'observe_article_page', 'navigate', 'create_article_draft', 'set_article_title',
+  'upload_article_cover', 'import_article_document', 'insert_article_block',
+  'insert_article_image', 'replace_article_visual_anchor', 'set_article_image_alt',
+  'open_article_preview', 'open_publish_review', 'publish_article_once'
+]);
 
 interface CliResult {
   readonly ok: boolean;
@@ -126,7 +186,11 @@ interface CliResult {
   readonly error?: { readonly code: string; readonly message: string };
 }
 
-function parseArguments(argv: readonly string[]): { positional: string[]; options: CliOptions } {
+function parseArguments(argv: readonly string[]): {
+  positional: string[];
+  options: CliOptions;
+  providedOptions: ReadonlySet<string>;
+} {
   const positional: string[] = [];
   const values: Record<string, string> = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -135,11 +199,18 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
       positional.push(token);
       continue;
     }
+    const name = token.slice(2);
+    if (!KNOWN_OPTIONS.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `unknown option ${token}`);
+    }
+    if (values[name] !== undefined) {
+      throw new HarnessError('CONTRACT_INVALID', `option ${token} may be provided only once`);
+    }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) {
       throw new HarnessError('CONTRACT_INVALID', `option ${token} requires a value`);
     }
-    values[token.slice(2)] = value;
+    values[name] = value;
     index += 1;
   }
   const workspace = values['workspace'];
@@ -168,14 +239,445 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
       ...(values['run-id'] === undefined ? {} : { runId: values['run-id'] }),
       ...(values['execution-id'] === undefined ? {} : { executionId: values['execution-id'] }),
       ...(values['command-id'] === undefined ? {} : { commandId: values['command-id'] }),
+      ...(values['plan'] === undefined ? {} : { plan: resolve(values['plan']) }),
+      ...(values['observation'] === undefined
+        ? {}
+        : { observation: resolve(values['observation']) }),
+      ...(values['capabilities'] === undefined
+        ? {}
+        : { capabilities: resolve(values['capabilities']) }),
+      ...(values['execution'] === undefined ? {} : { execution: values['execution'] }),
+      ...(values['confirmation'] === undefined
+        ? {}
+        : { confirmation: resolve(values['confirmation']) }),
+      ...(values['audit'] === undefined ? {} : { audit: resolve(values['audit']) }),
+      ...(values['release-set'] === undefined
+        ? {}
+        : { releaseSet: resolve(values['release-set']) }),
       ...(adapter === undefined ? {} : { adapter }),
       ...(values['runtime-executable'] === undefined
         ? {}
         : { runtimeExecutable: values['runtime-executable'] }),
       ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
       output: values['output'] ?? 'json'
-    }
+    },
+    providedOptions: new Set(Object.keys(values))
   };
+}
+
+function validateOptionsWithOptional(
+  operation: string,
+  provided: ReadonlySet<string>,
+  required: readonly string[],
+  optional: readonly string[]
+): void {
+  const allowed = new Set(['workspace', 'output', ...required, ...optional]);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  for (const name of required) {
+    if (!provided.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `${operation} requires --${name}`);
+    }
+  }
+}
+
+function validateExactOptions(
+  operation: string,
+  provided: ReadonlySet<string>,
+  operationOptions: readonly string[]
+): void {
+  const allowed = new Set(['workspace', 'output', ...operationOptions]);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  for (const name of operationOptions) {
+    if (!provided.has(name)) {
+      throw new HarnessError('CONTRACT_INVALID', `${operation} requires --${name}`);
+    }
+  }
+}
+
+function validateResumeEditorOptions(
+  operation: string,
+  provided: ReadonlySet<string>
+): void {
+  const allowed = new Set(['workspace', 'output', 'execution', 'execution-id']);
+  const extra = [...provided].filter((name) => !allowed.has(name)).sort();
+  if (extra.length > 0) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} does not accept option${extra.length === 1 ? '' : 's'} ${extra.map((name) => `--${name}`).join(', ')}`
+    );
+  }
+  const supplied = ['execution', 'execution-id'].filter((name) => provided.has(name));
+  if (supplied.length !== 1) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `${operation} requires exactly one of --execution or --execution-id`
+    );
+  }
+}
+
+function requiredStableExecutionId(options: CliOptions, allowCompatibilityAlias = false): string {
+  const executionId = options.execution
+    ?? (allowCompatibilityAlias ? options.executionId : undefined);
+  if (executionId === undefined || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(executionId)) {
+    throw new HarnessError('WORKSPACE_PATH_INVALID', 'unsafe X Article execution identity');
+  }
+  return executionId;
+}
+
+async function readJsonFile<T>(path: string, label: string): Promise<T> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HarnessError('CONTRACT_INVALID', `${label} contains malformed JSON`);
+    }
+    throw new HarnessError('ARTIFACT_NOT_FOUND', `${label} is unavailable`);
+  }
+}
+
+async function readOptionalJsonFile<T>(path: string, label: string): Promise<T | null> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (error instanceof SyntaxError) {
+      throw new HarnessError('CONTRACT_INVALID', `${label} contains malformed JSON`);
+    }
+    throw new HarnessError('ARTIFACT_NOT_FOUND', `${label} is unavailable`);
+  }
+}
+
+function assertCapabilityManifest(
+  value: unknown
+): asserts value is XArticleBrowserCapabilityManifestV1 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new HarnessError('CONTRACT_INVALID', 'capabilities must be a JSON object');
+  }
+  const manifest = value as Record<string, unknown>;
+  const keys = Object.keys(manifest).sort();
+  const expected = [
+    'browser_family', 'capabilities', 'executor', 'executor_version', 'observed_at'
+  ];
+  if (
+    JSON.stringify(keys) !== JSON.stringify(expected)
+    || manifest['executor'] !== 'codex-chrome'
+    || manifest['browser_family'] !== 'chrome'
+    || typeof manifest['executor_version'] !== 'string'
+    || manifest['executor_version'].trim().length === 0
+    || !Array.isArray(manifest['capabilities'])
+    || manifest['capabilities'].some((item) =>
+      typeof item !== 'string' || !X_ARTICLE_BROWSER_CAPABILITIES.has(item)
+    )
+    || new Set(manifest['capabilities']).size !== manifest['capabilities'].length
+    || typeof manifest['observed_at'] !== 'string'
+    || !Number.isFinite(Date.parse(manifest['observed_at']))
+  ) {
+    throw new HarnessError('CONTRACT_INVALID', 'capabilities do not match the Browser Host manifest schema');
+  }
+}
+
+function digestBody(value: Record<string, unknown>, digestField: string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== digestField));
+}
+
+function assertReceiptBinding(
+  receipt: XArticleMaterializationReceiptV1,
+  plan: XArticleMaterializationPlanV1,
+  executionId: string
+): void {
+  if (
+    receipt.execution_id !== executionId
+    || receipt.materialization_digest !== plan.materialization_digest
+    || receipt.strategy !== plan.strategy
+    || receipt.inline_image_count !== plan.visual_anchors.length
+    || receipt.command_ceiling !== plan.expected_command_ceiling
+    || receipt.observation_ceiling !== plan.expected_observation_ceiling
+    || receipt.receipt_digest !== sha256(digestBody(
+      receipt as unknown as Record<string, unknown>,
+      'receipt_digest'
+    ))
+  ) {
+    throw new HarnessError('CONTRACT_INVALID', 'materialization receipt binding is invalid');
+  }
+}
+
+async function readMaterializationStatus(
+  operation: string,
+  options: CliOptions,
+  providedOptions: ReadonlySet<string>
+): Promise<CliResult> {
+  validateExactOptions(operation, providedOptions, ['execution']);
+  const executionId = requiredStableExecutionId(options);
+  try {
+    if (!(await stat(options.workspace)).isDirectory()) {
+      throw new HarnessError('ARTIFACT_NOT_FOUND', 'workspace is unavailable');
+    }
+  } catch (error) {
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError('ARTIFACT_NOT_FOUND', 'workspace is unavailable');
+  }
+  const prefix = resolve(
+    options.workspace,
+    'runs', executionId, 'x-article', 'browser'
+  );
+  const contextValue = await readJsonFile<unknown>(
+    resolve(prefix, 'adapter-context.json'),
+    'execution state'
+  );
+  if (
+    typeof contextValue !== 'object'
+    || contextValue === null
+    || Array.isArray(contextValue)
+  ) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'materialization-status requires a prepared compatibility or Fast Path execution'
+    );
+  }
+  const context = contextValue as {
+    readonly schema_version?: unknown;
+    readonly execution_mode?: unknown;
+    readonly plan?: unknown;
+    readonly materialization_plan?: unknown;
+    readonly snapshot?: {
+      readonly execution_id?: unknown;
+      readonly state?: unknown;
+    };
+  };
+  const executionMode = context.execution_mode;
+  if (
+    context.schema_version !== '1.0'
+    || (executionMode !== 'materialization_v3_2'
+      && executionMode !== 'media_completion_v3_3')
+    || context.plan === undefined
+    || context.materialization_plan === undefined
+  ) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'materialization-status requires a prepared compatibility or Fast Path execution'
+    );
+  }
+  assertXArticlePublicationPlan(context.plan as XArticlePublicationPlanV1);
+  const publicationPlan = context.plan as XArticlePublicationPlanV1;
+  const contextPlan = validateContract<XArticleMaterializationPlanV1>(
+    'x-article-materialization-plan',
+    context.materialization_plan
+  );
+  const durablePlanValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-plan.json'),
+    'materialization plan'
+  );
+  const plan = durablePlanValue === null
+    ? contextPlan
+    : validateContract<XArticleMaterializationPlanV1>(
+        'x-article-materialization-plan', durablePlanValue
+      );
+  const planBody = digestBody(
+    plan as unknown as Record<string, unknown>,
+    'materialization_digest'
+  );
+  if (
+    plan.execution_id !== executionId
+    || plan.publication_plan_digest !== publicationPlan.plan_digest
+    || plan.target_account !== publicationPlan.intent.target_account
+    || plan.materialization_digest !== sha256(planBody)
+    || contextPlan.materialization_digest !== plan.materialization_digest
+    || (executionMode === 'materialization_v3_2' && plan.draft_binding !== null)
+    || (executionMode === 'media_completion_v3_3' && plan.draft_binding === null)
+  ) {
+    throw new HarnessError(
+      'ARTICLE_CHECKPOINT_CONFLICT',
+      'materialization status artifacts are not bound to the requested execution'
+    );
+  }
+
+  const checkpointValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-checkpoint.json'),
+    'materialization checkpoint'
+  );
+  if (checkpointValue === null) {
+    const prebindingState = context.snapshot?.state;
+    if (
+      executionMode !== 'media_completion_v3_3'
+      || durablePlanValue !== null
+      || context.snapshot?.execution_id !== executionId
+      || !['created', 'preflight', 'materialization_blocked', 'cancelled_before_publish']
+        .includes(typeof prebindingState === 'string' ? prebindingState : '')
+    ) {
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'materialization status artifacts are not bound to the requested execution'
+      );
+    }
+    const [preview, publicReceipt, confirmation] = await Promise.all([
+      readOptionalJsonFile<unknown>(
+        resolve(prefix, 'materialization-receipt.json'), 'Preview materialization receipt'
+      ),
+      readOptionalJsonFile<unknown>(
+        resolve(prefix, 'materialization-receipt-public.json'), 'public materialization receipt'
+      ),
+      readOptionalJsonFile<unknown>(
+        resolve(prefix, 'publish-confirmation.json'), 'publish confirmation'
+      )
+    ]);
+    if (preview !== null || publicReceipt !== null || confirmation !== null) {
+      throw new HarnessError(
+        'ARTICLE_CHECKPOINT_CONFLICT',
+        'preflight materialization status contains later-phase evidence'
+      );
+    }
+    const artifact = {
+      execution_id: executionId,
+      phase: prebindingState === 'materialization_blocked' ? 'blocked' : 'preflight_pending',
+      publication_plan_digest: plan.publication_plan_digest,
+      materialization_digest: plan.materialization_digest,
+      receipt: { present: false, status: 'absent', receipt_digest: null },
+      confirmation: { state: 'absent', confirmation_digest: null },
+      publication_status: 'pre_public'
+    };
+    return { ok: true, operation, artifact, state: 'pre_public' };
+  }
+
+  const checkpoint = validateContract<XArticleMaterializationCheckpointV1>(
+    'x-article-materialization-checkpoint', checkpointValue
+  );
+  const mediaBound = checkpoint.media.length === plan.visual_anchors.length
+    && checkpoint.media.every((entry, index) => {
+      const anchor = plan.visual_anchors[index];
+      return anchor !== undefined
+        && entry.anchor_id === anchor.anchor_id
+        && entry.asset_id === anchor.asset_id
+        && entry.block_ordinal === anchor.block_ordinal
+        && entry.asset_digest === anchor.asset_digest;
+    });
+  if (
+    durablePlanValue === null
+    || checkpoint.execution_id !== executionId
+    || checkpoint.materialization_digest !== plan.materialization_digest
+    || !mediaBound
+  ) {
+    throw new HarnessError(
+      'ARTICLE_CHECKPOINT_CONFLICT',
+      'materialization status artifacts are not bound to the requested execution'
+    );
+  }
+
+  const preview = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-receipt.json'),
+    'Preview materialization receipt'
+  );
+  let previewReceipt: XArticleMaterializationReceiptV1 | null = null;
+  if (preview !== null) {
+    previewReceipt = validateContract<XArticleMaterializationReceiptV1>(
+      'x-article-materialization-receipt', preview
+    );
+    assertReceiptBinding(previewReceipt, plan, executionId);
+    if (previewReceipt.supersedes_receipt_digest !== null) {
+      throw new HarnessError('CONTRACT_INVALID', 'Preview materialization receipt is invalid');
+    }
+  }
+
+  const publicValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'materialization-receipt-public.json'),
+    'public materialization receipt'
+  );
+  let publicReceipt: XArticleMaterializationReceiptV1 | null = null;
+  if (publicValue !== null) {
+    publicReceipt = validateContract<XArticleMaterializationReceiptV1>(
+      'x-article-materialization-receipt', publicValue
+    );
+    assertReceiptBinding(publicReceipt, plan, executionId);
+    if (
+      previewReceipt === null
+      || publicReceipt.supersedes_receipt_digest !== previewReceipt.receipt_digest
+      || Date.parse(publicReceipt.issued_at) < Date.parse(previewReceipt.issued_at)
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'public materialization receipt is not bound to Preview');
+    }
+    const expectedPublicBody = {
+      ...digestBody(
+        previewReceipt as unknown as Record<string, unknown>,
+        'receipt_digest'
+      ),
+      human_wait_seconds: publicReceipt.human_wait_seconds,
+      supersedes_receipt_digest: previewReceipt.receipt_digest,
+      issued_at: publicReceipt.issued_at
+    };
+    if (publicReceipt.receipt_digest !== sha256(expectedPublicBody)) {
+      throw new HarnessError('CONTRACT_INVALID', 'public materialization receipt is not authoritative');
+    }
+  }
+
+  const confirmationValue = await readOptionalJsonFile<unknown>(
+    resolve(prefix, 'publish-confirmation.json'),
+    'publish confirmation'
+  );
+  let confirmationState: 'absent' | 'uncommitted' | 'armed' | 'consumed' =
+    checkpoint.publish_confirmation;
+  let confirmationDigest: `sha256:${string}` | null = null;
+  if (confirmationValue !== null) {
+    const confirmation = validateContract<XArticlePublishConfirmationV1>(
+      'x-article-publish-confirmation', confirmationValue
+    );
+    const assetDigests = publicationPlan.intent.visuals.map((item) => item.asset.digest);
+    if (
+      confirmation.execution_id !== executionId
+      || confirmation.draft_id !== checkpoint.draft_id
+      || confirmation.target_account !== plan.target_account
+      || confirmation.plan_digest !== plan.publication_plan_digest
+      || confirmation.document_digest !== plan.document_digest
+      || JSON.stringify(confirmation.asset_digests) !== JSON.stringify(assetDigests)
+      || confirmation.confirmation_digest !== sha256(digestBody(
+        confirmation as unknown as Record<string, unknown>,
+        'confirmation_digest'
+      ))
+    ) {
+      throw new HarnessError('CONTRACT_INVALID', 'publish confirmation binding is invalid');
+    }
+    confirmationDigest = confirmation.confirmation_digest;
+    if (checkpoint.publish_confirmation === 'absent') confirmationState = 'uncommitted';
+  } else if (checkpoint.publish_confirmation !== 'absent') {
+    throw new HarnessError('PUBLISH_GATE_BLOCKED', 'publish confirmation is unavailable');
+  }
+
+  const receiptStatus = publicReceipt !== null
+    ? 'public_verified'
+    : previewReceipt !== null
+      ? 'preview_verified'
+      : 'absent';
+  const receiptDigest = publicReceipt?.receipt_digest ?? previewReceipt?.receipt_digest ?? null;
+  const publicationStatus = publicReceipt !== null
+    ? 'public_verified'
+    : 'pre_public';
+  const artifact = {
+    execution_id: executionId,
+    phase: checkpoint.phase,
+    publication_plan_digest: plan.publication_plan_digest,
+    materialization_digest: plan.materialization_digest,
+    receipt: {
+      present: previewReceipt !== null || publicReceipt !== null,
+      status: receiptStatus,
+      receipt_digest: receiptDigest
+    },
+    confirmation: {
+      state: confirmationState,
+      confirmation_digest: confirmationDigest
+    },
+    publication_status: publicationStatus
+  };
+  return { ok: true, operation, artifact, state: publicationStatus };
 }
 
 interface PackagedMemoryAssets {
@@ -309,14 +811,7 @@ async function readInput<T>(options: CliOptions): Promise<T> {
   if (options.input === undefined) {
     throw new HarnessError('CONTRACT_INVALID', '--input <json> is required for this operation');
   }
-  try {
-    return JSON.parse(await readFile(options.input, 'utf8')) as T;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new HarnessError('CONTRACT_INVALID', `input is not valid JSON: ${error.message}`);
-    }
-    throw error;
-  }
+  return readJsonFile<T>(options.input, 'input');
 }
 
 function requiredRunId(options: CliOptions, input?: { readonly run_id?: string }): string {
@@ -328,11 +823,67 @@ function requiredRunId(options: CliOptions, input?: { readonly run_id?: string }
 }
 
 async function execute(argv: readonly string[]): Promise<CliResult> {
-  const { positional, options } = parseArguments(argv);
+  if (argv.length === 1 && argv[0] === '--help') {
+    return {
+      ok: true,
+      operation: 'help',
+      artifact: {
+        routes: X_ARTICLE_CONTROL_ROUTES,
+        compatibility_aliases: V3_2_COMPATIBILITY_ALIASES
+      },
+      state: 'ready'
+    };
+  }
+  const { positional, options, providedOptions } = parseArguments(argv);
   if (options.output !== 'json') {
     throw new HarnessError('CONTRACT_INVALID', 'V1 supports --output json only');
   }
   const operation = positional.join(' ');
+  if (operation === 'x-article browser materialization-status') {
+    return readMaterializationStatus(operation, options, providedOptions);
+  }
+  if (operation === 'x-article browser prepare-existing-media') {
+    validateExactOptions(
+      operation,
+      providedOptions,
+      ['plan', 'observation', 'capabilities']
+    );
+    const plan = await readJsonFile<XArticlePublicationPlanV1>(options.plan!, 'plan');
+    assertXArticlePublicationPlan(plan);
+    const observation = validateContract<XArticleBrowserObservation>(
+      'x-article-browser-observation',
+      await readJsonFile<unknown>(options.observation!, 'existing Draft observation')
+    );
+    for (const [label, value] of [
+      ['execution', observation.execution_id],
+      ['command', observation.command_id],
+      ['observation', observation.observation_id]
+    ] as const) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value)) {
+        throw new HarnessError(
+          'WORKSPACE_PATH_INVALID',
+          `unsafe source ${label} identity`
+        );
+      }
+    }
+    const pageContract = new XArticleWeb2026_08Contract();
+    pageContract.detectPage(observation);
+    createXArticleExistingDraftBinding({ publication_plan: plan, observation });
+    const capabilities = await readJsonFile<unknown>(
+      options.capabilities!,
+      'capabilities'
+    );
+    assertCapabilityManifest(capabilities);
+
+    const preparedStore = await WorkspaceStore.open(options.workspace);
+    const browser = new XArticleBrowserAdapter(preparedStore, pageContract);
+    const artifact = await browser.prepareExistingDraftMedia(
+      plan,
+      observation,
+      capabilities
+    );
+    return { ok: true, operation, artifact, state: artifact.state };
+  }
   const store = await WorkspaceStore.open(options.workspace);
   const packages = new PackageService(store);
 
@@ -965,6 +1516,39 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
 
   if (operation.startsWith('x-article ')) {
     const input = articleInput;
+    if (operation === 'x-article fast-path audit') {
+      validateExactOptions(operation, providedOptions, ['input']);
+      const value = input as unknown as {
+        package_ref: Parameters<XArticleService['planFastPath']>[0];
+        target_account: string;
+        draft_target: XArticleFastPathDraftTargetV1;
+      };
+      const artifact = await new XArticleService(store).planFastPath(
+        value.package_ref,
+        value.target_account,
+        value.draft_target
+      );
+      return { ok: true, operation, artifact, state: 'confirmation_pending' };
+    }
+    if (operation === 'x-article fast-path confirm') {
+      validateExactOptions(operation, providedOptions, ['input']);
+      const value = input as unknown as {
+        audit: XArticleFastPathAuditV1;
+        confirmed_by: string;
+        ttl_ms: number;
+      };
+      assertXArticleFastPathAudit(value.audit);
+      const artifact = confirmXArticleFastPath(
+        value.audit,
+        value.confirmed_by,
+        value.ttl_ms
+      );
+      await store.writeNew(
+        `runs/${value.audit.publication_plan.run_id}/x-article/fast-path-confirmation-v1.json`,
+        artifact
+      );
+      return { ok: true, operation, artifact, state: 'confirmed' };
+    }
     if (operation === 'x-article plan') {
       const value = input as unknown as {
         package_ref: Parameters<XArticleService['plan']>[0];
@@ -994,6 +1578,123 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         ? { executionId: () => executionId }
         : {}
     );
+    if (operation === 'x-article fast-path prepare') {
+      validateOptionsWithOptional(
+        operation,
+        providedOptions,
+        ['audit', 'confirmation', 'capabilities', 'release-set'],
+        ['observation']
+      );
+      const audit = await readJsonFile<XArticleFastPathAuditV1>(options.audit!, 'Fast Path Audit');
+      assertXArticleFastPathAudit(audit);
+      const confirmation = validateContract<XArticleFastPathConfirmationV1>(
+        'x-article-fast-path-confirmation',
+        await readJsonFile<unknown>(options.confirmation!, 'Fast Path confirmation')
+      );
+      const capabilities = await readJsonFile<unknown>(options.capabilities!, 'capabilities');
+      assertCapabilityManifest(capabilities);
+      const releaseSet = await readJsonFile<XArticleFastPathReleaseSetV1>(
+        options.releaseSet!,
+        'Fast Path release set'
+      );
+      assertXArticleFastPathReleaseSet(releaseSet);
+      const sourceObservation = options.observation === undefined
+        ? undefined
+        : validateContract<XArticleBrowserObservation>(
+            'x-article-browser-observation',
+            await readJsonFile<unknown>(options.observation, 'existing Draft observation')
+          );
+      const artifact = await browser.prepareFastPath({
+        audit,
+        confirmation,
+        capabilities,
+        release_set: releaseSet,
+        ...(sourceObservation === undefined ? {} : { source_observation: sourceObservation })
+      });
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article fast-path status') {
+      validateExactOptions(operation, providedOptions, ['execution']);
+      const id = requiredStableExecutionId(options);
+      const browserStatus = await browser.status(id);
+      if (browserStatus.fast_path_status === undefined) {
+        throw new HarnessError('ARTICLE_CHECKPOINT_CONFLICT', 'execution is not a Fast Path execution');
+      }
+      const context = await store.readJson<{
+        readonly plan: XArticlePublicationPlanV1;
+        readonly fast_path: {
+          readonly started_at: string;
+          readonly time_budget_seconds: 600 | 900;
+          readonly recovery_count: 0 | 1;
+        };
+      }>(`runs/${id}/x-article/browser/adapter-context.json`);
+      assertXArticlePublicationPlan(context.plan);
+      if (
+        !Number.isFinite(Date.parse(context.fast_path.started_at))
+        || (context.fast_path.time_budget_seconds !== 600
+          && context.fast_path.time_budget_seconds !== 900)
+        || (context.fast_path.recovery_count !== 0 && context.fast_path.recovery_count !== 1)
+      ) {
+        throw new HarnessError('CONTRACT_INVALID', 'Fast Path status binding is invalid');
+      }
+      const resultPath = `runs/${id}/x-article/browser/fast-path-result-v1.json`;
+      const result = await store.exists(resultPath)
+        ? verifyXArticleFastPathResult(await store.readJson<XArticleFastPathResultV1>(resultPath))
+        : null;
+      const checkpointPath = `runs/${id}/x-article/browser/materialization-checkpoint.json`;
+      const checkpoint = await store.exists(checkpointPath)
+        ? validateContract<XArticleMaterializationCheckpointV1>(
+            'x-article-materialization-checkpoint',
+            await store.readJson<unknown>(checkpointPath)
+          )
+        : null;
+      const verifiedInlineAlt = checkpoint?.media.filter((entry) =>
+        entry.status === 'completed'
+        && entry.observed_media_ref !== null
+        && entry.observed_context_digest !== null
+      ).length ?? 0;
+      const elapsedSeconds = result?.elapsed_seconds ?? Math.max(
+        0,
+        (Date.now() - Date.parse(context.fast_path.started_at)) / 1000
+      );
+      const artifact = {
+        execution_id: id,
+        stage: browserStatus.fast_path_status.stage,
+        timed_out: browserStatus.fast_path_status.timed_out,
+        elapsed_seconds: elapsedSeconds,
+        cover: browserStatus.fast_path_status.cover,
+        inline_images: browserStatus.fast_path_status.inline_images,
+        alt: result === null
+          ? `${verifiedInlineAlt}/${context.plan.intent.visuals.length}`
+          : `${result.alt.verified}/${result.alt.expected}`,
+        recovery_count: context.fast_path.recovery_count,
+        terminal_state: browserStatus.state,
+        draft_url: browserStatus.draft_id === null
+          ? null
+          : `https://x.com/compose/articles/edit/${browserStatus.draft_id}`,
+        evidence_paths: {
+          checkpoint: checkpoint === null ? null : checkpointPath,
+          result: result === null ? null : resultPath
+        }
+      };
+      return { ok: true, operation, artifact, state: browserStatus.state };
+    }
+    if (operation === 'x-article fast-path recover') {
+      validateExactOptions(operation, providedOptions, ['execution']);
+      const artifact = await browser.recoverFastPath(requiredStableExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.snapshot.state };
+    }
+    if (operation === 'x-article browser prepare') {
+      validateExactOptions(operation, providedOptions, ['plan', 'capabilities']);
+      const plan = await readJsonFile<XArticlePublicationPlanV1>(options.plan!, 'plan');
+      const capabilitiesValue = await readJsonFile<unknown>(
+        options.capabilities!,
+        'capabilities'
+      );
+      assertCapabilityManifest(capabilitiesValue);
+      const artifact = await browser.prepare(plan, capabilitiesValue);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
     if (operation === 'x-article browser start') {
       const value = input as unknown as {
         execution_id: string;
@@ -1001,8 +1702,9 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         approval: XArticleApprovalV1;
         capability_manifest: XArticleBrowserCapabilityManifestV1;
       };
-      const artifact = await browser.start(value.plan, value.approval, value.capability_manifest);
-      return { ok: true, operation, artifact, state: artifact.state };
+      const snapshot = await browser.start(value.plan, value.approval, value.capability_manifest);
+      const artifact = { ...snapshot, capability_manifest: value.capability_manifest };
+      return { ok: true, operation, artifact, state: snapshot.state };
     }
     if (operation === 'x-article browser next') {
       const artifact = await browser.next(requiredExecutionId(options));
@@ -1023,6 +1725,26 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     }
     if (operation === 'x-article browser status') {
       const artifact = await browser.status(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser resume-editor') {
+      validateResumeEditorOptions(operation, providedOptions);
+      const artifact = await browser.resumeEditor(requiredStableExecutionId(options, true));
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser confirm-publish') {
+      validateExactOptions(operation, providedOptions, ['execution', 'confirmation']);
+      const id = requiredStableExecutionId(options);
+      const confirmation = validateContract<XArticlePublishConfirmationV1>(
+        'x-article-publish-confirmation',
+        await readJsonFile<unknown>(options.confirmation!, 'confirmation')
+      );
+      const artifact = await browser.confirmPublish(id, confirmation);
+      return { ok: true, operation, artifact, state: artifact.state };
+    }
+    if (operation === 'x-article browser refresh-approval') {
+      const value = input as unknown as { approval: XArticleApprovalV1 };
+      const artifact = await browser.refreshApproval(requiredExecutionId(options), value.approval);
       return { ok: true, operation, artifact, state: artifact.state };
     }
     if (operation === 'x-article browser resume-verification') {
@@ -1204,7 +1926,9 @@ async function main(): Promise<void> {
     const code = error instanceof HarnessError
       ? error.code
       : (error as NodeJS.ErrnoException).code ?? 'UNEXPECTED';
-    const message = error instanceof Error ? error.message : 'unexpected error';
+    const message = error instanceof HarnessError
+      ? error.message
+      : 'operation failed';
     process.stdout.write(`${JSON.stringify({ ok: false, operation, error: { code, message } })}\n`);
     process.exitCode = exitCode(error);
   }

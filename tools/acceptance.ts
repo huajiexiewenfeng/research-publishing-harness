@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { ManualAdapter } from '../harnesses/research-publishing/adapters/x/manual/manual-adapter.js';
 import { BrowserAdapter } from '../harnesses/research-publishing/adapters/x/browser/browser-adapter.js';
@@ -14,16 +15,29 @@ import type {
 import { CommandBroker } from '../harnesses/research-publishing/adapters/x/browser/command-broker.js';
 import { XWeb202608Contract } from '../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
 import {
-  XArticleBrowserAdapter
+  XArticleBrowserAdapter,
+  type XArticleBrowserReportInput
 } from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
 import {
   computeXArticlePageRevision,
-  type XArticleBrowserObservation
+  type XArticleBrowserObservation,
+  type XArticleEditorImportStateV1,
+  type XArticleEditorObservation
 } from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.js';
-import type { XArticleBrowserCommandV1 } from '../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
+import {
+  XArticleCommandBroker,
+  type XArticleBrowserCommandV1,
+  type XArticleCommandClaimV1
+} from '../harnesses/research-publishing/adapters/x/article-browser/article-command-broker.js';
+import {
+  createXArticleImportTemplate,
+  type XArticleImportTemplateV1,
+  type XArticleVisualAnchorV1
+} from '../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { XArticleWeb2026_08Contract } from '../harnesses/research-publishing/adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { ArticleService, type ArticleDraft } from '../harnesses/research-publishing/branches/article-harness/article-service.js';
 import { XArticleService } from '../harnesses/research-publishing/branches/x-article-harness/x-article-service.js';
+import type { XArticleBlockV1 } from '../harnesses/research-publishing/branches/x-article-harness/article-document.js';
 import { XService, type XDraft } from '../harnesses/research-publishing/branches/x-harness/x-service.js';
 import { approvePublication } from '../harnesses/research-publishing/core/approval.js';
 import { approvePublicationV2_1 } from '../harnesses/research-publishing/core/approval-v2-1.js';
@@ -31,6 +45,7 @@ import { approveXArticlePublication } from '../harnesses/research-publishing/cor
 import { CanonicalDocumentService } from '../harnesses/research-publishing/core/canonical-document-service.js';
 import { sha256, sha256Bytes } from '../harnesses/research-publishing/core/digest.js';
 import { ExecutionStore } from '../harnesses/research-publishing/core/execution-store.js';
+import { HarnessError } from '../harnesses/research-publishing/core/errors.js';
 import { MemoryFeedbackService } from '../harnesses/research-publishing/core/memory-feedback-service.js';
 import { MemoryIngestService } from '../harnesses/research-publishing/core/memory-ingest-service.js';
 import { MemoryInsightService } from '../harnesses/research-publishing/core/memory-insight-service.js';
@@ -49,15 +64,1640 @@ import { SemanticDeltaService } from '../harnesses/research-publishing/core/sema
 import type {
   Candidate,
   ResearchContentPackage,
-  ResearchContentPackageV1_1
+  ResearchContentPackageV1_1,
+  VisualAssetRef
 } from '../harnesses/research-publishing/core/types.js';
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
+import { validateContract } from '../harnesses/research-publishing/core/schema-validator.js';
+import {
+  createXArticleStageProgress,
+  type XArticleStageProgressV1
+} from '../harnesses/research-publishing/core/x-article-materialization.js';
+import { runXArticleFastPathAcceptanceMatrix } from './x-article-fast-path-acceptance.js';
 
 const examples = resolve(import.meta.dirname, '../harnesses/research-publishing/examples/synthetic');
 async function fixture<T>(name: string): Promise<T> {
   return JSON.parse(await readFile(join(examples, name), 'utf8')) as T;
 }
 
+export interface HostWaitInput {
+  readonly timeout_ms: number;
+  readonly progress_every_ms: 20_000;
+}
+
+export interface FakeXArticleHost {
+  focusBody(targetRef: string): Promise<void>;
+  pasteStructuredTemplate(template: XArticleImportTemplateV1): Promise<void>;
+  locateUniqueAnchor(anchorId: string): Promise<void>;
+  uploadVerifiedAsset(asset: VisualAssetRef): Promise<void>;
+  moveMediaToAnchorOrdinal(blockOrdinal: number): Promise<void>;
+  setAndVerifyInlineAlt(altText: string): Promise<void>;
+  removeAnchor(anchorId: string): Promise<void>;
+  waitForEditorStable(input: HostWaitInput): Promise<void>;
+  waitForMediaReady(input: HostWaitInput): Promise<void>;
+  waitForAutosave(input: HostWaitInput): Promise<void>;
+  readImportProjection(): Promise<XArticleEditorImportStateV1>;
+  readEditorProjection(): Promise<XArticleEditorObservation>;
+}
+
+export type XArticleHostAcceptanceFault =
+  | 'non_empty_body'
+  | 'unknown_content'
+  | 'wrong_template_digest'
+  | 'reordered_anchors'
+  | 'duplicate_anchor'
+  | 'missing_anchor'
+  | 'second_import'
+  | 'wrong_asset'
+  | 'wrong_ordinal'
+  | 'wrong_alt'
+  | 'ambiguous_grouping'
+  | 'wrong_progress_stage'
+  | 'snapshot_body_tamper'
+  | 'snapshot_template_tamper'
+  | 'snapshot_visual_tamper'
+  | 'snapshot_counter_tamper'
+  | 'snapshot_completed_command_tamper'
+  | 'snapshot_schema_tamper'
+  | 'snapshot_clock_tamper'
+  | 'persisted_report_digest_tamper'
+  | 'persisted_evidence_digest_tamper'
+  | 'persisted_reported_at_tamper'
+  | 'persisted_report_command_tamper'
+  | 'persisted_observation_tamper'
+  | 'persisted_command_tamper'
+  | 'persisted_claim_tamper';
+
+export interface XArticleHostAcceptanceInput {
+  readonly body_blocks: number;
+  readonly inline_images: number;
+  readonly fault?: XArticleHostAcceptanceFault;
+  readonly restart_after_effect?: 'import' | 'first_image';
+}
+
+interface HostWaitRecord extends HostWaitInput {
+  readonly waiting_for: 'editor_stability' | 'media_readiness' | 'autosave';
+}
+
+interface HostCommandTimelineEntry {
+  readonly command_id: string;
+  readonly purpose: string;
+  readonly issued_at: string;
+  readonly claimed_at: string;
+  readonly observation_at: string;
+  readonly reported_at: string;
+}
+
+export interface XArticleHostAcceptanceResult {
+  readonly host_transactions: readonly string[];
+  readonly paragraph_level_transactions: number;
+  readonly progress_events: readonly XArticleStageProgressV1[];
+  readonly waits: readonly HostWaitRecord[];
+  readonly grouped_image_corrections: number;
+  readonly observation_count: number;
+  readonly claim_count: number;
+  readonly body_import_effects: number;
+  readonly image_upload_effects: readonly string[];
+  readonly expected_image_ordinals: readonly number[];
+  readonly expected_image_alts: readonly string[];
+  readonly normalized_post_state: XArticleEditorObservation;
+  readonly restart_count: number;
+  readonly recovered_command_ids: readonly string[];
+  readonly recovered_claim_created: readonly boolean[];
+  readonly claim_identity_unchanged: boolean;
+  readonly command_digest_unchanged: boolean;
+  readonly report_count: number;
+  readonly human_content_overwrite_count: number;
+  readonly command_timeline: readonly HostCommandTimelineEntry[];
+  readonly wall_clock_sleeps: 0;
+  readonly network: 'unused';
+}
+
+interface MutableVisualObservation {
+  ref: string;
+  asset_id: string | null;
+  kind: 'cover' | 'inline';
+  block_ordinal: number | null;
+  alt_text: string | null;
+  status: 'processing' | 'uploaded' | 'failed';
+  owned_by_execution: boolean;
+}
+
+interface FakeHostDurableSnapshotBody {
+  readonly schema_version: 'x-article-fake-host-snapshot/v1';
+  readonly execution_id: string;
+  readonly draft_id: string;
+  readonly transactions: readonly string[];
+  readonly progress_events: readonly XArticleStageProgressV1[];
+  readonly waits: readonly HostWaitRecord[];
+  readonly image_upload_effects: readonly string[];
+  readonly body_import_effects: number;
+  readonly grouped_image_corrections: number;
+  readonly human_content_overwrite_count: number;
+  readonly template: XArticleImportTemplateV1 | null;
+  readonly unresolved_anchors: readonly XArticleVisualAnchorV1[];
+  readonly resolved_assets: readonly (readonly [string, VisualAssetRef])[];
+  readonly visuals: readonly MutableVisualObservation[];
+  readonly initial_blocks: readonly XArticleBlockV1[];
+  readonly has_unknown_content: boolean;
+  readonly autosave_state: XArticleEditorObservation['autosave_state'];
+  readonly fault_consumed: boolean;
+  readonly timeline_ms: number;
+  readonly completed_commands: readonly {
+    readonly command_id: string;
+    readonly payload_digest: string;
+    readonly command_digest: `sha256:${string}`;
+    readonly kind: XArticleBrowserCommandV1['kind'];
+    readonly purpose: string;
+    readonly asset_id: string | null;
+    readonly claimed_at: string;
+  }[];
+}
+
+interface FakeHostDurableSnapshot extends FakeHostDurableSnapshotBody {
+  readonly snapshot_digest: `sha256:${string}`;
+}
+
+interface HostMaterializationReportEvidence {
+  readonly schema_version: 'x-article-materialization-report/v1';
+  readonly execution_id: string;
+  readonly command_id: string;
+  readonly report: XArticleBrowserReportInput;
+  readonly report_digest: `sha256:${string}`;
+  readonly reported_at: string;
+  readonly evidence_digest: `sha256:${string}`;
+}
+
+interface HostAuditResult {
+  readonly commands: readonly XArticleBrowserCommandV1[];
+  readonly claims: readonly XArticleCommandClaimV1[];
+  readonly observations: readonly XArticleBrowserObservation[];
+  readonly reports: readonly HostMaterializationReportEvidence[];
+  readonly snapshot: FakeHostDurableSnapshot;
+  readonly timeline: readonly HostCommandTimelineEntry[];
+}
+
+interface HostTamperBaseline {
+  readonly host_transactions: number;
+  readonly effects: number;
+  readonly reports: number;
+}
+
+type CompletedHostCommand = FakeHostDurableSnapshotBody['completed_commands'][number];
+
+const hostAcceptanceAt = '2026-08-26T00:00:00.000Z';
+
+function rejectHost(message: string): never {
+  throw new HarnessError('ARTICLE_MATERIALIZATION_DRIFT', message);
+}
+
+function assertTemplateStructure(template: XArticleImportTemplateV1): void {
+  const { template_digest: templateDigest, ...templateBody } = template;
+  if (sha256(templateBody) !== templateDigest) {
+    rejectHost('X Article Host rejected the template digest');
+  }
+  const anchorsFromBlocks = template.blocks.flatMap((block, index) => {
+    if (block.kind !== 'visual_anchor') return [];
+    const declared = template.anchors.filter((anchor) => anchor.anchor_id === block.anchor_id);
+    if (
+      declared.length !== 1
+      || declared[0]!.marker !== block.marker
+      || declared[0]!.block_ordinal !== index + 1
+    ) {
+      rejectHost('X Article Host rejected missing, duplicate, or reordered ordered anchors');
+    }
+    return declared;
+  });
+  if (sha256(anchorsFromBlocks) !== sha256(template.anchors)) {
+    rejectHost('X Article Host rejected missing, duplicate, or reordered ordered anchors');
+  }
+}
+
+function assertImportProjection(
+  template: XArticleImportTemplateV1,
+  projection: XArticleEditorImportStateV1
+): void {
+  if (projection.template_digest !== template.template_digest) {
+    rejectHost('X Article Host observed the wrong template digest');
+  }
+  if (projection.source_document_digest !== template.source_document_digest) {
+    rejectHost('X Article Host observed the wrong source document digest');
+  }
+  if (sha256(projection.unresolved_anchors) !== sha256(template.anchors)) {
+    rejectHost('X Article Host observed missing, duplicate, or reordered ordered anchors');
+  }
+}
+
+function assertExactObjectKeys(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string
+): asserts value is Record<string, unknown> {
+  if (
+    value === null
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || sha256(Object.keys(value).sort()) !== sha256([...expectedKeys].sort())
+  ) rejectHost(`X Article Host ${label} schema changed`);
+}
+
+const fakeHostSnapshotKeys = [
+  'schema_version',
+  'execution_id',
+  'draft_id',
+  'transactions',
+  'progress_events',
+  'waits',
+  'image_upload_effects',
+  'body_import_effects',
+  'grouped_image_corrections',
+  'human_content_overwrite_count',
+  'template',
+  'unresolved_anchors',
+  'resolved_assets',
+  'visuals',
+  'initial_blocks',
+  'has_unknown_content',
+  'autosave_state',
+  'fault_consumed',
+  'timeline_ms',
+  'completed_commands',
+  'snapshot_digest'
+] as const;
+
+function fakeHostSnapshotBody(
+  snapshot: FakeHostDurableSnapshot
+): FakeHostDurableSnapshotBody {
+  const { snapshot_digest: _snapshotDigest, ...body } = snapshot;
+  void _snapshotDigest;
+  return body;
+}
+
+function sealFakeHostSnapshot(
+  body: FakeHostDurableSnapshotBody
+): FakeHostDurableSnapshot {
+  const detached = structuredClone(body);
+  return { ...detached, snapshot_digest: sha256(detached) };
+}
+
+function validateFakeHostSnapshot(
+  value: unknown,
+  executionId: string,
+  draftId: string,
+  expectedTemplate: XArticleImportTemplateV1,
+  expectedAssets: ReadonlyMap<string, VisualAssetRef>
+): FakeHostDurableSnapshot {
+  assertExactObjectKeys(value, fakeHostSnapshotKeys, 'durable snapshot');
+  const snapshot = value as unknown as FakeHostDurableSnapshot;
+  const body = fakeHostSnapshotBody(snapshot);
+  if (snapshot.snapshot_digest !== sha256(body)) {
+    rejectHost('X Article Host durable snapshot digest changed');
+  }
+  if (
+    snapshot.schema_version !== 'x-article-fake-host-snapshot/v1'
+    || snapshot.execution_id !== executionId
+    || snapshot.draft_id !== draftId
+    || !Array.isArray(snapshot.transactions)
+    || !Array.isArray(snapshot.progress_events)
+    || !Array.isArray(snapshot.waits)
+    || !Array.isArray(snapshot.image_upload_effects)
+    || !Array.isArray(snapshot.unresolved_anchors)
+    || !Array.isArray(snapshot.resolved_assets)
+    || !Array.isArray(snapshot.visuals)
+    || !Array.isArray(snapshot.initial_blocks)
+    || !Array.isArray(snapshot.completed_commands)
+    || typeof snapshot.has_unknown_content !== 'boolean'
+    || typeof snapshot.fault_consumed !== 'boolean'
+    || snapshot.autosave_state !== 'saved'
+    || snapshot.has_unknown_content
+    || snapshot.initial_blocks.length !== 0
+    || !Number.isInteger(snapshot.timeline_ms)
+    || snapshot.timeline_ms < 0
+    || !Number.isInteger(snapshot.body_import_effects)
+    || !Number.isInteger(snapshot.grouped_image_corrections)
+    || !Number.isInteger(snapshot.human_content_overwrite_count)
+    || snapshot.body_import_effects !== 1
+    || snapshot.human_content_overwrite_count !== 0
+    || snapshot.template === null
+  ) rejectHost('X Article Host durable snapshot state is invalid');
+  assertTemplateStructure(snapshot.template);
+  if (sha256(snapshot.template) !== sha256(expectedTemplate)) {
+    rejectHost('X Article Host durable snapshot template changed');
+  }
+
+  const completed = snapshot.completed_commands;
+  const commandIds = new Set<string>();
+  let priorClaimAt = Date.parse(hostAcceptanceAt);
+  for (const entry of completed) {
+    const rawEntry: unknown = entry;
+    assertExactObjectKeys(rawEntry, [
+      'command_id', 'payload_digest', 'command_digest', 'kind', 'purpose', 'asset_id', 'claimed_at'
+    ], 'completed command');
+    const claimedAt = Date.parse(entry.claimed_at);
+    if (
+      !/^[A-Za-z0-9_-]+$/.test(entry.command_id)
+      || commandIds.has(entry.command_id)
+      || !entry.payload_digest.startsWith('sha256:')
+      || !entry.command_digest.startsWith('sha256:')
+      || typeof entry.purpose !== 'string'
+      || entry.purpose.length === 0
+      || !Number.isFinite(claimedAt)
+      || claimedAt < priorClaimAt
+      || claimedAt > Date.parse(hostAcceptanceAt) + snapshot.timeline_ms
+      || !['import_article_document', 'replace_article_visual_anchor'].includes(entry.kind)
+    ) rejectHost('X Article Host durable completed command changed');
+    commandIds.add(entry.command_id);
+    priorClaimAt = claimedAt;
+  }
+  if (
+    completed.length !== snapshot.transactions.length
+    || sha256(completed.map((entry) => entry.kind)) !== sha256(snapshot.transactions)
+    || completed.filter((entry) => entry.kind === 'import_article_document').length !== 1
+    || completed[0]?.kind !== 'import_article_document'
+    || completed[0]?.asset_id !== null
+  ) rejectHost('X Article Host durable transaction ledger changed');
+  let expectedEffectDurableMs = 0;
+  const expectedClaimMs: number[] = [];
+  for (const [index, entry] of completed.entries()) {
+    if (index > 0) expectedEffectDurableMs += 2_000;
+    expectedEffectDurableMs += 1_000;
+    expectedClaimMs.push(expectedEffectDurableMs);
+    expectedEffectDurableMs += entry.kind === 'import_article_document' ? 75_000 : 90_000;
+  }
+  if (
+    ![expectedEffectDurableMs, expectedEffectDurableMs + 2_000].includes(snapshot.timeline_ms)
+    || completed.some((entry, index) =>
+      Date.parse(entry.claimed_at) !== Date.parse(hostAcceptanceAt) + expectedClaimMs[index]!)
+  ) rejectHost('X Article Host durable synthetic clock changed');
+
+  const imageCommands = completed.filter((entry) => entry.kind === 'replace_article_visual_anchor');
+  const imageAssetIds = imageCommands.map((entry) => entry.asset_id);
+  if (
+    imageAssetIds.some((assetId): assetId is null => assetId === null)
+    || new Set(imageAssetIds).size !== imageAssetIds.length
+    || sha256(imageAssetIds) !== sha256(snapshot.image_upload_effects)
+    || snapshot.grouped_image_corrections !== imageCommands.length
+    || snapshot.visuals.length !== imageCommands.length
+    || snapshot.resolved_assets.length !== imageCommands.length
+    || snapshot.unresolved_anchors.length !== expectedTemplate.anchors.length - imageCommands.length
+  ) rejectHost('X Article Host durable effect counters changed');
+
+  const completedAnchors = expectedTemplate.anchors.slice(0, imageCommands.length);
+  const pendingAnchors = expectedTemplate.anchors.slice(imageCommands.length);
+  if (sha256(snapshot.unresolved_anchors) !== sha256(pendingAnchors)) {
+    rejectHost('X Article Host durable unresolved anchors changed');
+  }
+  const seenVisualRefs = new Set<string>();
+  for (const [index, anchor] of completedAnchors.entries()) {
+    const asset = expectedAssets.get(anchor.asset_id);
+    const command = imageCommands[index];
+    const resolved = snapshot.resolved_assets[index];
+    const visual = snapshot.visuals[index];
+    if (visual !== undefined) {
+      assertExactObjectKeys(visual, [
+        'ref', 'asset_id', 'kind', 'block_ordinal', 'alt_text', 'status', 'owned_by_execution'
+      ], 'durable visual');
+    }
+    if (
+      asset === undefined
+      || command?.asset_id !== anchor.asset_id
+      || resolved?.[0] !== anchor.anchor_id
+      || sha256(resolved?.[1]) !== sha256(asset)
+      || visual === undefined
+      || visual.ref !== `grouped_${anchor.anchor_id}`
+      || seenVisualRefs.has(visual.ref)
+      || visual.asset_id !== asset.asset_id
+      || visual.kind !== 'inline'
+      || visual.block_ordinal !== anchor.block_ordinal
+      || visual.alt_text !== asset.alt_text
+      || visual.status !== 'uploaded'
+      || !visual.owned_by_execution
+    ) rejectHost('X Article Host durable visual state changed');
+    seenVisualRefs.add(visual.ref);
+  }
+
+  const expectedWaits = completed.flatMap((entry): HostWaitRecord[] =>
+    entry.kind === 'import_article_document'
+      ? [
+          { waiting_for: 'editor_stability', timeout_ms: 45_000, progress_every_ms: 20_000 },
+          { waiting_for: 'autosave', timeout_ms: 30_000, progress_every_ms: 20_000 }
+        ]
+      : [
+          { waiting_for: 'media_readiness', timeout_ms: 60_000, progress_every_ms: 20_000 },
+          { waiting_for: 'autosave', timeout_ms: 30_000, progress_every_ms: 20_000 }
+        ]
+  );
+  if (sha256(snapshot.waits) !== sha256(expectedWaits)) {
+    rejectHost('X Article Host durable wait ledger changed');
+  }
+  const completedById = new Map(completed.map((entry) => [entry.command_id, entry]));
+  for (const event of snapshot.progress_events) {
+    const separator = event.stage.lastIndexOf('#');
+    const commandId = separator < 1 ? '' : event.stage.slice(separator + 1);
+    const entry = completedById.get(commandId);
+    if (entry === undefined || event.stage !== `${entry.purpose}#${entry.command_id}`) {
+      rejectHost('X Article Host progress stage does not match the issued purpose and command');
+    }
+  }
+  let priorProgressAt = Date.parse(hostAcceptanceAt);
+  for (const entry of completed) {
+    const events = snapshot.progress_events.filter((event) =>
+      event.stage === `${entry.purpose}#${entry.command_id}`
+    );
+    const expectedWaiting = entry.kind === 'import_article_document'
+      ? ['editor_stability', 'editor_stability', 'autosave']
+      : ['media_readiness', 'media_readiness', 'autosave'];
+    const expectedRecordedOffsets = entry.kind === 'import_article_document'
+      ? [20_000, 40_000, 65_000]
+      : [20_000, 40_000, 80_000];
+    if (
+      events.length !== 3
+      || sha256(events.map((event) => event.elapsed_seconds)) !== sha256([20, 40, 20])
+      || sha256(events.map((event) => event.waiting_for)) !== sha256(expectedWaiting)
+    ) rejectHost('X Article Host durable progress cadence changed');
+    for (const [eventIndex, event] of events.entries()) {
+      const { schema_version: _schemaVersion, ...progressInput } = event;
+      void _schemaVersion;
+      const validated = createXArticleStageProgress(progressInput);
+      const recordedAt = Date.parse(event.recorded_at);
+      if (
+        sha256(validated) !== sha256(event)
+        || event.execution_id !== executionId
+        || event.asset_id !== entry.asset_id
+        || !Number.isFinite(recordedAt)
+        || recordedAt < priorProgressAt
+        || recordedAt !== Date.parse(entry.claimed_at) + expectedRecordedOffsets[eventIndex]!
+        || recordedAt > Date.parse(hostAcceptanceAt) + snapshot.timeline_ms
+      ) rejectHost('X Article Host durable progress ledger changed');
+      priorProgressAt = recordedAt;
+    }
+  }
+  if (snapshot.progress_events.length !== completed.length * 3) {
+    rejectHost('X Article Host durable progress contains foreign events');
+  }
+  return structuredClone(snapshot);
+}
+
+class OfflineFakeXArticleHost implements FakeXArticleHost {
+  readonly network = 'unused' as const;
+  readonly transactions: string[] = [];
+  readonly progressEvents: XArticleStageProgressV1[] = [];
+  readonly waits: HostWaitRecord[] = [];
+  readonly imageUploadEffects: string[] = [];
+  bodyImportEffects = 0;
+  groupedImageCorrections = 0;
+  humanContentOverwriteCount = 0;
+  private template: XArticleImportTemplateV1 | null = null;
+  private unresolvedAnchors: XArticleVisualAnchorV1[] = [];
+  private readonly resolvedAssets = new Map<string, VisualAssetRef>();
+  private readonly visuals: MutableVisualObservation[] = [];
+  private initialBlocks: XArticleBlockV1[] = [];
+  private hasUnknownContent = false;
+  private autosaveState: XArticleEditorObservation['autosave_state'] = 'saved';
+  private focused = false;
+  private activeCommand: XArticleBrowserCommandV1 | null = null;
+  private activeAnchor: XArticleVisualAnchorV1 | null = null;
+  private faultConsumed = false;
+  private timelineMs = 0;
+  private readonly completedCommands = new Map<
+    string,
+    Omit<CompletedHostCommand, 'command_id'>
+  >();
+
+  constructor(
+    private readonly executionId: string,
+    private readonly draftId: string,
+    private readonly expectedAssets: ReadonlyMap<string, VisualAssetRef>,
+    expectedTemplate: XArticleImportTemplateV1,
+    private readonly fault?: XArticleHostAcceptanceFault,
+    snapshot?: unknown
+  ) {
+    if (snapshot !== undefined) {
+      const validated = validateFakeHostSnapshot(
+        snapshot, executionId, draftId, expectedTemplate, expectedAssets
+      );
+      this.transactions.push(...validated.transactions);
+      this.progressEvents.push(...structuredClone(validated.progress_events));
+      this.waits.push(...structuredClone(validated.waits));
+      this.imageUploadEffects.push(...validated.image_upload_effects);
+      this.bodyImportEffects = validated.body_import_effects;
+      this.groupedImageCorrections = validated.grouped_image_corrections;
+      this.humanContentOverwriteCount = validated.human_content_overwrite_count;
+      this.template = structuredClone(validated.template);
+      this.unresolvedAnchors = [...structuredClone(validated.unresolved_anchors)];
+      for (const [anchorId, asset] of validated.resolved_assets) {
+        this.resolvedAssets.set(anchorId, structuredClone(asset));
+      }
+      this.visuals.push(...structuredClone(validated.visuals));
+      this.initialBlocks = [...structuredClone(validated.initial_blocks)];
+      this.hasUnknownContent = validated.has_unknown_content;
+      this.autosaveState = validated.autosave_state;
+      this.faultConsumed = validated.fault_consumed;
+      this.timelineMs = validated.timeline_ms;
+      for (const completed of validated.completed_commands) {
+        this.completedCommands.set(completed.command_id, {
+          payload_digest: completed.payload_digest,
+          command_digest: completed.command_digest,
+          kind: completed.kind,
+          purpose: completed.purpose,
+          asset_id: completed.asset_id,
+          claimed_at: completed.claimed_at
+        });
+      }
+      return;
+    }
+    if (fault === 'non_empty_body') {
+      this.initialBlocks = [{
+        kind: 'paragraph',
+        runs: [{ text: 'Unknown existing body.', marks: [], link: null }]
+      }];
+    }
+    if (fault === 'unknown_content') this.hasUnknownContent = true;
+  }
+
+  beginTransaction(command: XArticleBrowserCommandV1): void {
+    if (
+      command.allowed_origin !== 'https://x.com'
+      || command.payload_digest !== sha256(command.payload)
+      || command.kind !== command.payload.kind
+      || command.side_effect !== 'write'
+    ) rejectHost('X Article Host rejected an invalid claimed command envelope');
+    if (this.completedCommands.has(command.command_id)) {
+      if (command.kind === 'import_article_document') this.humanContentOverwriteCount += 1;
+      rejectHost('X Article Host refused to replay a durable command effect');
+    }
+    this.activeCommand = command;
+    this.transactions.push(command.kind);
+  }
+
+  advanceClock(milliseconds: number): void {
+    if (!Number.isInteger(milliseconds) || milliseconds <= 0) {
+      rejectHost('X Article Host received an invalid synthetic clock advance');
+    }
+    this.timelineMs += milliseconds;
+  }
+
+  now(): Date {
+    return new Date(Date.parse(hostAcceptanceAt) + this.timelineMs);
+  }
+
+  nextTimestamp(): string {
+    this.advanceClock(1_000);
+    return this.now().toISOString();
+  }
+
+  markEffectDurable(
+    command: XArticleBrowserCommandV1,
+    claim: XArticleCommandClaimV1
+  ): void {
+    if (this.activeCommand?.command_id !== command.command_id) {
+      rejectHost('X Article Host cannot durably complete a foreign command');
+    }
+    this.completedCommands.set(command.command_id, {
+      payload_digest: command.payload_digest,
+      command_digest: sha256(command),
+      kind: command.kind,
+      purpose: command.purpose,
+      asset_id: command.payload.kind === 'replace_article_visual_anchor'
+        ? command.payload.asset.asset_id
+        : null,
+      claimed_at: claim.claimed_at
+    });
+    this.activeCommand = null;
+    this.focused = false;
+  }
+
+  async readRecoveredPostState(
+    command: XArticleBrowserCommandV1
+  ): Promise<XArticleEditorObservation> {
+    const completed = this.completedCommands.get(command.command_id);
+    if (
+      completed === undefined
+      || completed.payload_digest !== command.payload_digest
+      || completed.command_digest !== sha256(command)
+      || completed.kind !== command.kind
+    ) rejectHost('X Article Host cannot reconcile an unknown durable command effect');
+    const editor = await this.readEditorProjection();
+    if (editor.has_unknown_content || editor.autosave_state !== 'saved') {
+      rejectHost('X Article Host recovered post-state is unknown or unsaved');
+    }
+    return editor;
+  }
+
+  durableSnapshot(): FakeHostDurableSnapshot {
+    return sealFakeHostSnapshot({
+      schema_version: 'x-article-fake-host-snapshot/v1' as const,
+      execution_id: this.executionId,
+      draft_id: this.draftId,
+      transactions: this.transactions,
+      progress_events: this.progressEvents,
+      waits: this.waits,
+      image_upload_effects: this.imageUploadEffects,
+      body_import_effects: this.bodyImportEffects,
+      grouped_image_corrections: this.groupedImageCorrections,
+      human_content_overwrite_count: this.humanContentOverwriteCount,
+      template: this.template,
+      unresolved_anchors: this.unresolvedAnchors,
+      resolved_assets: [...this.resolvedAssets.entries()],
+      visuals: this.visuals,
+      initial_blocks: this.initialBlocks,
+      has_unknown_content: this.hasUnknownContent,
+      autosave_state: this.autosaveState,
+      fault_consumed: this.faultConsumed,
+      timeline_ms: this.timelineMs,
+      completed_commands: [...this.completedCommands.entries()].map(([commandId, completed]) => ({
+        command_id: commandId,
+        ...completed
+      }))
+    });
+  }
+
+  async focusBody(targetRef: string): Promise<void> {
+    if (targetRef.trim() === '') rejectHost('X Article Host rejected an empty body target');
+    if (this.bodyImportEffects > 0 || this.template !== null) {
+      this.humanContentOverwriteCount += 1;
+      rejectHost('X Article body was already imported');
+    }
+    if (this.hasUnknownContent) rejectHost('X Article Host rejected unknown content');
+    if (this.initialBlocks.length > 0 || this.visuals.length > 0) {
+      rejectHost('X Article Host requires an empty body');
+    }
+    this.focused = true;
+  }
+
+  async pasteStructuredTemplate(template: XArticleImportTemplateV1): Promise<void> {
+    if (!this.focused) rejectHost('X Article body was not focused');
+    if (this.bodyImportEffects > 0 || this.template !== null) {
+      rejectHost('X Article body was already imported');
+    }
+    assertTemplateStructure(template);
+    this.template = structuredClone(template);
+    this.unresolvedAnchors = [...structuredClone(template.anchors)];
+    if (this.fault === 'reordered_anchors' && this.unresolvedAnchors.length > 1) {
+      [this.unresolvedAnchors[0], this.unresolvedAnchors[1]] = [
+        this.unresolvedAnchors[1]!, this.unresolvedAnchors[0]!
+      ];
+    }
+    if (this.fault === 'duplicate_anchor' && this.unresolvedAnchors.length > 1) {
+      this.unresolvedAnchors[1] = this.unresolvedAnchors[0]!;
+    }
+    if (this.fault === 'missing_anchor') this.unresolvedAnchors.pop();
+    this.bodyImportEffects += 1;
+    this.autosaveState = 'saving';
+  }
+
+  async locateUniqueAnchor(anchorId: string): Promise<void> {
+    const matches = this.unresolvedAnchors.filter((anchor) => anchor.anchor_id === anchorId);
+    if (matches.length !== 1 || this.resolvedAssets.has(anchorId)) {
+      rejectHost('X Article Host requires one unique unresolved anchor');
+    }
+    this.activeAnchor = matches[0]!;
+  }
+
+  async uploadVerifiedAsset(asset: VisualAssetRef): Promise<void> {
+    const anchor = this.activeAnchor;
+    if (anchor === null) rejectHost('X Article Host has no active anchor');
+    const expected = this.expectedAssets.get(anchor.asset_id);
+    if (expected === undefined || sha256(expected) !== sha256(asset)) {
+      rejectHost('X Article Host rejected the claimed asset');
+    }
+    if (this.consumeFault('wrong_asset')) rejectHost('X Article Host rejected the claimed asset');
+    this.imageUploadEffects.push(asset.asset_id);
+    this.visuals.push({
+      ref: `grouped_${anchor.anchor_id}`,
+      asset_id: asset.asset_id,
+      kind: 'inline',
+      block_ordinal: 1,
+      alt_text: null,
+      status: 'processing',
+      owned_by_execution: true
+    });
+    if (this.consumeFault('ambiguous_grouping')) {
+      this.visuals.push({
+        ...this.visuals[this.visuals.length - 1]!,
+        ref: `grouped_duplicate_${anchor.anchor_id}`
+      });
+    }
+  }
+
+  async moveMediaToAnchorOrdinal(blockOrdinal: number): Promise<void> {
+    const anchor = this.activeAnchor;
+    if (anchor === null) rejectHost('X Article Host has no active anchor');
+    const candidates = this.visuals.filter((visual) =>
+      visual.asset_id === anchor.asset_id && !this.resolvedAssets.has(anchor.anchor_id)
+    );
+    if (candidates.length !== 1) rejectHost('X Article Host observed ambiguous grouped media');
+    if (blockOrdinal !== anchor.block_ordinal) {
+      rejectHost('X Article Host rejected the claimed block ordinal');
+    }
+    const visual = candidates[0]!;
+    const actualOrdinal = this.consumeFault('wrong_ordinal') ? blockOrdinal + 1 : blockOrdinal;
+    if (visual.block_ordinal !== actualOrdinal) this.groupedImageCorrections += 1;
+    visual.block_ordinal = actualOrdinal;
+    if (visual.block_ordinal !== blockOrdinal) {
+      rejectHost('X Article Host failed to verify the block ordinal');
+    }
+  }
+
+  async setAndVerifyInlineAlt(altText: string): Promise<void> {
+    const anchor = this.activeAnchor;
+    if (anchor === null) rejectHost('X Article Host has no active anchor');
+    const candidates = this.visuals.filter((visual) => visual.asset_id === anchor.asset_id);
+    if (candidates.length !== 1) rejectHost('X Article Host observed ambiguous grouped media');
+    candidates[0]!.alt_text = this.consumeFault('wrong_alt') ? `${altText} changed` : altText;
+    if (candidates[0]!.alt_text !== altText) {
+      rejectHost('X Article Host failed to verify inline Alt');
+    }
+  }
+
+  async removeAnchor(anchorId: string): Promise<void> {
+    const anchor = this.activeAnchor;
+    if (anchor === null || anchor.anchor_id !== anchorId) {
+      rejectHost('X Article Host rejected anchor cleanup');
+    }
+    const expected = this.expectedAssets.get(anchor.asset_id);
+    const visual = this.visuals.find((candidate) => candidate.asset_id === anchor.asset_id);
+    if (
+      expected === undefined || visual === undefined
+      || visual.block_ordinal !== anchor.block_ordinal
+      || visual.alt_text !== expected.alt_text || visual.status !== 'uploaded'
+    ) rejectHost('X Article Host refused to remove an unverified anchor');
+    this.unresolvedAnchors = this.unresolvedAnchors.filter((candidate) =>
+      candidate.anchor_id !== anchorId
+    );
+    this.resolvedAssets.set(anchorId, expected);
+    this.activeAnchor = null;
+    this.autosaveState = 'saving';
+  }
+
+  async waitForEditorStable(input: HostWaitInput): Promise<void> {
+    this.recordWait('editor_stability', input);
+  }
+
+  async waitForMediaReady(input: HostWaitInput): Promise<void> {
+    this.recordWait('media_readiness', input);
+    const anchor = this.activeAnchor;
+    if (anchor === null) rejectHost('X Article Host has no active anchor');
+    for (const visual of this.visuals.filter((candidate) => candidate.asset_id === anchor.asset_id)) {
+      visual.status = 'uploaded';
+    }
+  }
+
+  async waitForAutosave(input: HostWaitInput): Promise<void> {
+    this.recordWait('autosave', input);
+    this.autosaveState = 'saved';
+  }
+
+  async readImportProjection(): Promise<XArticleEditorImportStateV1> {
+    if (this.template === null) rejectHost('X Article import projection is absent');
+    return {
+      template_digest: this.fault === 'wrong_template_digest'
+        ? sha256('wrong-template') : this.template.template_digest,
+      source_document_digest: this.template.source_document_digest,
+      unresolved_anchors: structuredClone(this.unresolvedAnchors)
+    };
+  }
+
+  async readEditorProjection(): Promise<XArticleEditorObservation> {
+    const blocks: XArticleBlockV1[] = [];
+    if (this.template === null) {
+      blocks.push(...structuredClone(this.initialBlocks));
+    } else {
+      for (const block of this.template.blocks) {
+        if (block.kind !== 'visual_anchor') {
+          blocks.push(structuredClone(block));
+          continue;
+        }
+        const asset = this.resolvedAssets.get(block.anchor_id);
+        if (asset !== undefined) {
+          blocks.push({ kind: 'image', asset_id: asset.asset_id, alt_text: asset.alt_text });
+        }
+      }
+    }
+    const importState = this.template !== null && this.unresolvedAnchors.length > 0
+      ? await this.readImportProjection() : null;
+    return {
+      draft_id: this.draftId,
+      title: 'Bounded X Article Host acceptance',
+      blocks,
+      visuals: structuredClone(this.visuals)
+        .sort((left, right) => (left.block_ordinal ?? 0) - (right.block_ordinal ?? 0)),
+      import_state: importState,
+      has_unknown_content: this.hasUnknownContent,
+      autosave_state: this.autosaveState
+    };
+  }
+
+  private consumeFault(fault: XArticleHostAcceptanceFault): boolean {
+    if (!this.faultConsumed && this.fault === fault) {
+      this.faultConsumed = true;
+      return true;
+    }
+    return false;
+  }
+
+  private recordWait(waitingFor: HostWaitRecord['waiting_for'], input: HostWaitInput): void {
+    if (
+      input.progress_every_ms !== 20_000
+      || !Number.isInteger(input.timeout_ms) || input.timeout_ms <= 0
+    ) rejectHost('X Article Host received an invalid bounded wait');
+    this.waits.push({ waiting_for: waitingFor, ...input });
+    for (
+      let elapsedMs = input.progress_every_ms;
+      elapsedMs < input.timeout_ms;
+      elapsedMs += input.progress_every_ms
+    ) {
+      const command = this.activeCommand;
+      if (command === null) rejectHost('X Article Host wait lacks an active command');
+      const stage = this.consumeFault('wrong_progress_stage')
+        ? `foreign_purpose#${command.command_id}`
+        : `${command.purpose}#${command.command_id}`;
+      const assetId = command.payload.kind === 'replace_article_visual_anchor'
+        ? command.payload.asset.asset_id
+        : null;
+      this.progressEvents.push(createXArticleStageProgress({
+        execution_id: this.executionId,
+        stage,
+        asset_id: assetId,
+        elapsed_seconds: elapsedMs / 1_000,
+        waiting_for: waitingFor,
+        retry_count: 0,
+        observed_effect: elapsedMs + input.progress_every_ms >= input.timeout_ms
+          ? 'partial' : 'none',
+        recorded_at: new Date(
+          Date.parse(hostAcceptanceAt) + this.timelineMs + elapsedMs
+        ).toISOString()
+      }));
+    }
+    this.timelineMs += input.timeout_ms;
+  }
+}
+
+function createHostObservation(
+  command: XArticleBrowserCommandV1,
+  editor: XArticleEditorObservation,
+  observationNumber: number,
+  observedAt: string
+): XArticleBrowserObservation {
+  const input = {
+    schema_version: '1.0' as const,
+    observation_id: `host_observation_${observationNumber}`,
+    execution_id: command.execution_id,
+    command_id: command.command_id,
+    origin: 'https://x.com' as const,
+    canonical_url: `https://x.com/compose/articles/edit/${editor.draft_id}`,
+    observed_at: observedAt,
+    account_handle: '@runtime_ai',
+    page_kind: 'article_editor' as const,
+    controls: [],
+    editor,
+    preview: null,
+    publish_review: null,
+    public_article: null
+  };
+  return { ...input, page_revision: computeXArticlePageRevision(input) };
+}
+
+async function executeClaimedHostTransaction(
+  host: OfflineFakeXArticleHost,
+  command: XArticleBrowserCommandV1,
+  claim: XArticleCommandClaimV1
+): Promise<XArticleEditorObservation> {
+  if (
+    claim.claimed !== true
+    || claim.execution_id !== command.execution_id
+    || claim.command_id !== command.command_id
+  ) rejectHost('X Article Host rejected an invalid command claim');
+  host.beginTransaction(command);
+  if (command.payload.kind === 'import_article_document') {
+    await host.focusBody(command.payload.target_ref);
+    await host.pasteStructuredTemplate(command.payload.template);
+    await host.waitForEditorStable({ timeout_ms: 45_000, progress_every_ms: 20_000 });
+    assertImportProjection(command.payload.template, await host.readImportProjection());
+    await host.waitForAutosave({ timeout_ms: 30_000, progress_every_ms: 20_000 });
+  } else if (command.payload.kind === 'replace_article_visual_anchor') {
+    await host.locateUniqueAnchor(command.payload.anchor.anchor_id);
+    await host.uploadVerifiedAsset(command.payload.asset);
+    await host.waitForMediaReady({ timeout_ms: 60_000, progress_every_ms: 20_000 });
+    await host.moveMediaToAnchorOrdinal(command.payload.anchor.block_ordinal);
+    await host.setAndVerifyInlineAlt(command.payload.asset.alt_text);
+    await host.removeAnchor(command.payload.anchor.anchor_id);
+    await host.waitForAutosave({ timeout_ms: 30_000, progress_every_ms: 20_000 });
+  } else {
+    rejectHost('X Article Host rejected a non-materialization command');
+  }
+  const editor = await host.readEditorProjection();
+  if (editor.has_unknown_content || editor.autosave_state !== 'saved') {
+    rejectHost('X Article Host post-state is unknown or unsaved');
+  }
+  host.markEffectDurable(command, claim);
+  return editor;
+}
+
+async function replaceOrWrite(
+  store: WorkspaceStore,
+  path: string,
+  value: object
+): Promise<void> {
+  if (await store.exists(path)) await store.replaceAtomic(path, value);
+  else await store.writeNew(path, value);
+}
+
+async function persistHostReport(
+  store: WorkspaceStore,
+  command: XArticleBrowserCommandV1,
+  observation: XArticleBrowserObservation,
+  reportedAt: string
+): Promise<void> {
+  const report: XArticleBrowserReportInput = {
+    command: structuredClone(command),
+    status: 'success',
+    observation: structuredClone(observation)
+  };
+  const body = {
+    schema_version: 'x-article-materialization-report/v1' as const,
+    execution_id: command.execution_id,
+    command_id: command.command_id,
+    report,
+    report_digest: sha256(report),
+    reported_at: reportedAt
+  };
+  const evidence: HostMaterializationReportEvidence = {
+    ...body,
+    evidence_digest: sha256(body)
+  };
+  await store.writeNew(
+    `runs/${command.execution_id}/x-article/browser/observations/${observation.observation_id}.json`,
+    observation
+  );
+  await store.writeNew(
+    `runs/${command.execution_id}/x-article/browser/reports/${command.command_id}.json`,
+    evidence
+  );
+}
+
+function validateHostClaim(
+  value: unknown,
+  command: XArticleBrowserCommandV1
+): XArticleCommandClaimV1 {
+  assertExactObjectKeys(value, [
+    'schema_version', 'execution_id', 'command_id', 'claimed', 'claimed_at'
+  ], 'claim');
+  const claim = value as unknown as XArticleCommandClaimV1;
+  if (
+    claim.schema_version !== '1.0'
+    || claim.execution_id !== command.execution_id
+    || claim.command_id !== command.command_id
+    || claim.claimed !== true
+    || !Number.isFinite(Date.parse(claim.claimed_at))
+  ) rejectHost('X Article Host persisted claim changed');
+  return structuredClone(claim);
+}
+
+function validateHostMaterializationReportEvidence(
+  value: unknown,
+  command: XArticleBrowserCommandV1
+): HostMaterializationReportEvidence {
+  assertExactObjectKeys(value, [
+    'schema_version', 'execution_id', 'command_id', 'report',
+    'report_digest', 'reported_at', 'evidence_digest'
+  ], 'materialization report evidence');
+  const evidence = value as unknown as HostMaterializationReportEvidence;
+  assertExactObjectKeys(
+    evidence.report, ['command', 'status', 'observation'], 'materialization report'
+  );
+  const persistedCommand = validateContract<XArticleBrowserCommandV1>(
+    'x-article-browser-command', evidence.report.command
+  );
+  const observation = evidence.report.observation === null
+    ? null
+    : validateContract<XArticleBrowserObservation>(
+        'x-article-browser-observation', evidence.report.observation
+      );
+  const { evidence_digest: _evidenceDigest, ...evidenceBody } = evidence;
+  void _evidenceDigest;
+  const commandAt = Date.parse(command.issued_at);
+  const reportedAt = Date.parse(evidence.reported_at);
+  const observedAt = observation === null ? Number.NaN : Date.parse(observation.observed_at);
+  if (
+    evidence.schema_version !== 'x-article-materialization-report/v1'
+    || evidence.execution_id !== command.execution_id
+    || evidence.command_id !== command.command_id
+    || evidence.report.status !== 'success'
+    || observation === null
+    || sha256(persistedCommand) !== sha256(command)
+    || evidence.report_digest !== sha256(evidence.report)
+    || evidence.evidence_digest !== sha256(evidenceBody)
+    || !Number.isFinite(commandAt)
+    || !Number.isFinite(reportedAt)
+    || !Number.isFinite(observedAt)
+    || commandAt > observedAt
+    || observedAt > reportedAt
+  ) rejectHost('X Article Host materialization report evidence changed');
+  return structuredClone(evidence);
+}
+
+function expectedHostEditorProjection(
+  template: XArticleImportTemplateV1,
+  expectedAssets: ReadonlyMap<string, VisualAssetRef>,
+  draftId: string,
+  completedImageCount: number
+): XArticleEditorObservation {
+  const completedAnchorIds = new Set(template.anchors.slice(0, completedImageCount)
+    .map((anchor) => anchor.anchor_id));
+  const blocks = template.blocks.flatMap((block): XArticleBlockV1[] => {
+    if (block.kind !== 'visual_anchor') return [structuredClone(block)];
+    if (!completedAnchorIds.has(block.anchor_id)) return [];
+    const anchor = template.anchors.find((candidate) => candidate.anchor_id === block.anchor_id);
+    const asset = anchor === undefined ? undefined : expectedAssets.get(anchor.asset_id);
+    if (asset === undefined) rejectHost('X Article Host expected editor fixture changed');
+    return [{ kind: 'image', asset_id: asset.asset_id, alt_text: asset.alt_text }];
+  });
+  const visuals = template.anchors.slice(0, completedImageCount).map((anchor) => {
+    const asset = expectedAssets.get(anchor.asset_id);
+    if (asset === undefined) rejectHost('X Article Host expected visual fixture changed');
+    return {
+      ref: `grouped_${anchor.anchor_id}`,
+      asset_id: asset.asset_id,
+      kind: 'inline' as const,
+      block_ordinal: anchor.block_ordinal,
+      alt_text: asset.alt_text,
+      status: 'uploaded' as const,
+      owned_by_execution: true
+    };
+  });
+  const unresolved = template.anchors.slice(completedImageCount);
+  return {
+    draft_id: draftId,
+    title: 'Bounded X Article Host acceptance',
+    blocks,
+    visuals,
+    import_state: unresolved.length === 0 ? null : {
+      template_digest: template.template_digest,
+      source_document_digest: template.source_document_digest,
+      unresolved_anchors: unresolved
+    },
+    has_unknown_content: false,
+    autosave_state: 'saved'
+  };
+}
+
+async function auditHostEvidence(
+  store: WorkspaceStore,
+  executionId: string,
+  runId: string,
+  draftId: string,
+  expectedTemplate: XArticleImportTemplateV1,
+  expectedAssets: ReadonlyMap<string, VisualAssetRef>
+): Promise<HostAuditResult> {
+  const prefix = `runs/${executionId}/x-article/browser`;
+  const snapshot = validateFakeHostSnapshot(
+    await store.readJson<unknown>(`${prefix}/fake-host-state.json`),
+    executionId,
+    draftId,
+    expectedTemplate,
+    expectedAssets
+  );
+  const commandEntries = await store.list(`${prefix}/commands`);
+  const commands: XArticleBrowserCommandV1[] = [];
+  const claims: XArticleCommandClaimV1[] = [];
+  for (const entry of commandEntries) {
+    if (entry.kind !== 'directory' || !/^[A-Za-z0-9_-]+$/.test(entry.name)) {
+      rejectHost('X Article Host command ledger contains an invalid entry');
+    }
+    const command = validateContract<XArticleBrowserCommandV1>(
+      'x-article-browser-command',
+      await store.readJson<unknown>(`${entry.relative_path}/command.json`)
+    );
+    if (
+      command.execution_id !== executionId
+      || command.command_id !== entry.name
+      || command.run_id !== runId
+      || command.draft_id !== draftId
+      || command.allowed_origin !== 'https://x.com'
+      || command.side_effect !== 'write'
+      || command.kind !== command.payload.kind
+      || command.payload_digest !== sha256(command.payload)
+      || !['import_article_document', 'replace_article_visual_anchor'].includes(command.kind)
+    ) rejectHost('X Article Host persisted command changed');
+    const claim = validateHostClaim(
+      await store.readJson<unknown>(`${entry.relative_path}/claim.json`), command
+    );
+    commands.push(command);
+    claims.push(claim);
+  }
+  const order = commands.map((command, index) => ({ command, claim: claims[index]! }))
+    .sort((left, right) =>
+      left.command.issued_at.localeCompare(right.command.issued_at)
+      || left.command.command_id.localeCompare(right.command.command_id));
+  if (order.length !== snapshot.completed_commands.length) {
+    rejectHost('X Article Host command ledger is incomplete');
+  }
+  for (const [index, { command, claim }] of order.entries()) {
+    const completed = snapshot.completed_commands[index]!;
+    const expectedAnchor = index === 0 ? null : expectedTemplate.anchors[index - 1];
+    const expectedAsset = expectedAnchor === null || expectedAnchor === undefined
+      ? null : expectedAssets.get(expectedAnchor.asset_id);
+    if (
+      completed.command_id !== command.command_id
+      || completed.payload_digest !== command.payload_digest
+      || completed.command_digest !== sha256(command)
+      || completed.kind !== command.kind
+      || completed.purpose !== command.purpose
+      || completed.claimed_at !== claim.claimed_at
+      || (index === 0
+        ? command.payload.kind !== 'import_article_document'
+          || sha256(command.payload.template) !== sha256(expectedTemplate)
+        : command.payload.kind !== 'replace_article_visual_anchor'
+          || expectedAnchor === undefined
+          || expectedAsset === undefined
+          || sha256(command.payload.anchor) !== sha256(expectedAnchor)
+          || sha256(command.payload.asset) !== sha256(expectedAsset))
+    ) rejectHost('X Article Host command ledger differs from durable effects');
+  }
+
+  const observationEntries = await store.list(`${prefix}/observations`);
+  const observationById = new Map<string, XArticleBrowserObservation>();
+  for (const entry of observationEntries) {
+    if (entry.kind !== 'file' || !entry.name.endsWith('.json')) {
+      rejectHost('X Article Host observation ledger contains an invalid entry');
+    }
+    const observation = validateContract<XArticleBrowserObservation>(
+      'x-article-browser-observation', await store.readJson<unknown>(entry.relative_path)
+    );
+    const { page_revision: _pageRevision, ...observationBody } = observation;
+    void _pageRevision;
+    new XArticleWeb2026_08Contract().detectPage(observation);
+    if (
+      entry.name !== `${observation.observation_id}.json`
+      || observation.execution_id !== executionId
+      || observationById.has(observation.observation_id)
+      || observation.page_revision !== computeXArticlePageRevision(observationBody)
+    ) rejectHost('X Article Host persisted observation changed');
+    observationById.set(observation.observation_id, observation);
+  }
+
+  const reportEntries = await store.list(`${prefix}/reports`);
+  if (reportEntries.length !== order.length) {
+    rejectHost('X Article Host report ledger is incomplete');
+  }
+  const referencedObservations = new Set<string>();
+  const reports: HostMaterializationReportEvidence[] = [];
+  const observations: XArticleBrowserObservation[] = [];
+  const timeline: HostCommandTimelineEntry[] = [];
+  let previousAt = Date.parse(hostAcceptanceAt);
+  for (const [index, { command, claim }] of order.entries()) {
+    const reportPath = `${prefix}/reports/${command.command_id}.json`;
+    const evidence = validateHostMaterializationReportEvidence(
+      await store.readJson<unknown>(reportPath), command
+    );
+    const observation = evidence.report.observation!;
+    const persistedObservation = observationById.get(observation.observation_id);
+    const commandProgress = snapshot.progress_events.filter((event) =>
+      event.stage === `${command.purpose}#${command.command_id}`
+    );
+    if (commandProgress.length === 0) rejectHost('X Article Host command lacks progress evidence');
+    if (
+      persistedObservation === undefined
+      || referencedObservations.has(observation.observation_id)
+      || sha256(persistedObservation) !== sha256(observation)
+      || observation.execution_id !== command.execution_id
+      || observation.command_id !== command.command_id
+      || observation.editor === null
+      || sha256(observation.editor) !== sha256(expectedHostEditorProjection(
+        expectedTemplate, expectedAssets, draftId, index
+      ))
+    ) rejectHost('X Article Host report observation binding changed');
+    referencedObservations.add(observation.observation_id);
+    const issuedAt = Date.parse(command.issued_at);
+    const claimedAt = Date.parse(claim.claimed_at);
+    const observationAt = Date.parse(observation.observed_at);
+    const reportedAt = Date.parse(evidence.reported_at);
+    const ordered = [issuedAt, claimedAt, ...commandProgress.map((event) =>
+      Date.parse(event.recorded_at)), observationAt, reportedAt];
+    for (const at of ordered) {
+      if (!Number.isFinite(at) || at < previousAt) {
+        rejectHost('X Article Host evidence timeline is unordered');
+      }
+      previousAt = at;
+    }
+    reports.push(evidence);
+    observations.push(observation);
+    timeline.push({
+      command_id: command.command_id,
+      purpose: command.purpose,
+      issued_at: command.issued_at,
+      claimed_at: claim.claimed_at,
+      observation_at: observation.observed_at,
+      reported_at: evidence.reported_at
+    });
+  }
+  if (referencedObservations.size !== observationById.size) {
+    rejectHost('X Article Host observation ledger contains extraneous evidence');
+  }
+  return {
+    commands: order.map(({ command }) => command),
+    claims: order.map(({ claim }) => claim),
+    observations,
+    reports,
+    snapshot,
+    timeline
+  };
+}
+
+const snapshotTamperFaults = new Set<XArticleHostAcceptanceFault>([
+  'snapshot_body_tamper',
+  'snapshot_template_tamper',
+  'snapshot_visual_tamper',
+  'snapshot_counter_tamper',
+  'snapshot_completed_command_tamper',
+  'snapshot_schema_tamper',
+  'snapshot_clock_tamper'
+]);
+
+const persistedTamperFaults = new Set<XArticleHostAcceptanceFault>([
+  'persisted_report_digest_tamper',
+  'persisted_evidence_digest_tamper',
+  'persisted_reported_at_tamper',
+  'persisted_report_command_tamper',
+  'persisted_observation_tamper',
+  'persisted_command_tamper',
+  'persisted_claim_tamper'
+]);
+
+function resealTamperedBody(value: Record<string, unknown>, digestKey: string): void {
+  const body = Object.fromEntries(Object.entries(value).filter(([key]) => key !== digestKey));
+  value[digestKey] = sha256(body);
+}
+
+async function tamperFakeHostSnapshot(
+  store: WorkspaceStore,
+  path: string,
+  fault: XArticleHostAcceptanceFault
+): Promise<void> {
+  const snapshot = await store.readJson<Record<string, unknown>>(path);
+  if (fault === 'snapshot_body_tamper') {
+    snapshot.initial_blocks = [{
+      kind: 'paragraph', runs: [{ text: 'Injected durable body.', marks: [], link: null }]
+    }];
+  } else if (fault === 'snapshot_template_tamper') {
+    const template = structuredClone(snapshot.template) as Record<string, unknown>;
+    const blocks = structuredClone(template.blocks) as Record<string, unknown>[];
+    const first = blocks[0];
+    if (first === undefined) rejectHost('X Article Host tamper fixture lacks a template block');
+    blocks[0] = { ...first, injected: true };
+    template.blocks = blocks;
+    snapshot.template = template;
+  } else if (fault === 'snapshot_visual_tamper') {
+    const visuals = structuredClone(snapshot.visuals) as Record<string, unknown>[];
+    const first = visuals[0];
+    if (first === undefined) rejectHost('X Article Host tamper fixture lacks a visual');
+    visuals[0] = { ...first, alt_text: 'Injected durable Alt.' };
+    snapshot.visuals = visuals;
+    resealTamperedBody(snapshot, 'snapshot_digest');
+  } else if (fault === 'snapshot_counter_tamper') {
+    snapshot.grouped_image_corrections = Number(snapshot.grouped_image_corrections) + 1;
+    resealTamperedBody(snapshot, 'snapshot_digest');
+  } else if (fault === 'snapshot_completed_command_tamper') {
+    const completed = structuredClone(snapshot.completed_commands) as Record<string, unknown>[];
+    const first = completed[0];
+    if (first === undefined) rejectHost('X Article Host tamper fixture lacks a completed command');
+    completed[0] = { ...first, purpose: 'injected_same_identity_purpose' };
+    snapshot.completed_commands = completed;
+    resealTamperedBody(snapshot, 'snapshot_digest');
+  } else if (fault === 'snapshot_schema_tamper') {
+    snapshot.injected_authoritative_field = true;
+    resealTamperedBody(snapshot, 'snapshot_digest');
+  } else if (fault === 'snapshot_clock_tamper') {
+    snapshot.timeline_ms = Number(snapshot.timeline_ms) + 1_000;
+    resealTamperedBody(snapshot, 'snapshot_digest');
+  } else {
+    rejectHost('X Article Host received an invalid snapshot tamper fault');
+  }
+  await store.replaceAtomic(path, snapshot);
+}
+
+async function tamperPersistedHostEvidence(
+  store: WorkspaceStore,
+  executionId: string,
+  fault: XArticleHostAcceptanceFault
+): Promise<void> {
+  const prefix = `runs/${executionId}/x-article/browser`;
+  const commandEntries = (await store.list(`${prefix}/commands`))
+    .filter((entry) => entry.kind === 'directory')
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const first = commandEntries[0];
+  if (first === undefined) rejectHost('X Article Host tamper fixture lacks a command');
+  const commandPath = `${first.relative_path}/command.json`;
+  const claimPath = `${first.relative_path}/claim.json`;
+  const reportPath = `${prefix}/reports/${first.name}.json`;
+  if (fault === 'persisted_command_tamper') {
+    const command = await store.readJson<Record<string, unknown>>(commandPath);
+    command.purpose = 'injected_persisted_purpose';
+    await store.replaceAtomic(commandPath, command);
+    return;
+  }
+  if (fault === 'persisted_claim_tamper') {
+    const claim = await store.readJson<Record<string, unknown>>(claimPath);
+    claim.claimed_at = hostAcceptanceAt;
+    await store.replaceAtomic(claimPath, claim);
+    return;
+  }
+  const evidence = await store.readJson<Record<string, unknown>>(reportPath);
+  if (fault === 'persisted_report_digest_tamper') {
+    evidence.report_digest = sha256('injected-report-digest');
+  } else if (fault === 'persisted_evidence_digest_tamper') {
+    evidence.evidence_digest = sha256('injected-evidence-digest');
+  } else if (fault === 'persisted_reported_at_tamper') {
+    evidence.reported_at = '2026-08-25T23:59:59.000Z';
+    resealTamperedBody(evidence, 'evidence_digest');
+  } else if (fault === 'persisted_report_command_tamper') {
+    const report = structuredClone(evidence.report) as Record<string, unknown>;
+    const command = structuredClone(report.command) as Record<string, unknown>;
+    command.purpose = 'injected_report_purpose';
+    report.command = command;
+    evidence.report = report;
+    evidence.report_digest = sha256(report);
+    resealTamperedBody(evidence, 'evidence_digest');
+  } else if (fault === 'persisted_observation_tamper') {
+    const report = evidence.report as Record<string, unknown>;
+    const observation = report.observation as Record<string, unknown>;
+    const observationPath = `${prefix}/observations/${String(observation.observation_id)}.json`;
+    const durableObservation = await store.readJson<Record<string, unknown>>(observationPath);
+    const editor = structuredClone(durableObservation.editor) as Record<string, unknown>;
+    editor.title = 'Injected durable observation title';
+    durableObservation.editor = editor;
+    await store.replaceAtomic(observationPath, durableObservation);
+    return;
+  } else {
+    rejectHost('X Article Host received an invalid persisted tamper fault');
+  }
+  await store.replaceAtomic(reportPath, evidence);
+}
+
+async function countPersistedHostReports(
+  store: WorkspaceStore,
+  executionId: string
+): Promise<number> {
+  const path = `runs/${executionId}/x-article/browser/reports`;
+  if (!(await store.exists(path))) return 0;
+  return (await store.list(path)).filter((entry) => entry.kind === 'file').length;
+}
+
+function hostImageOrdinals(bodyBlocks: number, inlineImages: number): number[] {
+  return Array.from({ length: inlineImages }, (_, index) =>
+    Math.floor(((index + 1) * bodyBlocks) / (inlineImages + 1)) + 1
+  );
+}
+
+export async function runXArticleHostAcceptance(
+  input: XArticleHostAcceptanceInput
+): Promise<XArticleHostAcceptanceResult> {
+  if (
+    !Number.isInteger(input.body_blocks) || !Number.isInteger(input.inline_images)
+    || input.body_blocks < 1 || input.inline_images < 0
+    || input.inline_images >= input.body_blocks
+  ) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'Host acceptance requires integer body_blocks > inline_images >= 0'
+    );
+  }
+  const executionId = `host_acceptance_${input.body_blocks}_${input.inline_images}`;
+  const runId = `run_${executionId}`;
+  const draftId = '2092246293603373056';
+  const ordinals = hostImageOrdinals(input.body_blocks, input.inline_images);
+  if (new Set(ordinals).size !== input.inline_images) {
+    throw new HarnessError('CONTRACT_INVALID', 'Host acceptance image ordinals are not unique');
+  }
+  const assets = ordinals.map((ordinal, index): VisualAssetRef => ({
+    asset_id: `host_asset_${index + 1}`,
+    relative_path: `assets/host-asset-${index + 1}.png`,
+    digest: sha256({ executionId, ordinal, index }),
+    mime_type: 'image/png',
+    alt_text: `Approved inline Alt ${index + 1}.`,
+    claim_refs: [`claim_host_${index + 1}`]
+  }));
+  const assetByOrdinal = new Map(ordinals.map((ordinal, index) => [ordinal, assets[index]!]));
+  const blocks: XArticleBlockV1[] = Array.from({ length: input.body_blocks }, (_, index) => {
+    const ordinal = index + 1;
+    const asset = assetByOrdinal.get(ordinal);
+    return asset === undefined
+      ? {
+          kind: 'paragraph' as const,
+          runs: [{ text: `Approved paragraph ${ordinal}.`, marks: [], link: null }]
+        }
+      : { kind: 'image' as const, asset_id: asset.asset_id, alt_text: asset.alt_text };
+  });
+  const template = createXArticleImportTemplate({
+    schema_version: '1.0',
+    title: 'Bounded X Article Host acceptance',
+    cover_asset_id: null,
+    blocks
+  });
+  const expectedAssets = new Map(assets.map((asset) => [asset.asset_id, asset]));
+  const hostWorkspace = await mkdtemp(join(tmpdir(), 'rph-x-article-host-'));
+  let store = await WorkspaceStore.open(hostWorkspace);
+  let host = new OfflineFakeXArticleHost(
+    executionId, draftId, expectedAssets, template, input.fault
+  );
+  let commandNumber = 0;
+  const createBroker = () => new XArticleCommandBroker(store, {
+    commandId: () => `host_command_${++commandNumber}`,
+    now: () => host.now()
+  });
+  let broker = createBroker();
+  const issuedCommands: XArticleBrowserCommandV1[] = [];
+  const claims: XArticleCommandClaimV1[] = [];
+  const observations: XArticleBrowserObservation[] = [];
+  const recoveredCommandIds: string[] = [];
+  const recoveredClaimCreated: boolean[] = [];
+  let restartCount = 0;
+  let claimIdentityUnchanged = true;
+  let commandDigestUnchanged = true;
+  let tamperBaseline: HostTamperBaseline | null = null;
+  const snapshotPath = `runs/${executionId}/x-article/browser/fake-host-state.json`;
+
+  const captureTamperBaseline = async (): Promise<HostTamperBaseline> => ({
+    host_transactions: host.transactions.length,
+    effects: host.bodyImportEffects + host.imageUploadEffects.length,
+    reports: await countPersistedHostReports(store, executionId)
+  });
+
+  const issueAndExecute = async (
+    commandInput: Parameters<XArticleCommandBroker['issue']>[0],
+    restartBoundary: 'import' | 'first_image' | null = null
+  ): Promise<void> => {
+    host.advanceClock(1_000);
+    const command = await broker.issue(commandInput);
+    const claim = await broker.claim(command);
+    issuedCommands.push(command);
+    claims.push(claim);
+    let editor = await executeClaimedHostTransaction(host, command, claim);
+    await replaceOrWrite(store, snapshotPath, host.durableSnapshot());
+
+    if (input.restart_after_effect === restartBoundary && restartCount === 0) {
+      const reportPath = `runs/${executionId}/x-article/browser/reports/${command.command_id}.json`;
+      if (await store.exists(reportPath)) {
+        rejectHost('X Article Host restart boundary unexpectedly had a durable report');
+      }
+      restartCount += 1;
+      if (input.fault !== undefined && snapshotTamperFaults.has(input.fault)) {
+        tamperBaseline = await captureTamperBaseline();
+        await tamperFakeHostSnapshot(store, snapshotPath, input.fault);
+      }
+      store = await WorkspaceStore.open(hostWorkspace);
+      broker = createBroker();
+      const commandPath = `runs/${executionId}/x-article/browser/commands/${command.command_id}/command.json`;
+      const storedCommand = await store.readJson<XArticleBrowserCommandV1>(commandPath);
+      const recovered = await broker.claimOrRead(storedCommand);
+      const snapshot = validateFakeHostSnapshot(
+        await store.readJson<unknown>(snapshotPath),
+        executionId,
+        draftId,
+        template,
+        expectedAssets
+      );
+      const durableCompleted = snapshot.completed_commands.find((entry) =>
+        entry.command_id === storedCommand.command_id
+      );
+      if (
+        durableCompleted === undefined
+        || durableCompleted.command_digest !== sha256(storedCommand)
+        || durableCompleted.payload_digest !== storedCommand.payload_digest
+        || durableCompleted.claimed_at !== recovered.claim.claimed_at
+      ) rejectHost('X Article Host durable completed claim binding changed');
+      host = new OfflineFakeXArticleHost(
+        executionId, draftId, expectedAssets, template, input.fault, snapshot
+      );
+      recoveredCommandIds.push(storedCommand.command_id);
+      recoveredClaimCreated.push(recovered.created);
+      claimIdentityUnchanged = sha256(recovered.claim) === sha256(claim);
+      commandDigestUnchanged = sha256(storedCommand) === sha256(command)
+        && storedCommand.payload_digest === command.payload_digest;
+      if (recovered.created || !claimIdentityUnchanged || !commandDigestUnchanged) {
+        rejectHost('X Article Host durable command recovery identity changed');
+      }
+      editor = await host.readRecoveredPostState(storedCommand);
+    }
+
+    const observation = createHostObservation(
+      command, editor, observations.length + 1, host.nextTimestamp()
+    );
+    observations.push(observation);
+    await persistHostReport(store, command, observation, host.nextTimestamp());
+    await replaceOrWrite(store, snapshotPath, host.durableSnapshot());
+  };
+
+  try {
+    const common = {
+      execution_id: executionId,
+      run_id: runId,
+      draft_id: draftId,
+      expected_page_revision: null,
+      allowed_origin: 'https://x.com' as const
+    };
+    const importInput = {
+      ...common,
+      kind: 'import_article_document' as const,
+      purpose: 'import_article_document',
+      side_effect: 'write' as const,
+      payload: {
+        kind: 'import_article_document' as const,
+        target_ref: 'body',
+        package_root: 'articles/acceptance/host-v32',
+        package_digest: sha256({ executionId, kind: 'package' }),
+        template
+      }
+    };
+    await issueAndExecute(importInput, 'import');
+    if (input.fault === 'second_import') {
+      await issueAndExecute({ ...importInput, purpose: 'second_import_rejected' });
+    }
+    for (const [anchorIndex, anchor] of template.anchors.entries()) {
+      const asset = expectedAssets.get(anchor.asset_id);
+      if (asset === undefined) rejectHost('X Article Host fixture is missing a claimed asset');
+      await issueAndExecute({
+        ...common,
+        kind: 'replace_article_visual_anchor',
+        purpose: `replace_article_visual_anchor_${anchor.block_ordinal}`,
+        side_effect: 'write',
+        payload: {
+          kind: 'replace_article_visual_anchor',
+          target_ref: 'body',
+          anchor,
+          package_root: 'articles/acceptance/host-v32',
+          package_digest: sha256({ executionId, kind: 'package' }),
+          asset
+        }
+      }, anchorIndex === 0 ? 'first_image' : null);
+    }
+    if (input.fault !== undefined && persistedTamperFaults.has(input.fault)) {
+      tamperBaseline = await captureTamperBaseline();
+      await tamperPersistedHostEvidence(store, executionId, input.fault);
+    }
+    const audited = await auditHostEvidence(
+      store, executionId, runId, draftId, template, expectedAssets
+    );
+    const normalizedPostState = audited.observations[audited.observations.length - 1]?.editor;
+    if (normalizedPostState === undefined || normalizedPostState === null) {
+      rejectHost('X Article Host final durable editor observation is absent');
+    }
+    return {
+      host_transactions: [...audited.snapshot.transactions],
+      paragraph_level_transactions: audited.commands
+        .filter((command) => command.kind === 'insert_article_block').length,
+      progress_events: structuredClone(audited.snapshot.progress_events),
+      waits: structuredClone(audited.snapshot.waits),
+      grouped_image_corrections: audited.snapshot.grouped_image_corrections,
+      observation_count: audited.observations.length,
+      claim_count: audited.claims.length,
+      body_import_effects: audited.snapshot.body_import_effects,
+      image_upload_effects: [...audited.snapshot.image_upload_effects],
+      expected_image_ordinals: ordinals,
+      expected_image_alts: assets.map((asset) => asset.alt_text),
+      normalized_post_state: normalizedPostState,
+      restart_count: restartCount,
+      recovered_command_ids: recoveredCommandIds,
+      recovered_claim_created: recoveredClaimCreated,
+      claim_identity_unchanged: claimIdentityUnchanged,
+      command_digest_unchanged: commandDigestUnchanged,
+      report_count: audited.reports.length,
+      human_content_overwrite_count: audited.snapshot.human_content_overwrite_count,
+      command_timeline: audited.timeline,
+      wall_clock_sleeps: 0,
+      network: host.network
+    };
+  } catch (error) {
+    if (tamperBaseline !== null) {
+      const currentReports = await countPersistedHostReports(store, executionId);
+      const currentEffects = host.bodyImportEffects + host.imageUploadEffects.length;
+      throw new HarnessError(
+        'ARTICLE_MATERIALIZATION_DRIFT',
+        'X Article Host durable evidence changed',
+        {
+          cause: error instanceof Error ? error.message : String(error),
+          new_host_transactions: host.transactions.length - tamperBaseline.host_transactions,
+          new_effects: currentEffects - tamperBaseline.effects,
+          new_reports: currentReports - tamperBaseline.reports
+        }
+      );
+    }
+    throw error;
+  } finally {
+    const verifiedRoot = resolve(hostWorkspace);
+    if (
+      resolve(verifiedRoot, '..') !== resolve(tmpdir())
+      || !basename(verifiedRoot).startsWith('rph-x-article-host-')
+    ) throw new Error('refusing to remove an unverified Host acceptance path');
+    await rm(verifiedRoot, { recursive: true, force: false });
+  }
+}
+
+if (
+  process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
 const workspace = await mkdtemp(join(tmpdir(), 'research-publishing-acceptance-'));
 let articleComplete = false;
 let manualXComplete = false;
@@ -77,6 +1717,11 @@ let publicationFlywheelComplete = false;
 let submitCommands = 0;
 let submitClaims = 0;
 let xArticlePublishCommands = 0;
+let xArticleImportCommands = 0;
+let xArticleAnchorReplacementCommands = 0;
+const xArticleAnchorReplacementOrdinals: number[] = [];
+let xArticleExecutionState = '';
+let xArticleReceiptStatus = '';
 
 const browserAt = '2026-08-18T16:00:00.000Z';
 const browserManifest: BrowserCapabilityManifest = {
@@ -187,16 +1832,39 @@ try {
     targetDepth: 'deep',
     includeOpenQuestions: true
   });
+  const inlineVisualSpecs = [
+    {
+      slotId: 'runtime-boundary-inline', candidateId: 'candidate_runtime_boundary',
+      assetId: 'asset_runtime_boundary', sectionId: 'runtime-boundary',
+      altText: 'Runtime boundary diagram.', claimRefs: ['claim_contract_test']
+    },
+    {
+      slotId: 'research-hypothesis-inline', candidateId: 'candidate_research_hypothesis',
+      assetId: 'asset_research_hypothesis', sectionId: 'research-hypothesis',
+      altText: 'Research hypothesis diagram.', claimRefs: ['claim_runtime_hypothesis']
+    },
+    {
+      slotId: 'planned-work-inline', candidateId: 'candidate_planned_work',
+      assetId: 'asset_planned_work', sectionId: 'planned-work',
+      altText: 'Planned work diagram.', claimRefs: ['claim_trace_planned']
+    }
+  ] as const;
+  const sectionIds = ['runtime-boundary', 'research-hypothesis', 'planned-work'] as const;
   const articleDraft = {
     ...(await fixture<ArticleDraft>('article-draft.json')),
     run_id: articleRun.run_id,
     sections: (await fixture<ArticleDraft>('article-draft.json')).sections.map((section, index) =>
-      index === 0 ? { ...section, section_id: 'runtime-boundary' } : section
+      ({ ...section, section_id: sectionIds[index]! })
     ),
     visual_slots: [{
       slot_id: 'cover', placement: { kind: 'cover' as const }, purpose: 'cover' as const,
       required: true, brief: 'Show one evidence-backed runtime boundary.', claim_refs: ['claim_contract_test']
-    }]
+    }, ...inlineVisualSpecs.map((visual) => ({
+      slot_id: visual.slotId,
+      placement: { kind: 'after_section' as const, section_id: visual.sectionId },
+      purpose: 'explanation' as const, required: true, brief: visual.altText,
+      claim_refs: visual.claimRefs
+    }))]
   };
   await articles.acceptArticleDraft(articleRun.run_id, articleDraft);
   const articleReview = await articles.reviewArticle(articleRun.run_id);
@@ -207,8 +1875,22 @@ try {
     sourcePath: visualSource, altText: 'One evidence-backed runtime boundary.',
     claimRefs: ['claim_contract_test'], provenance: { method: 'generated', tool: 'acceptance-synthetic' }
   });
+  const inlineVisualCandidates = [];
+  for (const visual of inlineVisualSpecs) {
+    inlineVisualCandidates.push(await articles.attachVisual(articleRun.run_id, {
+      candidateId: visual.candidateId, assetId: visual.assetId, slotId: visual.slotId,
+      sourcePath: visualSource, altText: visual.altText, claimRefs: visual.claimRefs,
+      provenance: { method: 'generated', tool: 'acceptance-synthetic' }
+    }));
+  }
   await articles.reviewVisual(articleRun.run_id, {
-    selectedCandidates: { cover: visualCandidate.candidate_id }, reviewedBy: 'acceptance-reviewer',
+    selectedCandidates: {
+      cover: visualCandidate.candidate_id,
+      ...Object.fromEntries(inlineVisualCandidates.map((candidate) => [
+        candidate.slot_id, candidate.candidate_id
+      ]))
+    },
+    reviewedBy: 'acceptance-reviewer',
     claimAlignment: true, boundaryAlignment: true, mobileLegibility: true,
     singleMessage: true, privacyReview: true
   });
@@ -218,6 +1900,9 @@ try {
     articleReview.passed &&
     canonical.artifacts.includes(`${canonical.root}/visual-manifest.json`) &&
     canonical.artifacts.includes(`${canonical.root}/assets/asset_cover.png`) &&
+    inlineVisualSpecs.every((visual) =>
+      canonical.artifacts.includes(`${canonical.root}/assets/${visual.assetId}.png`)
+    ) &&
     articleHandoff.article_digest === canonical.digest &&
     articleHandoff.visual_asset?.asset_id === 'asset_cover';
 
@@ -246,6 +1931,7 @@ try {
     executor: 'codex-chrome', executor_version: 'acceptance-fake-host', browser_family: 'chrome',
     capabilities: [
       'observe_article_page', 'create_article_draft', 'set_article_title',
+      'import_article_document', 'replace_article_visual_anchor',
       'upload_article_cover', 'insert_article_block', 'insert_article_image',
       'set_article_image_alt', 'open_article_preview', 'open_publish_review',
       'publish_article_once'
@@ -253,10 +1939,12 @@ try {
   });
   const xArticleDraftId = '2090731994279755776';
   let xArticleTitle = '';
-  const xArticleBlocks: typeof xArticlePlan.intent.document.blocks[number][] = [];
+  let xArticleBlocks: typeof xArticlePlan.intent.document.blocks = [];
   let xArticleVisuals: XArticleBrowserObservation['editor'] extends null
     ? never
     : NonNullable<XArticleBrowserObservation['editor']>['visuals'] = [];
+  let xArticleImportState: NonNullable<XArticleBrowserObservation['editor']>['import_state'] = null;
+  const xArticleCommandKinds: string[] = [];
   const editorControls = [
     { ref: 'title', role: 'textbox', name: 'Add a title', test_id: null, disabled: false },
     { ref: 'body', role: 'textbox', name: '', test_id: 'composer', disabled: false },
@@ -266,10 +1954,14 @@ try {
   while (true) {
     const step = await xArticleAdapter.next(xArticleExecution.execution_id);
     if (step.command === null) {
-      if (step.snapshot.state === 'finalized') break;
+      if (
+        step.snapshot.state === 'finalized'
+        || step.snapshot.state === 'published_unverified'
+      ) break;
       throw new Error(`X Article acceptance stalled in ${step.snapshot.state}`);
     }
     const command = step.command;
+    xArticleCommandKinds.push(command.kind);
     if (command.kind === 'observe_article_page' && command.payload.kind === 'observe_article_page') {
       if (command.payload.scope === 'index') {
         await articleReport(xArticleAdapter, command, {
@@ -296,26 +1988,69 @@ try {
       await articleReport(xArticleAdapter, command, {
         canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
         controls: editorControls,
-        editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+        editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, import_state: xArticleImportState, has_unknown_content: false, autosave_state: 'saved' }
       });
       continue;
     }
     if (command.kind === 'set_article_title') xArticleTitle = command.payload.kind === 'set_article_title' ? command.payload.title : xArticleTitle;
+    if (command.kind === 'import_article_document' && command.payload.kind === 'import_article_document') {
+      xArticleImportCommands += 1;
+      xArticleImportState = {
+        template_digest: command.payload.template.template_digest,
+        source_document_digest: command.payload.template.source_document_digest,
+        unresolved_anchors: command.payload.template.anchors
+      };
+      xArticleBlocks = xArticlePlan.intent.document.blocks.filter((block) => block.kind !== 'image');
+    }
+    if (
+      command.kind === 'replace_article_visual_anchor' &&
+      command.payload.kind === 'replace_article_visual_anchor'
+    ) {
+      const nextAnchor = xArticleImportState?.unresolved_anchors[0];
+      if (nextAnchor === undefined || nextAnchor.anchor_id !== command.payload.anchor.anchor_id) {
+        throw new Error('X Article acceptance Host received an out-of-order visual anchor replacement');
+      }
+      xArticleAnchorReplacementCommands += 1;
+      xArticleAnchorReplacementOrdinals.push(command.payload.anchor.block_ordinal);
+      const unresolvedAnchors = xArticleImportState!.unresolved_anchors.slice(1);
+      xArticleVisuals = [...xArticleVisuals, {
+        ref: `image_${command.payload.anchor.block_ordinal}`,
+        asset_id: command.payload.asset.asset_id, kind: 'inline',
+        block_ordinal: command.payload.anchor.block_ordinal,
+        alt_text: command.payload.asset.alt_text, status: 'uploaded', owned_by_execution: true
+      }];
+      if (unresolvedAnchors.length === 0) {
+        xArticleImportState = null;
+        xArticleBlocks = xArticlePlan.intent.document.blocks;
+      } else {
+        xArticleImportState = { ...xArticleImportState!, unresolved_anchors: unresolvedAnchors };
+        const unresolvedOrdinals = new Set(unresolvedAnchors.map((anchor) => anchor.block_ordinal));
+        xArticleBlocks = xArticlePlan.intent.document.blocks.filter((block, index) =>
+          block.kind !== 'image' || !unresolvedOrdinals.has(index + 1)
+        );
+      }
+    }
     if (command.kind === 'upload_article_cover' && command.payload.kind === 'upload_article_cover') {
       xArticleVisuals = [{
         ref: 'cover_acceptance', asset_id: command.payload.asset.asset_id, kind: 'cover',
         block_ordinal: null, alt_text: null, status: 'uploaded', owned_by_execution: true
-      }];
+      }, ...xArticleVisuals];
     }
     if (command.kind === 'set_article_image_alt' && command.payload.kind === 'set_article_image_alt') {
       const altText = command.payload.alt_text;
-      xArticleVisuals = xArticleVisuals.map((visual) => ({ ...visual, alt_text: altText }));
+      const visualRef = command.payload.visual_ref;
+      xArticleVisuals = xArticleVisuals.map((visual) =>
+        visual.ref === visualRef ? { ...visual, alt_text: altText } : visual
+      );
     }
     if (command.kind === 'insert_article_block' && command.payload.kind === 'insert_article_block') {
-      xArticleBlocks.push(command.payload.block);
+      xArticleBlocks = [...xArticleBlocks, command.payload.block];
     }
     if (command.kind === 'insert_article_image' && command.payload.kind === 'insert_article_image') {
-      xArticleBlocks.push(xArticlePlan.intent.document.blocks[command.payload.block_ordinal - 1]!);
+      xArticleBlocks = [
+        ...xArticleBlocks,
+        xArticlePlan.intent.document.blocks[command.payload.block_ordinal - 1]!
+      ];
       xArticleVisuals = [...xArticleVisuals, {
         ref: `image_${command.payload.block_ordinal}`, asset_id: command.payload.asset.asset_id,
         kind: 'inline', block_ordinal: command.payload.block_ordinal, alt_text: command.payload.asset.alt_text,
@@ -348,16 +2083,36 @@ try {
     await articleReport(xArticleAdapter, command, {
       canonical_url: `https://x.com/compose/articles/edit/${xArticleDraftId}`, page_kind: 'article_editor',
       controls: editorControls,
-      editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, has_unknown_content: false, autosave_state: 'saved' }
+      editor: { draft_id: xArticleDraftId, title: xArticleTitle, blocks: xArticleBlocks, visuals: xArticleVisuals, import_state: xArticleImportState, has_unknown_content: false, autosave_state: 'saved' }
     });
   }
   const xArticleStatus = await xArticleAdapter.status(xArticleExecution.execution_id);
   const xArticleReceipt = await store.readJson<{ status: string }>(xArticleStatus.latest_receipt_path!);
+  xArticleExecutionState = xArticleStatus.state;
+  xArticleReceiptStatus = xArticleReceipt.status;
+  const xArticleTerminalEvidenceValid =
+    (xArticleStatus.state === 'finalized' && xArticleReceipt.status === 'published')
+    || (
+      xArticleStatus.state === 'published_unverified'
+      && xArticleReceipt.status === 'published_media_unverified'
+    );
   xArticleComplete =
-    xArticleStatus.state === 'finalized' &&
+    xArticleTerminalEvidenceValid &&
     xArticleStatus.publish_command_count === 1 &&
     xArticlePublishCommands === 1 &&
-    xArticleReceipt.status === 'published';
+    xArticleImportCommands === 1 &&
+    xArticleAnchorReplacementCommands === 3 &&
+    sha256(xArticleAnchorReplacementOrdinals) === sha256(
+      xArticlePlan.intent.visuals.flatMap((visual) =>
+        visual.placement.kind === 'block' ? [visual.placement.block_ordinal] : []
+      )
+    ) &&
+    xArticleCommandKinds.filter((kind) => kind === 'insert_article_block').length === 0 &&
+    xArticleCommandKinds.filter((kind) => kind === 'open_article_preview').length === 1 &&
+    xArticleImportState === null &&
+    sha256(xArticleBlocks) === sha256(xArticlePlan.intent.document.blocks) &&
+    !JSON.stringify({ blocks: xArticleBlocks, visuals: xArticleVisuals }).includes('RPH_VISUAL_ANCHOR:') &&
+    ['published', 'published_media_unverified'].includes(xArticleReceipt.status);
 
   const x = new XService(store, {
     runId: () => 'acceptance_x',
@@ -970,13 +2725,30 @@ try {
     nextQuestions.every((question) => question.data_classification === 'data_only') &&
     !(await store.exists('memory/reviews/review_acceptance_next_unapproved/review.json')) &&
     !(await store.exists('memory/promotions/delta_acceptance_next_unapproved/approval.json'));
+  const xArticleHostAcceptance = await runXArticleHostAcceptance({
+    body_blocks: 76,
+    inline_images: 3
+  });
+  const xArticleFastPathAcceptance = await runXArticleFastPathAcceptanceMatrix();
+  const xArticleHostAcceptanceComplete =
+    xArticleHostAcceptance.body_import_effects === 1 &&
+    xArticleHostAcceptance.image_upload_effects.length === 3 &&
+    xArticleHostAcceptance.host_transactions.length === 4 &&
+    xArticleHostAcceptance.paragraph_level_transactions === 0 &&
+    xArticleHostAcceptance.observation_count === 4 &&
+    xArticleHostAcceptance.grouped_image_corrections === 3 &&
+    xArticleHostAcceptance.normalized_post_state.blocks.length === 76 &&
+    xArticleHostAcceptance.normalized_post_state.import_state === null &&
+    xArticleHostAcceptance.normalized_post_state.autosave_state === 'saved' &&
+    xArticleHostAcceptance.network === 'unused';
 
   if (
     !articleComplete || !manualXComplete || !browserXComplete || !xArticleComplete ||
     !memoryQueryComplete || !publicationCheckpointComplete ||
     !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete ||
     !researchPromotionComplete || !progressiveQueryComplete || !promotionResumeComplete ||
-    !packageBindingComplete || !terminalHookResumeComplete || !publicationFlywheelComplete
+    !packageBindingComplete || !terminalHookResumeComplete || !publicationFlywheelComplete ||
+    !xArticleHostAcceptanceComplete || !xArticleFastPathAcceptance.ok
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
@@ -1008,7 +2780,25 @@ try {
       manual_x: 'complete',
       browser_x: 'simulated_complete',
       visual_v2_1: 'simulated_complete',
-      x_article: 'simulated_complete',
+      x_article: xArticleExecutionState === 'finalized'
+        ? 'simulated_complete'
+        : 'simulated_verification_needed',
+      x_article_execution_state: xArticleExecutionState,
+      x_article_receipt_status: xArticleReceiptStatus,
+      x_article_public_content_verified: ['published', 'published_media_unverified']
+        .includes(xArticleReceiptStatus),
+      x_article_media_verified: xArticleReceiptStatus === 'published',
+      x_article_verification_needed: xArticleReceiptStatus === 'published_media_unverified',
+      x_article_host_transactions: xArticleHostAcceptance.host_transactions,
+      x_article_paragraph_level_transactions: xArticleHostAcceptance.paragraph_level_transactions,
+      x_article_host_progress_events: xArticleHostAcceptance.progress_events.length,
+      x_article_host_grouped_image_corrections: xArticleHostAcceptance.grouped_image_corrections,
+      x_article_host_observations: xArticleHostAcceptance.observation_count,
+      x_article_network: xArticleHostAcceptance.network,
+      x_article_fast_path: 'simulated_complete',
+      x_article_fast_path_scenarios: xArticleFastPathAcceptance.scenarios.map(
+        (scenario) => scenario.name
+      ),
       memory_query: 'simulated_complete',
       publication_checkpoint: 'simulated_complete',
       feedback_insight: 'simulated_complete',
@@ -1025,7 +2815,9 @@ try {
       network: 'unused',
       submit_commands: submitCommands,
       submit_claims: submitClaims,
-      x_article_publish_commands: xArticlePublishCommands
+      x_article_publish_commands: xArticlePublishCommands,
+      x_article_import_commands: xArticleImportCommands,
+      x_article_anchor_replacement_commands: xArticleAnchorReplacementCommands
     })}\n`
   );
 } finally {
@@ -1037,4 +2829,5 @@ try {
     throw new Error('refusing to remove an unverified acceptance path');
   }
   await rm(verifiedRoot, { recursive: true, force: false });
+}
 }

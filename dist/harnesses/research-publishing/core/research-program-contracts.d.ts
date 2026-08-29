@@ -1,0 +1,12 @@
+import type { AddResearchTopicInput, CreateMonthlyEditorialReviewInput, CreateResearchBacklogCatalogInput, CreateResearchProgramStatusInput, CreateResearchRoadmapInput, CreateWeeklyCycleStatusInput, CreateWeeklyPublicationBundleBindingInput, CancelWeeklyCycleInput, MonthlyEditorialReviewV1, ResearchBacklogCatalogV1, ResearchProgramStatusV1, ResearchRoadmapV1, ResearchTopicRevisionV1, OpenWeeklyCycleInput, SelectWeeklyTopicInput, SubmitWeeklyCandidatesInput, WeeklyCandidateSetV1, WeeklyCycleCancellationV1, WeeklyCycleStatusV1, WeeklyPublicationBundleBindingV1, WeeklyResearchCycleV1, WeeklyTopicSelectionV1 } from './research-program-types.js';
+export declare function createResearchRoadmap(input: CreateResearchRoadmapInput): ResearchRoadmapV1;
+export declare function createResearchTopicRevision(input: AddResearchTopicInput): ResearchTopicRevisionV1;
+export declare function createResearchBacklogCatalog(input: CreateResearchBacklogCatalogInput): ResearchBacklogCatalogV1;
+export declare function createMonthlyEditorialReview(input: CreateMonthlyEditorialReviewInput): MonthlyEditorialReviewV1;
+export declare function createResearchProgramStatus(input: CreateResearchProgramStatusInput): ResearchProgramStatusV1;
+export declare function createWeeklyResearchCycle(input: OpenWeeklyCycleInput): WeeklyResearchCycleV1;
+export declare function createWeeklyCandidateSet(input: SubmitWeeklyCandidatesInput): WeeklyCandidateSetV1;
+export declare function createWeeklyTopicSelection(candidateSet: WeeklyCandidateSetV1, input: SelectWeeklyTopicInput): WeeklyTopicSelectionV1;
+export declare function createWeeklyCycleCancellation(cycle: WeeklyResearchCycleV1, selection: WeeklyTopicSelectionV1, input: CancelWeeklyCycleInput): WeeklyCycleCancellationV1;
+export declare function createWeeklyCycleStatus(input: CreateWeeklyCycleStatusInput): WeeklyCycleStatusV1;
+export declare function createWeeklyPublicationBundleBinding(input: CreateWeeklyPublicationBundleBindingInput): WeeklyPublicationBundleBindingV1;

@@ -1,0 +1,32 @@
+import type { CancelWeeklyCycleInput, OpenWeeklyCycleInput, ResearchBacklogPort, ResearchRoadmapPort, SelectWeeklyTopicInput, SubmitWeeklyCandidatesInput, WeeklyCandidateSetV1, WeeklyCycleStatusV1, WeeklyResearchCyclePort, WeeklyResearchCycleV1, WeeklyTopicSelectionV1 } from './research-program-types.js';
+import type { WorkspaceStore } from './workspace-store.js';
+export declare class WeeklyResearchCycleService implements WeeklyResearchCyclePort {
+    private readonly store;
+    private readonly roadmaps;
+    private readonly backlog;
+    constructor(store: WorkspaceStore, roadmaps: ResearchRoadmapPort, backlog: ResearchBacklogPort);
+    open(input: OpenWeeklyCycleInput): Promise<WeeklyResearchCycleV1>;
+    submitCandidates(input: SubmitWeeklyCandidatesInput): Promise<WeeklyCandidateSetV1>;
+    select(input: SelectWeeklyTopicInput): Promise<WeeklyTopicSelectionV1>;
+    cancel(input: CancelWeeklyCycleInput): Promise<WeeklyCycleStatusV1>;
+    status(cycleId: string): Promise<WeeklyCycleStatusV1>;
+    private verifyContext;
+    private assertNoActiveCycle;
+    private projectStatus;
+    private projectPublicationPlanned;
+    private projectPublished;
+    private readCycle;
+    private readCandidateSet;
+    private readSelection;
+    private readCancellation;
+    private readStatus;
+    private readPublicationBundleBinding;
+    private readTopic;
+    private readSemantic;
+    private readContract;
+    private optionalCandidateSet;
+    private optionalSelection;
+    private optionalCancellation;
+    private roadmapId;
+    private topicId;
+}
