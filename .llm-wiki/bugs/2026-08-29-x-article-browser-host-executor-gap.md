@@ -3,7 +3,7 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: implemented; live browser smoke pending
+- status: V3.4 live smoke failed safely; Complete Host Bridge design confirmed
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: separately approved Draft-only smoke on an allowed HTTPS page
+- next_gate: user review of the written Complete Host Bridge specification
 - routed_at: 2026-08-29
 
 ## Source
@@ -40,12 +40,18 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 - Live execution reports contain `upload_article_cover: uncertain` followed by `upload_article_cover: transient_failure`, with zero observed visuals.
 - Fast Path status exceeded 900 seconds while remaining non-terminal.
 - The installed and repository Skill digests match; active Skill deployment drift is not the demonstrated cause.
+- A fresh V3.4 execution, `x_article_execution_105d34cd-44ce-478c-bc58-a2630a16c74b`, verified the exact account, Draft ID, title, 76 canonical body blocks, three ordered unresolved anchors, zero media, and saved autosave state from the live Chrome page.
+- The approved cover is a valid 1600x900, 8-bit RGBA PNG whose SHA-256 exactly matches the claimed command.
+- The chooser opened and `setFiles` returned, but a fresh page read showed zero cover and zero inline images.
+- The turn-specific Observation callback failed because its execution environment does not expose `process`; the Cover Host therefore returned `uncertain` even though a later fresh Observation proved zero effect.
+- The hard deadline stopped the execution at 905.985 seconds with zero duplicate media writes and zero Preview/Publish actions.
+- The merged TypeScript source exposed V3.4 while the committed `dist` CLI initially rejected `x-article fast-path audit` as an unknown operation; a local build made it available, proving packaged-output drift.
 
 ## Reproduction
 
 - status: reproduced
 - command_or_steps: prepare an existing-Draft Fast Path with one cover and three inline images; claim and attempt the first `upload_article_cover` command twice
-- observed: `Cover 0/1`, `Inline images 0/3`, no page media effect, non-terminal state after the time budget
+- observed: `Cover 0/1`, `Inline images 0/3`, fresh live page evidence proved no media effect, and the hard deadline stopped further writes at 905.985 seconds
 - expected: one verified cover or a terminal bounded failure
 - limitation: the first chooser call returned without a visible X effect, but the exact transport-layer cause is not yet proven
 
@@ -59,7 +65,7 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 
 ## Diagnosis
 
-V3.4 implemented a stronger control plane without packaging the media mutation as executable Host code. The Skill therefore leaves the highest-risk step to turn-specific agent code. Failure reports trigger reconciliation, but the next-command path can emit another cover command whenever the cover is still absent. The 900-second value is currently projected as status data rather than enforced as a terminal deadline.
+V3.4 now packages a bounded cover transaction and enforces the deadline, but it still lacks a packaged live Editor Observer and deterministic Host-to-Harness Observation bridge. The cover transaction must receive a turn-specific `observe` callback. In the live run that callback failed on an environment-specific assumption, converting a provable zero-effect result into `uncertain`. The browser transfer also produced no X media effect after `setFiles`; the current outcome has no stable reason field to distinguish a missing browser file binding from an accepted file with no X effect. Finally, source and committed `dist` can drift, allowing offline source tests to pass while the executable CLI remains old.
 
 ## External Findings
 
@@ -67,13 +73,14 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Fix Plan
 
-1. Add a reusable JavaScript Host helper shipped with `x-publishing-copilot` for the exact cover transaction.
-2. Accept the selected tab/session and immutable command inputs; do not discover profiles, cookies, or credentials.
-3. Use the exact visible cover control, arm the chooser with `{timeoutMs}`, call `setFiles([absolutePath])`, and classify the observed effect.
-4. Add a deterministic local upload-transport fixture test before any live Draft smoke.
-5. Persist and enforce one initial attempt plus at most one adapter-authorized retry per media asset.
-6. Turn the Audit deadline into a hard terminal stop in command issuance and status/recovery paths.
-7. Keep inline-image execution as a separate follow-on slice.
+1. Add a packaged Chrome Editor Extractor that returns only the bounded Article editor snapshot.
+2. Add a deterministic TypeScript Observation Builder that owns normalization, identity checks, asset mapping, and `page_revision`.
+3. Update the cover transaction to check file-input binding, wait through a bounded stability window, and return stable reason codes.
+4. Add the corresponding single-anchor inline-image transaction with Alt readback and ordinal verification.
+5. Add a Draft-only Host Bridge dispatcher for navigate, observe, cover, and inline commands.
+6. Preserve the existing attempt budget and hard deadline; never retry inside Host code.
+7. Add a packaged CLI parity gate that runs before build can mask stale `dist` artifacts.
+8. Rerun a separately approved 15-minute Draft-only smoke after offline verification.
 
 ## Verification
 
@@ -88,15 +95,16 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 | Step | Status | Evidence | Updated |
 |---|---|---|---|
 | source | done | preserved execution reports and source inspection | 2026-08-29 |
-| design | done | `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md` | 2026-08-29 |
-| plan | done | Inline Execution selected; no Subagent used | 2026-08-29 |
-| development | done | `4d8d5f2`, `b141cdc`, `9cec5e0`; packaged cover helper, bounded attempts, hard deadline | 2026-08-29 |
-| testing | done | aggregate `pnpm check` passed: lint, typecheck, build, 1218 tests, and acceptance; Chrome `file://` probe blocked by host policy and recorded as a live-smoke limitation | 2026-08-29 |
+| design | review | Complete Host Bridge confirmed in conversation and written to `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md` | 2026-08-29 |
+| plan | pending | Implementation plan begins only after written-spec Review | 2026-08-29 |
+| development | pending | V3.4 remains the current implementation; V3.5 Host Bridge not started | 2026-08-29 |
+| testing | reproduced | live V3.4 Draft-only smoke stopped safely at 905.985 seconds with no media effect | 2026-08-29 |
 | archive | pending |  |  |
 
 ## Artifacts
 
 - `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md`
+- `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md`
 - `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md`
 - `skills/x-publishing-copilot/scripts/x-article-cover-host.mjs`
 - `tests/fixtures/x-article/file-upload-probe.html`
@@ -105,8 +113,8 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Open Questions
 
-None blocking for the cover-only slice. Inline images remain explicitly deferred.
+Whether Chrome bound the selected file but X rejected it cannot be proven by the current Host. V3.5 must expose file-input binding evidence and distinguish it from an absent X media effect.
 
 ## Residual Risk
 
-The Codex Chrome runtime remains an environment dependency. The repair makes its transaction reusable and testable but does not turn the public npm CLI into a standalone browser automation product.
+The Codex Chrome runtime and its **Allow access to file URLs** setting remain environment dependencies. V3.5 can diagnose this boundary but cannot change extension permissions or guarantee that X accepts an asset.
