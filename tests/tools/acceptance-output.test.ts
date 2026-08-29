@@ -15,18 +15,19 @@ describe('offline acceptance', () => {
     expect(quickstart).toContain('does not authorize Preview or Publish');
   });
 
-  it('packages the bounded existing Draft media-completion Skill protocol', async () => {
-    const [skill, browserFlow, materialization, mediaCompletion] = await Promise.all([
+  it('packages the bounded existing Draft media-completion and V3.4 Fast Path Skill protocols', async () => {
+    const [skill, browserFlow, materialization, mediaCompletion, fastPath] = await Promise.all([
       readFile('skills/x-publishing-copilot/SKILL.md', 'utf8'),
       readFile('skills/x-publishing-copilot/references/browser-adapter-flow.md', 'utf8'),
       readFile('skills/x-publishing-copilot/references/x-article-materialization-v3-2.md', 'utf8'),
       readFile(
         'skills/x-publishing-copilot/references/x-article-existing-draft-media-completion-v3-3.md',
         'utf8'
-      )
+      ),
+      readFile('skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md', 'utf8')
     ]);
 
-    expect(skill).toContain('x-article-materialization/v3.3');
+    expect(skill).toContain('x-article-materialization/v3.4');
     expect(skill).toContain('prepare-existing-media');
     expect(skill).toContain('draft_reconciled');
     expect(browserFlow).toContain('existing Draft media completion');
@@ -37,6 +38,10 @@ describe('offline acceptance', () => {
     expect(mediaCompletion).toContain('draft_reconciled');
     expect(mediaCompletion).toContain('Preview and Publish');
     expect(mediaCompletion).toContain('one bounded retry');
+    expect(fastPath).toContain('one confirmation');
+    expect(fastPath).toContain('one recovery');
+    expect(fastPath).toContain('continuous command consumption');
+    expect(fastPath).toContain('draft_reconciled');
   });
 
   it('reports media-unverified publication evidence without laundering it into success', () => {

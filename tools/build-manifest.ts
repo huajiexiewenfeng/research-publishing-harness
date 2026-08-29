@@ -73,10 +73,11 @@ const manifest = {
           'Replace one verified temporary visual anchor with its approved digest-bound inline asset at the planned block ordinal.'
       },
       materialization: {
-        protocol: 'x-article-materialization/v3.3',
+        protocol: 'x-article-materialization/v3.4',
         modes: {
           new_draft: 'materialization_v3_2',
-          existing_draft_media_completion: 'media_completion_v3_3'
+          existing_draft_media_completion: 'media_completion_v3_3',
+          fast_path: 'fast_path_v3_4'
         },
         default_strategy: 'rich_text_anchor_import/v1',
         required_host_capabilities: {

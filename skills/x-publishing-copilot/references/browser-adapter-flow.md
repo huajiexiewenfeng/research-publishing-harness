@@ -48,3 +48,7 @@ After bulk import starts, never use `insert_article_block`, reimport, or change 
 Use [the complete V3.3 media-completion protocol](x-article-existing-draft-media-completion-v3-3.md) only when the normalized source Observation proves that the selected existing Draft already has the exact title, complete body, every locked visual anchor, and zero media. Enter through `prepare-existing-media`; never substitute the new-Draft `prepare` route.
 
 The command loop remains status → next → verify → claim → one semantic Chrome transaction → one normalized observation → report. It may navigate to and re-observe the bound Draft, upload the planned cover, replace one locked inline anchor, set and read back Alt text, checkpoint progress, and reconcile the final Draft. It must not create a Draft, rewrite title/body, open Preview, or Publish. Stop at `draft_reconciled`.
+
+## X Article V3.4 Fast Path
+
+Prefer [the complete V3.4 Fast Path Host protocol](x-article-fast-path-v3-4.md) when the Human authorizes `materialize_draft_once`. Its audit locks the compatible V3.2 or V3.3 branch, and the current task performs continuous command consumption: Fast Path status → existing atomic next → verify → claim → one semantic Chrome transaction → one normalized observation → report → immediate continuation. It uses one confirmation and at most one recovery, creates no Subagent, shows only stage progress, and stops at `draft_reconciled`. Preview and Publish remain prohibited.
