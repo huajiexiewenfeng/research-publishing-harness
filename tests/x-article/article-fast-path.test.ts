@@ -5,6 +5,7 @@ import {
 } from '../../harnesses/research-publishing/branches/x-article-harness/article-publication-preflight.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
 import {
+  assertXArticleFastPathAudit,
   confirmXArticleFastPath,
   createXArticleFastPathAudit,
   verifyXArticleFastPathConfirmation
@@ -84,7 +85,7 @@ describe('X Article Fast Path Audit and confirmation', () => {
       protocol: 'x-article-materialization/v3.4',
       target_account: '@Glen56121',
       draft_target: { kind: 'new' },
-      time_budget_seconds: 600,
+      time_budget_seconds: 900,
       recovery_budget_seconds: 120,
       preflight: {
         removals: [{ block_ordinal: 2, reason: 'draft_status' }],
@@ -95,6 +96,19 @@ describe('X Article Fast Path Audit and confirmation', () => {
     expect(audit.publication_plan.intent.document).toEqual(audit.preflight.sanitized_document);
     expect(audit.publication_plan.intent.visuals[1]!.placement).toEqual({ kind: 'block', block_ordinal: 2 });
     expect(auditDigest).toBe(sha256(body));
+  });
+
+  it('keeps legacy 600-second Audits verifiable while new Audits use 900 seconds', () => {
+    const current = auditFixture();
+    const { audit_digest: _currentDigest, ...currentBody } = current;
+    void _currentDigest;
+    const legacyBody = { ...currentBody, time_budget_seconds: 600 as const };
+
+    expect(current.time_budget_seconds).toBe(900);
+    expect(() => assertXArticleFastPathAudit({
+      ...legacyBody,
+      audit_digest: sha256(legacyBody)
+    })).not.toThrow();
   });
 
   it('binds Draft handling and every nested digest into the Audit', () => {

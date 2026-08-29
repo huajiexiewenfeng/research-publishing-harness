@@ -1624,12 +1624,15 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
         readonly plan: XArticlePublicationPlanV1;
         readonly fast_path: {
           readonly started_at: string;
+          readonly time_budget_seconds: 600 | 900;
           readonly recovery_count: 0 | 1;
         };
       }>(`runs/${id}/x-article/browser/adapter-context.json`);
       assertXArticlePublicationPlan(context.plan);
       if (
         !Number.isFinite(Date.parse(context.fast_path.started_at))
+        || (context.fast_path.time_budget_seconds !== 600
+          && context.fast_path.time_budget_seconds !== 900)
         || (context.fast_path.recovery_count !== 0 && context.fast_path.recovery_count !== 1)
       ) {
         throw new HarnessError('CONTRACT_INVALID', 'Fast Path status binding is invalid');
@@ -1657,6 +1660,7 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const artifact = {
         execution_id: id,
         stage: browserStatus.fast_path_status.stage,
+        timed_out: browserStatus.fast_path_status.timed_out,
         elapsed_seconds: elapsedSeconds,
         cover: browserStatus.fast_path_status.cover,
         inline_images: browserStatus.fast_path_status.inline_images,

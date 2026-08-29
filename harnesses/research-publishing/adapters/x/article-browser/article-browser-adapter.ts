@@ -55,6 +55,10 @@ import {
   assertXArticleFastPathReleaseSet,
   type XArticleFastPathReleaseSetV1
 } from '../../../core/x-article-fast-path-release.js';
+import {
+  evaluateXArticleFastPathDeadline,
+  type XArticleFastPathDeadlineEvaluation
+} from '../../../core/x-article-fast-path-deadline.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import {
@@ -125,7 +129,7 @@ interface XArticleFastPathExecutionBindingV1 {
   readonly preflight_digest: `sha256:${string}`;
   readonly confirmation_digest: `sha256:${string}`;
   readonly started_at: string;
-  readonly time_budget_seconds: 600;
+  readonly time_budget_seconds: 600 | 900;
   readonly recovery_budget_seconds: 120;
   readonly recovery_count: 0 | 1;
 }
@@ -153,7 +157,8 @@ export interface PrepareXArticleFastPathInput {
 }
 
 export interface XArticleFastPathStatusProjectionV1 {
-  readonly stage: 'Draft ready' | 'Cover' | 'Inline images' | 'Final check';
+  readonly stage: 'Draft ready' | 'Cover' | 'Inline images' | 'Final check' | 'Timed out';
+  readonly timed_out: boolean;
   readonly cover: `${number}/${number}`;
   readonly inline_images: `${number}/${number}`;
   readonly result_path: string | null;
@@ -396,8 +401,8 @@ export class XArticleBrowserAdapter {
         preflight_digest: consumption.preflight_digest,
         confirmation_digest: consumption.confirmation_digest,
         started_at: consumption.created_at,
-        time_budget_seconds: 600,
-        recovery_budget_seconds: 120,
+        time_budget_seconds: input.audit.time_budget_seconds,
+        recovery_budget_seconds: input.audit.recovery_budget_seconds,
         recovery_count: 0
       };
       return this.withExecutionLock(consumption.execution_id, () => this.prepareLocked(
@@ -636,7 +641,20 @@ export class XArticleBrowserAdapter {
     readonly command: XArticleBrowserCommandV1 | null;
   }> {
     let context = await this.readContext(executionId);
-    if (context.snapshot.state === 'cancelled_before_publish') {
+    if (
+      context.snapshot.state === 'cancelled_before_publish'
+      || context.snapshot.state === 'materialization_blocked'
+    ) {
+      return { snapshot: context.snapshot, command: null };
+    }
+    const deadline = this.fastPathDeadline(context);
+    if (deadline?.exceeded === true && context.snapshot.state !== 'draft_reconciled') {
+      const checkpoint = await this.materializationStore.readCheckpoint(executionId);
+      context = await this.blockMaterialization(context, checkpoint, {
+        kind: 'fast_path_timeout',
+        elapsed_seconds: deadline.elapsed_seconds,
+        time_budget_seconds: context.fast_path!.time_budget_seconds
+      });
       return { snapshot: context.snapshot, command: null };
     }
     if (context.pending_issue !== null && context.pending_command === null) {
@@ -870,6 +888,12 @@ export class XArticleBrowserAdapter {
   private async claimLocked(command: XArticleBrowserCommandV1): Promise<XArticleCommandClaimV1> {
     let context = await this.readContext(command.execution_id);
     this.assertClaimLifecycleActive(context);
+    if (command.side_effect !== 'read' && this.fastPathDeadline(context)?.exceeded === true) {
+      throw new HarnessError(
+        'ARTICLE_MATERIALIZATION_TIMEOUT',
+        'X Article Fast Path write authorization expired before command claim'
+      );
+    }
     await this.assertV3_3PendingIssueBinding(context);
     await this.assertV3_3DurableCommand(context, command);
     if (
@@ -895,6 +919,7 @@ export class XArticleBrowserAdapter {
       || context.snapshot.state === 'finalized'
       || context.snapshot.state === 'verification_conflict'
       || context.snapshot.state === 'failed_after_publish'
+      || context.snapshot.state === 'materialization_blocked'
     ) {
       throw new HarnessError(
         'COMMAND_REPLAY_REJECTED',
@@ -1208,7 +1233,10 @@ export class XArticleBrowserAdapter {
     const completedCover = covers.length === 1 ? 1 : 0;
     const resultPath = this.fastPathResultPath(executionId);
     const hasResult = await this.store.exists(resultPath);
-    const stage: XArticleFastPathStatusProjectionV1['stage'] = hasResult
+    const timedOut = !hasResult && this.fastPathDeadline(context)?.exceeded === true;
+    const stage: XArticleFastPathStatusProjectionV1['stage'] = timedOut
+      ? 'Timed out'
+      : hasResult
       ? 'Final check'
       : checkpoint?.draft_id == null
         ? 'Draft ready'
@@ -1219,6 +1247,7 @@ export class XArticleBrowserAdapter {
       ...context.snapshot,
       fast_path_status: {
         stage,
+        timed_out: timedOut,
         cover: `${completedCover}/1`,
         inline_images: `${completedInline}/${expectedInline}`,
         result_path: hasResult ? resultPath : null
@@ -1239,6 +1268,12 @@ export class XArticleBrowserAdapter {
         );
       }
       const recoveredAt = this.now().toISOString();
+      if (this.fastPathDeadline(context, recoveredAt)?.exceeded === true) {
+        throw new HarnessError(
+          'ARTICLE_MATERIALIZATION_TIMEOUT',
+          'X Article Fast Path recovery cannot start after the main deadline'
+        );
+      }
       const elapsed = computeXArticleElapsedSeconds(fastPath.started_at, recoveredAt);
       if (elapsed > fastPath.recovery_budget_seconds) {
         throw new HarnessError(
@@ -4424,6 +4459,18 @@ export class XArticleBrowserAdapter {
   private withExecutionLock<T>(executionId: string, operation: () => Promise<T>): Promise<T> {
     this.assertId(executionId);
     return this.store.withLock(`runs/${executionId}/x-article/adapter-execution.lock`, operation);
+  }
+
+  private fastPathDeadline(
+    context: AdapterContext,
+    now?: string
+  ): XArticleFastPathDeadlineEvaluation | null {
+    if (context.fast_path === null) return null;
+    return evaluateXArticleFastPathDeadline({
+      started_at: context.fast_path.started_at,
+      time_budget_seconds: context.fast_path.time_budget_seconds,
+      now: now ?? this.now().toISOString()
+    });
   }
 
   private commandPath(command: Pick<XArticleBrowserCommandV1, 'execution_id' | 'command_id'>): string {

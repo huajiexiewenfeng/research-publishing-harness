@@ -21,7 +21,7 @@ export interface XArticleFastPathAuditV1 {
   readonly draft_target: XArticleFastPathDraftTargetV1;
   readonly preflight: XArticlePublicationPreflightV1;
   readonly publication_plan: XArticlePublicationPlanV1;
-  readonly time_budget_seconds: 600;
+  readonly time_budget_seconds: 600 | 900;
   readonly recovery_budget_seconds: 120;
   readonly audit_digest: `sha256:${string}`;
 }
@@ -77,7 +77,7 @@ export function assertXArticleFastPathAudit(audit: XArticleFastPathAuditV1): voi
   );
   const valid =
     audit.protocol === 'x-article-materialization/v3.4'
-    && audit.time_budget_seconds === 600
+    && (audit.time_budget_seconds === 600 || audit.time_budget_seconds === 900)
     && audit.recovery_budget_seconds === 120
     && audit.target_account === plan.intent.target_account
     && audit.preflight.sanitized_document_digest === sha256(plan.intent.document)
@@ -101,7 +101,7 @@ export function createXArticleFastPathAudit(
     draft_target: structuredClone(input.draft_target),
     preflight: structuredClone(input.preflight),
     publication_plan: structuredClone(input.publication_plan),
-    time_budget_seconds: 600,
+    time_budget_seconds: 900,
     recovery_budget_seconds: 120
   };
   const audit = validateContract<XArticleFastPathAuditV1>('x-article-fast-path-audit', {

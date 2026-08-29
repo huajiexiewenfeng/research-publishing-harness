@@ -1068,7 +1068,7 @@ describe('XArticleBrowserAdapter', () => {
           audit_digest: input.audit.audit_digest,
           preflight_digest: input.audit.preflight.preflight_digest,
           confirmation_digest: input.confirmation.confirmation_digest,
-          time_budget_seconds: 600,
+          time_budget_seconds: 900,
           recovery_budget_seconds: 120,
           recovery_count: 0
         }
@@ -1198,6 +1198,52 @@ describe('XArticleBrowserAdapter', () => {
     expect(await mediaCommandCount(
       fixture.store, fixture.executionId, 'upload_article_cover'
     )).toBe(2);
+  });
+
+  it('projects and enforces the Fast Path deadline before returning another command', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('deadline_next');
+    fixture.setNow('2026-08-21T09:17:00.000Z');
+
+    await expect(fixture.adapter.status(fixture.executionId)).resolves.toMatchObject({
+      fast_path_status: { stage: 'Timed out', timed_out: true }
+    });
+    await expect(fixture.adapter.next(fixture.executionId)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_blocked' }, command: null
+    });
+  });
+
+  it('does not allow an unclaimed Fast Path write to be claimed at the deadline', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('deadline_claim');
+    fixture.setNow('2026-08-21T09:17:00.000Z');
+
+    await expect(fixture.adapter.claim(fixture.cover))
+      .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_TIMEOUT' });
+  });
+
+  it('still records a report after the deadline when its write was claimed before it', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('deadline_report');
+    await fixture.adapter.claim(fixture.cover);
+    fixture.setNow('2026-08-21T09:17:01.000Z');
+
+    await expect(fixture.adapter.report({
+      command: fixture.cover,
+      status: 'transient_failure',
+      observation: freshBodyCompleteObservation(
+        fixture.executionId,
+        fixture.cover.command_id,
+        '2026-08-21T09:17:00.000Z'
+      )
+    })).resolves.toMatchObject({ execution_id: fixture.executionId });
+  });
+
+  it('rejects Fast Path recovery after the main deadline', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('deadline_recovery');
+    await fixture.adapter.claim(fixture.cover);
+    await fixture.adapter.report({ command: fixture.cover, status: 'uncertain', observation: null });
+    fixture.setNow('2026-08-21T09:17:00.000Z');
+
+    await expect(fixture.adapter.recoverFastPath(fixture.executionId))
+      .rejects.toMatchObject({ code: 'ARTICLE_MATERIALIZATION_TIMEOUT' });
   });
 
   it('allows one Fast Path read-only recovery without re-uploading media', async () => {

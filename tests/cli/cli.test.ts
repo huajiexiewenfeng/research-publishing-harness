@@ -303,15 +303,33 @@ describe('research-publish CLI', () => {
       artifact: {
         execution_id: executionId,
         stage: 'Draft ready', cover: '0/1', inline_images: '0/0', alt: '0/1',
-        recovery_count: 0, terminal_state: 'created', draft_url: null
+        recovery_count: 0, terminal_state: 'created', draft_url: null, timed_out: false
       }
     });
     expect(Object.keys(statusResult.artifact).sort()).toEqual([
       'alt', 'cover', 'draft_url', 'elapsed_seconds', 'evidence_paths',
-      'execution_id', 'inline_images', 'recovery_count', 'stage', 'terminal_state'
+      'execution_id', 'inline_images', 'recovery_count', 'stage', 'terminal_state', 'timed_out'
     ]);
     expect(JSON.stringify(statusResult)).not.toContain('materialization_v3_2');
     expect(JSON.stringify(statusResult)).not.toContain('media_completion_v3_3');
+
+    const contextPath = `runs/${executionId}/x-article/browser/adapter-context.json`;
+    const expiredContext = await store.readJson<Record<string, unknown>>(contextPath);
+    await store.replaceAtomic(contextPath, {
+      ...expiredContext,
+      fast_path: {
+        ...(expiredContext.fast_path as Record<string, unknown>),
+        started_at: '2000-01-01T00:00:00.000Z'
+      }
+    });
+    const expiredStatus = runSource([
+      'x-article', 'fast-path', 'status', '--workspace', workspace,
+      '--execution', executionId, '--output', 'json'
+    ]);
+    expect(expiredStatus.status, expiredStatus.stderr).toBe(0);
+    expect(JSON.parse(expiredStatus.stdout)).toMatchObject({
+      artifact: { stage: 'Timed out', timed_out: true }
+    });
 
     const existingAuditInput = join(parent, 'audit-existing-input.json');
     await writeFile(existingAuditInput, JSON.stringify({
