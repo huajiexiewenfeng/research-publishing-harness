@@ -15,13 +15,35 @@ describe('X Article Fast Path acceptance command', () => {
     const output = JSON.parse(result.stdout) as {
       ok: boolean;
       protocol: string;
-      scenarios: Array<{ name: string; ok: boolean }>;
+      host_protocol: string;
+      scenarios: Array<{
+        name: string;
+        ok: boolean;
+        cover: { expected: number; completed: number; alt: string };
+        inline_images: { expected: number; completed: number };
+        issued_command_kinds: string[];
+        preview_command_count: number;
+        publish_command_count: number;
+      }>;
     };
-    expect(output).toMatchObject({ ok: true, protocol: 'x-article-materialization/v3.4' });
+    expect(output).toMatchObject({
+      ok: true,
+      protocol: 'x-article-materialization/v3.4',
+      host_protocol: 'x-article-host-bridge/v3.5'
+    });
     expect(output.scenarios.map((scenario) => scenario.name)).toEqual([
       '0', '1', '3', '10', 'disconnect_recovery'
     ]);
     expect(output.scenarios.every((scenario) => scenario.ok)).toBe(true);
+    for (const scenario of output.scenarios) {
+      expect(scenario.cover).toEqual({ expected: 1, completed: 1, alt: 'unobservable' });
+      expect(scenario.inline_images.completed).toBe(scenario.inline_images.expected);
+      expect(scenario.preview_command_count).toBe(0);
+      expect(scenario.publish_command_count).toBe(0);
+      expect(scenario.issued_command_kinds).not.toContain('open_article_preview');
+      expect(scenario.issued_command_kinds).not.toContain('open_publish_review');
+      expect(scenario.issued_command_kinds).not.toContain('publish_article_once');
+    }
   }, 60_000);
 
   it('registers the focused acceptance command in package scripts', async () => {

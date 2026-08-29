@@ -102,7 +102,7 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/never.*publish.*twice/i);
   });
 
-  it('orchestrates the one-confirmation V3.4 Fast Path as a continuous Draft-only loop', async () => {
+  it('orchestrates the V3.4 Fast Path through the complete V3.5 Draft-only Host Bridge', async () => {
     const content = await skill('x-publishing-copilot');
     const [reference, browserFlow] = await Promise.all([
       readFile(
@@ -116,6 +116,7 @@ describe('x-publishing-copilot boundary', () => {
     ]);
 
     expect(content).toContain('x-article-materialization/v3.4');
+    expect(content).toContain('x-article-host-bridge/v3.5');
     expect(content).toContain('references/x-article-fast-path-v3-4.md');
     expect(content).toContain('one confirmation');
     expect(content).toContain('one recovery');
@@ -125,10 +126,14 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toContain('No Subagent');
     expect(reference).toContain('Insert -> Media');
     expect(reference).toContain('cover region');
-    expect(reference).toContain('scripts/x-article-cover-host.mjs');
-    expect(reference).toContain('runCoverUpload');
+    expect(reference).toContain('scripts/x-article-host-bridge.mjs');
+    expect(reference).toContain('runXArticleHostBridge');
+    expect(reference).toMatch(/do not call.*Cover.*Inline Host.*directly/is);
     expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
     expect(reference).toMatch(/do not locally retry/is);
+    expect(reference).toMatch(/prefer.*scoped.*input\[type=file\]/is);
+    expect(reference).toMatch(/register.*chooser.*before.*causal click/is);
+    expect(reference).toMatch(/never.*locator\.setInputFiles/is);
     expect(reference).toContain('stage progress');
     expect(reference).toContain('one recovery');
     expect(reference).toContain('draft_reconciled');

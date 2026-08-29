@@ -27,9 +27,11 @@ No Subagent is created for the Host loop. Keep page ownership, command state, an
 - Execute only the claimed transaction. Never combine cover upload, another image, navigation, Preview, or Publish in the same claim.
 - Report only the normalized semantic observation accepted by the Harness, then discard stale element references.
 
-### Cover Host binding
+### Complete Host Bridge binding
 
-For `upload_article_cover`, import `scripts/x-article-cover-host.mjs` and call `runCoverUpload` with the selected Chrome tab, exact claimed command, exact claim, verified absolute asset path, and one fresh normalized observe callback. Do not handwrite `waitForEvent('filechooser')` or `setFiles` calls, do not use direct `input[type=file]`, and do not locally retry. Report the helper result exactly once to the Harness.
+For `navigate`, `observe_article_page`, `upload_article_cover`, and `replace_article_visual_anchor`, import `scripts/x-article-host-bridge.mjs` and call `runXArticleHostBridge` with the selected Chrome tab, exact claimed command and claim, verified Host context, and at most one verified absolute asset path. Do not call Cover or Inline Host modules directly. Do not handwrite `evaluate`, `filechooser`, or `setFiles` logic. Report `outcome.report` exactly once, then discard all page locators.
+
+Prefer the actual scoped `input[type=file]`. Register the chooser before its causal click, verify the selected input binding without exposing a local path, and never use `locator.setInputFiles`. Do not locally retry a chooser or file selection in the same claim.
 
 ## Recovery and stop conditions
 
