@@ -291,6 +291,16 @@ async function mediaCommandCount(store: WorkspaceStore, executionId: string, kin
   return commands.filter((command) => command.kind === kind).length;
 }
 
+async function materializationProgress(
+  store: WorkspaceStore,
+  executionId: string
+): Promise<Array<{ observed_effect: string }>> {
+  const content = await store.readText(
+    `runs/${executionId}/x-article/browser/materialization-progress.jsonl`
+  );
+  return content.trim().split('\n').map((line) => JSON.parse(line) as { observed_effect: string });
+}
+
 async function createFastPathCoverAttemptFixture(suffix: string) {
   const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-fast-path-cover-attempt-${suffix}-`)));
   const executionId = `execution_fast_path_cover_attempt_${suffix}`;
@@ -1159,6 +1169,59 @@ describe('XArticleBrowserAdapter', () => {
     expect(await mediaCommandCount(
       fixture.store, fixture.executionId, 'upload_article_cover'
     )).toBe(1);
+  });
+
+  it.each([
+    ['x_media_still_processing', 'transient_failure', 'partial'],
+    ['observation_unavailable_after_selection', 'uncertain', 'unknown'],
+    ['file_transfer_missing', 'transient_failure', 'none'],
+    ['x_media_effect_absent', 'transient_failure', 'none']
+  ] as const)('projects Host reason %s as %s effect', async (
+    hostReason,
+    status,
+    expectedEffect
+  ) => {
+    const fixture = await createFastPathCoverAttemptFixture(hostReason);
+    await fixture.adapter.claim(fixture.cover);
+    fixture.setNow('2026-08-21T09:02:02.000Z');
+    const observation = hostReason === 'observation_unavailable_after_selection'
+      ? null
+      : freshBodyCompleteObservation(
+        fixture.executionId,
+        fixture.cover.command_id,
+        '2026-08-21T09:02:01.000Z'
+      );
+
+    await fixture.adapter.report({
+      command: fixture.cover,
+      status,
+      host_reason: hostReason,
+      observation
+    });
+
+    const progress = await materializationProgress(fixture.store, fixture.executionId);
+    expect(progress.at(-1)?.observed_effect).toBe(expectedEffect);
+    await expect(fixture.store.readJson(
+      `runs/${fixture.executionId}/x-article/browser/reports/${fixture.cover.command_id}.json`
+    )).resolves.toMatchObject({ report: { host_reason: hostReason } });
+  });
+
+  it('keeps historical reports without a Host reason backward compatible', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('legacy_reasonless');
+    await fixture.adapter.claim(fixture.cover);
+    fixture.setNow('2026-08-21T09:02:02.000Z');
+    await fixture.adapter.report({
+      command: fixture.cover,
+      status: 'transient_failure',
+      observation: freshBodyCompleteObservation(
+        fixture.executionId,
+        fixture.cover.command_id,
+        '2026-08-21T09:02:01.000Z'
+      )
+    });
+
+    const progress = await materializationProgress(fixture.store, fixture.executionId);
+    expect(progress.at(-1)?.observed_effect).toBe('none');
   });
 
   it('allows one proven no-effect cover retry and blocks a third write', async () => {
