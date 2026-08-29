@@ -53,6 +53,10 @@ import { verifyXArticleFastPathResult } from '../core/x-article-materialization.
 import { createXArticleExistingDraftBinding } from '../core/x-article-existing-draft-binding.js';
 import { pruneBrowserArtifacts } from '../core/artifact-retention.js';
 import { HarnessError, type ErrorCode } from '../core/errors.js';
+import {
+  X_ARTICLE_CONTROL_ROUTES,
+  X_ARTICLE_HOST_PROTOCOL
+} from './x-article-control-surface.js';
 import { sha256, sha256Bytes } from '../core/digest.js';
 import { MemoryFeedbackService, type CaptureFeedbackInput } from '../core/memory-feedback-service.js';
 import { MemoryIngestService, type FeedbackInsightInput, type PublicationCheckpointInput } from '../core/memory-ingest-service.js';
@@ -155,18 +159,6 @@ const KNOWN_OPTIONS = new Set([
   , 'audit', 'release-set'
 ]);
 
-const X_ARTICLE_CONTROL_ROUTES = [
-  'x-article fast-path audit --workspace <path> --input <input.json> --output json',
-  'x-article fast-path confirm --workspace <path> --input <input.json> --output json',
-  'x-article fast-path prepare --workspace <path> --audit <path> --confirmation <path> --capabilities <path> --release-set <path> [--observation <path>] --output json',
-  'x-article fast-path status --workspace <path> --execution <id> --output json',
-  'x-article fast-path recover --workspace <path> --execution <id> --output json',
-  'x-article browser prepare --workspace <path> --plan <path> --capabilities <path> --output json',
-  'x-article browser prepare-existing-media --workspace <path> --plan <path> --observation <path> --capabilities <path> --output json',
-  'x-article browser resume-editor --workspace <path> --execution <id> --output json',
-  'x-article browser confirm-publish --workspace <path> --execution <id> --confirmation <path> --output json',
-  'x-article browser materialization-status --workspace <path> --execution <id> --output json'
-] as const;
 const V3_2_COMPATIBILITY_ALIASES = [
   'x-article browser resume-editor --execution-id <id>'
 ] as const;
@@ -828,6 +820,7 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       ok: true,
       operation: 'help',
       artifact: {
+        host_protocol: `Host protocol: ${X_ARTICLE_HOST_PROTOCOL}`,
         routes: X_ARTICLE_CONTROL_ROUTES,
         compatibility_aliases: V3_2_COMPATIBILITY_ALIASES
       },

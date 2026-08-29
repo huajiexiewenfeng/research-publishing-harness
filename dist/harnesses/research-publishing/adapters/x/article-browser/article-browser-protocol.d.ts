@@ -83,6 +83,7 @@ export interface XArticleBrowserObservation {
     readonly origin: 'https://x.com';
     readonly canonical_url: string;
     readonly page_revision: `sha256:${string}`;
+    readonly page_state_revision?: `sha256:${string}`;
     readonly observed_at: string;
     readonly account_handle: string | null;
     readonly page_kind: XArticlePageKind;

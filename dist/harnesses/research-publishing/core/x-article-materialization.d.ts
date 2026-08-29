@@ -92,6 +92,40 @@ export interface XArticleMaterializationReceiptV1 {
     readonly issued_at: string;
     readonly receipt_digest: `sha256:${string}`;
 }
+export interface XArticleFastPathResultV1 {
+    readonly schema_version: 'x-article-fast-path-result/v1';
+    readonly protocol: 'x-article-materialization/v3.4';
+    readonly execution_id: string;
+    readonly draft_id: string;
+    readonly draft_url: string;
+    readonly audit_digest: `sha256:${string}`;
+    readonly materialization_digest: `sha256:${string}`;
+    readonly final_revision: `sha256:${string}`;
+    readonly state: 'draft_reconciled';
+    readonly elapsed_seconds: number;
+    readonly cover: {
+        readonly expected: 1;
+        readonly completed: 1;
+        readonly alt: 'verified' | 'unobservable';
+    };
+    readonly inline_images: {
+        readonly expected: number;
+        readonly completed: number;
+    };
+    readonly alt: {
+        readonly expected: number;
+        readonly verified: number;
+    };
+    readonly recovery_count: 0 | 1;
+    readonly preview_command_count: 0;
+    readonly publish_command_count: 0;
+    readonly checkpoint_path: string;
+    readonly completed_at: string;
+    readonly result_digest: `sha256:${string}`;
+}
+export type CreateXArticleFastPathResultInput = Omit<XArticleFastPathResultV1, 'schema_version' | 'protocol' | 'state' | 'result_digest'>;
+export declare function verifyXArticleFastPathResult(result: XArticleFastPathResultV1): XArticleFastPathResultV1;
+export declare function createXArticleFastPathResult(input: CreateXArticleFastPathResultInput): XArticleFastPathResultV1;
 export interface XArticleMaterializationStartEvidenceV1 {
     readonly schema_version: 'x-article-materialization-start/v1';
     readonly execution_id: string;

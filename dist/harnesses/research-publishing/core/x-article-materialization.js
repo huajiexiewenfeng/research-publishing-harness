@@ -5,6 +5,35 @@ import { validateContract } from './schema-validator.js';
 import { assertXArticlePublicationPlan } from './x-article-publication-plan.js';
 import { verifyXArticleExistingDraftBinding } from './x-article-existing-draft-binding.js';
 import { computeXArticlePageRevision } from '../adapters/x/article-browser/article-browser-protocol.js';
+function fastPathResultBody(result) {
+    return Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'result_digest'));
+}
+export function verifyXArticleFastPathResult(result) {
+    const validated = validateContract('x-article-fast-path-result', structuredClone(result));
+    const valid = validated.protocol === 'x-article-materialization/v3.4'
+        && validated.state === 'draft_reconciled'
+        && validated.cover.expected === 1
+        && validated.cover.completed === 1
+        && validated.inline_images.completed === validated.inline_images.expected
+        && validated.alt.verified <= validated.alt.expected
+        && validated.recovery_count <= 1
+        && validated.preview_command_count === 0
+        && validated.publish_command_count === 0
+        && validated.result_digest === sha256(fastPathResultBody(validated));
+    if (!valid) {
+        throw new HarnessError('CONTRACT_INVALID', 'X Article Fast Path Result is internally inconsistent');
+    }
+    return validated;
+}
+export function createXArticleFastPathResult(input) {
+    const body = {
+        schema_version: 'x-article-fast-path-result/v1',
+        protocol: 'x-article-materialization/v3.4',
+        ...structuredClone(input),
+        state: 'draft_reconciled'
+    };
+    return verifyXArticleFastPathResult({ ...body, result_digest: sha256(body) });
+}
 const MATERIALIZATION_BUDGET = {
     fixed_seconds: 180,
     per_inline_visual_seconds: 60,

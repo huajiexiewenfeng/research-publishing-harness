@@ -30,7 +30,8 @@
     "manifest": "tsx tools/build-manifest.ts",
     "acceptance": "tsx tools/acceptance.ts",
     "acceptance:x-article-fast-path": "tsx tools/x-article-fast-path-acceptance.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm acceptance"
+    "check:packaged-cli": "tsx tools/check-packaged-x-article-cli.ts",
+    "check": "pnpm check:packaged-cli && pnpm lint && pnpm typecheck && pnpm test && pnpm acceptance"
   },
   "dependencies": {
     "ajv": "8.20.0",

@@ -1,5 +1,6 @@
 import type { WorkspaceStore } from '../../core/workspace-store.js';
 import { type XArticlePublicationPlanV1 } from '../../core/x-article-publication-plan.js';
+import { type XArticleFastPathAuditV1, type XArticleFastPathDraftTargetV1 } from '../../core/x-article-fast-path.js';
 import type { ArticlePackageRef } from '../article-harness/article-service.js';
 interface XArticleServiceOptions {
     readonly runId?: () => string;
@@ -13,6 +14,8 @@ export declare class XArticleService {
     private readonly now;
     constructor(store: WorkspaceStore, options?: XArticleServiceOptions);
     plan(packageRef: ArticlePackageRef, targetAccount: string): Promise<XArticlePublicationPlanV1>;
+    planFastPath(packageRef: ArticlePackageRef, targetAccount: string, draftTarget: XArticleFastPathDraftTargetV1): Promise<XArticleFastPathAuditV1>;
+    private compilePackage;
     private requireAsset;
 }
 export {};
