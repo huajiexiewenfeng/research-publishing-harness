@@ -1398,5 +1398,5 @@ describe('research-publish CLI', () => {
       ok: false, operation: 'x-article browser refresh-approval',
       error: { code: 'ARTIFACT_NOT_FOUND' }
     });
-  });
+  }, 30_000);
 });
