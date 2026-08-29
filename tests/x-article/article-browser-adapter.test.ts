@@ -291,6 +291,44 @@ async function mediaCommandCount(store: WorkspaceStore, executionId: string, kin
   return commands.filter((command) => command.kind === kind).length;
 }
 
+async function createFastPathCoverAttemptFixture(suffix: string) {
+  const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), `rph-fast-path-cover-attempt-${suffix}-`)));
+  const executionId = `execution_fast_path_cover_attempt_${suffix}`;
+  let commandNumber = 0;
+  let current = '2026-08-21T09:02:00.000Z';
+  const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+    executionId: () => executionId,
+    commandId: () => `command_fast_path_cover_attempt_${suffix}_${++commandNumber}`,
+    now: () => new Date(current)
+  });
+  const input = fastPathInput({ kind: 'existing', draft_id: '2092851979932647424' });
+  const execution = await adapter.prepareFastPath({
+    ...input,
+    source_observation: existingBodyCompleteObservation(
+      `source_cover_attempt_${suffix}`,
+      `source_cover_attempt_command_${suffix}`,
+      '2026-08-21T09:01:00.000Z'
+    )
+  });
+  const navigate = await adapter.next(execution.execution_id);
+  await reportSuccess(
+    adapter,
+    execution.execution_id,
+    navigate.command,
+    freshBodyCompleteObservation(
+      execution.execution_id,
+      navigate.command!.command_id,
+      '2026-08-21T09:02:00.000Z'
+    )
+  );
+  const cover = await adapter.next(execution.execution_id);
+  expect(cover.command?.kind).toBe('upload_article_cover');
+  return {
+    store, adapter, executionId, cover: cover.command!,
+    setNow(value: string) { current = value; }
+  };
+}
+
 async function advancePreparedToImport(
   adapter: XArticleBrowserAdapter,
   executionId: string,
@@ -1098,6 +1136,68 @@ describe('XArticleBrowserAdapter', () => {
     const mismatched = fastPathInput({ kind: 'existing', draft_id: '9999999999999999999' });
     await expect(adapter.prepareFastPath({ ...mismatched, source_observation: source }))
       .rejects.toMatchObject({ code: 'ARTICLE_DRAFT_CONFLICT' });
+  });
+
+  it('blocks a duplicate cover write after an uncertain effect', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('uncertain');
+    await fixture.adapter.claim(fixture.cover);
+    fixture.setNow('2026-08-21T09:02:02.000Z');
+    await fixture.adapter.report({
+      command: fixture.cover,
+      status: 'uncertain',
+      observation: freshBodyCompleteObservation(
+        fixture.executionId,
+        fixture.cover.command_id,
+        '2026-08-21T09:02:01.000Z'
+      )
+    });
+
+    await expect(fixture.adapter.next(fixture.executionId)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_blocked' },
+      command: null
+    });
+    expect(await mediaCommandCount(
+      fixture.store, fixture.executionId, 'upload_article_cover'
+    )).toBe(1);
+  });
+
+  it('allows one proven no-effect cover retry and blocks a third write', async () => {
+    const fixture = await createFastPathCoverAttemptFixture('two_no_effects');
+    await fixture.adapter.claim(fixture.cover);
+    fixture.setNow('2026-08-21T09:02:02.000Z');
+    await fixture.adapter.report({
+      command: fixture.cover,
+      status: 'transient_failure',
+      observation: freshBodyCompleteObservation(
+        fixture.executionId,
+        fixture.cover.command_id,
+        '2026-08-21T09:02:01.000Z'
+      )
+    });
+    const retry = await fixture.adapter.next(fixture.executionId);
+    expect(retry.command?.kind).toBe('upload_article_cover');
+    expect(await mediaCommandCount(
+      fixture.store, fixture.executionId, 'upload_article_cover'
+    )).toBe(2);
+    await fixture.adapter.claim(retry.command!);
+    fixture.setNow('2026-08-21T09:02:04.000Z');
+    await fixture.adapter.report({
+      command: retry.command!,
+      status: 'transient_failure',
+      observation: freshBodyCompleteObservation(
+        fixture.executionId,
+        retry.command!.command_id,
+        '2026-08-21T09:02:02.000Z'
+      )
+    });
+
+    await expect(fixture.adapter.next(fixture.executionId)).resolves.toMatchObject({
+      snapshot: { state: 'materialization_blocked' },
+      command: null
+    });
+    expect(await mediaCommandCount(
+      fixture.store, fixture.executionId, 'upload_article_cover'
+    )).toBe(2);
   });
 
   it('allows one Fast Path read-only recovery without re-uploading media', async () => {

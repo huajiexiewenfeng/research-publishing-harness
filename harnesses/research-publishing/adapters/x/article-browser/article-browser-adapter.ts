@@ -63,6 +63,7 @@ import {
   type XArticleBrowserObservation,
   type XArticlePublishReviewObservation
 } from './article-browser-protocol.js';
+import { decideXArticleMediaAttempt } from './article-media-attempt-policy.js';
 import { reconcileXArticleDraft } from './article-draft-reconciler.js';
 import { verifyPublicXArticle } from './article-public-verifier.js';
 import { createXArticleReceipt } from './article-receipt.js';
@@ -1863,6 +1864,18 @@ export class XArticleBrowserAdapter {
       const binding = context.plan.intent.visuals.find((candidate) => candidate.placement.kind === 'cover');
       if (binding === undefined || binding.asset.asset_id !== context.plan.intent.document.cover_asset_id) {
         context = await this.blockMaterialization(context, checkpoint, reconciliation);
+        return { snapshot: context.snapshot, command: null };
+      }
+      const attempt = decideXArticleMediaAttempt({
+        progress: await this.materializationStore.readProgress(context.snapshot.execution_id),
+        asset_id: binding.asset.asset_id,
+        purpose: 'upload_article_cover'
+      });
+      if (attempt.kind === 'block') {
+        context = await this.blockMaterialization(context, checkpoint, {
+          kind: 'unverifiable',
+          reasons: [`cover media write blocked: ${attempt.reason}`]
+        });
         return { snapshot: context.snapshot, command: null };
       }
       return this.issue(context, {
