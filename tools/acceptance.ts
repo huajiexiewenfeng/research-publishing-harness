@@ -73,6 +73,7 @@ import {
   createXArticleStageProgress,
   type XArticleStageProgressV1
 } from '../harnesses/research-publishing/core/x-article-materialization.js';
+import { runXArticleFastPathAcceptanceMatrix } from './x-article-fast-path-acceptance.js';
 
 const examples = resolve(import.meta.dirname, '../harnesses/research-publishing/examples/synthetic');
 async function fixture<T>(name: string): Promise<T> {
@@ -2728,6 +2729,7 @@ try {
     body_blocks: 76,
     inline_images: 3
   });
+  const xArticleFastPathAcceptance = await runXArticleFastPathAcceptanceMatrix();
   const xArticleHostAcceptanceComplete =
     xArticleHostAcceptance.body_import_effects === 1 &&
     xArticleHostAcceptance.image_upload_effects.length === 3 &&
@@ -2746,7 +2748,7 @@ try {
     !feedbackInsightComplete || !memoryResumeComplete || !researchEvidenceFoundationComplete ||
     !researchPromotionComplete || !progressiveQueryComplete || !promotionResumeComplete ||
     !packageBindingComplete || !terminalHookResumeComplete || !publicationFlywheelComplete ||
-    !xArticleHostAcceptanceComplete
+    !xArticleHostAcceptanceComplete || !xArticleFastPathAcceptance.ok
   ) {
     throw new Error('acceptance workflow did not reach the required terminal artifacts');
   }
@@ -2793,6 +2795,10 @@ try {
       x_article_host_grouped_image_corrections: xArticleHostAcceptance.grouped_image_corrections,
       x_article_host_observations: xArticleHostAcceptance.observation_count,
       x_article_network: xArticleHostAcceptance.network,
+      x_article_fast_path: 'simulated_complete',
+      x_article_fast_path_scenarios: xArticleFastPathAcceptance.scenarios.map(
+        (scenario) => scenario.name
+      ),
       memory_query: 'simulated_complete',
       publication_checkpoint: 'simulated_complete',
       feedback_insight: 'simulated_complete',

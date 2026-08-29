@@ -1370,8 +1370,8 @@
     },
     {
       "path": "tools/acceptance.ts",
-      "sha256": "2701ce5e836ac8ff1cf9c01fd8c0f7a0391e840a2b251090382703c9908ef6c9",
-      "bytes": 131425
+      "sha256": "220368909cd5c18d13ad903208ba0737c2e48cb1a768099ca57dc5590732cd88",
+      "bytes": 131805
     },
     {
       "path": "tools/build-manifest.ts",
@@ -1382,6 +1382,11 @@
       "path": "tools/manifest-content.ts",
       "sha256": "913561bcd8eb12c4cc7972a76b1b4de221f46f37ab28aec62df891d05b8a39c0",
       "bytes": 168
+    },
+    {
+      "path": "tools/x-article-fast-path-acceptance.ts",
+      "sha256": "da08af0530eee615e392587493a6407e16435af23c8e93f126bd2b8533157585",
+      "bytes": 16812
     }
   ]
 }

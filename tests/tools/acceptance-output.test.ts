@@ -72,6 +72,8 @@ describe('offline acceptance', () => {
       x_article_host_grouped_image_corrections: 3,
       x_article_host_observations: 4,
       x_article_network: 'unused',
+      x_article_fast_path: 'simulated_complete',
+      x_article_fast_path_scenarios: ['0', '1', '3', '10', 'disconnect_recovery'],
       memory_query: 'simulated_complete',
       publication_checkpoint: 'simulated_complete',
       feedback_insight: 'simulated_complete',
