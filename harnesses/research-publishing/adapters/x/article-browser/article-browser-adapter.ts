@@ -43,6 +43,16 @@ import {
   type XArticleStageProgressV1
 } from '../../../core/x-article-materialization.js';
 import { createXArticleExistingDraftBinding, verifyXArticleExistingDraftBinding } from '../../../core/x-article-existing-draft-binding.js';
+import {
+  assertXArticleFastPathAudit,
+  verifyXArticleFastPathConfirmation,
+  type XArticleFastPathAuditV1,
+  type XArticleFastPathConfirmationV1
+} from '../../../core/x-article-fast-path.js';
+import {
+  assertXArticleFastPathReleaseSet,
+  type XArticleFastPathReleaseSetV1
+} from '../../../core/x-article-fast-path-release.js';
 import { XArticleMaterializationStore } from '../../../core/x-article-materialization-store.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import {
@@ -89,6 +99,7 @@ interface AdapterContext {
   readonly approval: XArticleApprovalV1 | null;
   readonly execution_mode: 'materialization_v3_2' | 'media_completion_v3_3' | 'legacy_preapproved';
   readonly materialization_plan: XArticleMaterializationPlanV1 | null;
+  readonly fast_path: XArticleFastPathExecutionBindingV1 | null;
   readonly capabilities: XArticleBrowserCapabilityManifestV1;
   readonly import_strategy: XArticleImportStrategy;
   readonly bulk_import_issued: boolean;
@@ -104,6 +115,38 @@ interface AdapterContext {
   readonly submit_delivered: boolean;
   readonly needs_editor_observation: boolean;
   readonly automation_started_at: string;
+}
+
+interface XArticleFastPathExecutionBindingV1 {
+  readonly audit_digest: `sha256:${string}`;
+  readonly preflight_digest: `sha256:${string}`;
+  readonly confirmation_digest: `sha256:${string}`;
+  readonly started_at: string;
+  readonly time_budget_seconds: 600;
+  readonly recovery_budget_seconds: 120;
+  readonly recovery_count: 0;
+}
+
+interface XArticleFastPathConfirmationConsumptionV1 {
+  readonly schema_version: 'x-article-fast-path-confirmation-consumption/v1';
+  readonly execution_id: string;
+  readonly audit_digest: `sha256:${string}`;
+  readonly preflight_digest: `sha256:${string}`;
+  readonly confirmation_digest: `sha256:${string}`;
+  readonly draft_target_digest: `sha256:${string}`;
+  readonly capabilities_digest: `sha256:${string}`;
+  readonly release_set_digest: `sha256:${string}`;
+  readonly source_observation_digest: `sha256:${string}` | null;
+  readonly created_at: string;
+  readonly consumption_digest: `sha256:${string}`;
+}
+
+export interface PrepareXArticleFastPathInput {
+  readonly audit: XArticleFastPathAuditV1;
+  readonly confirmation: XArticleFastPathConfirmationV1;
+  readonly capabilities: XArticleBrowserCapabilityManifestV1;
+  readonly release_set: XArticleFastPathReleaseSetV1;
+  readonly source_observation?: XArticleBrowserObservation;
 }
 
 interface PendingIssueIntent {
@@ -243,6 +286,116 @@ export class XArticleBrowserAdapter {
     ));
   }
 
+  async prepareFastPath(input: PrepareXArticleFastPathInput): Promise<XArticleExecutionSnapshotV1> {
+    assertXArticleFastPathReleaseSet(input.release_set);
+    assertXArticleFastPathAudit(input.audit);
+    verifyXArticleFastPathConfirmation(input.audit, input.confirmation, this.now());
+    const plan = input.audit.publication_plan;
+    if (sha256(plan.intent.document) !== input.audit.preflight.sanitized_document_digest) {
+      throw new HarnessError(
+        'CONTRACT_INVALID',
+        'X Article Fast Path Plan document differs from the sanitized Preflight document'
+      );
+    }
+    this.verifyPreparedCapabilities(plan, input.capabilities);
+
+    let adopted: {
+      readonly execution_mode: 'media_completion_v3_3';
+      readonly draft_binding: ReturnType<typeof createXArticleExistingDraftBinding>;
+    } | null = null;
+    if (input.audit.draft_target.kind === 'new') {
+      if (input.source_observation !== undefined) {
+        throw new HarnessError(
+          'ARTICLE_DRAFT_CONFLICT',
+          'new-Draft Fast Path must not include an existing Draft observation'
+        );
+      }
+    } else {
+      if (input.source_observation === undefined) {
+        throw new HarnessError(
+          'ARTICLE_DRAFT_CONFLICT',
+          'existing-Draft Fast Path requires a source observation'
+        );
+      }
+      const binding = createXArticleExistingDraftBinding({
+        publication_plan: plan,
+        observation: input.source_observation
+      });
+      if (binding.draft_id !== input.audit.draft_target.draft_id) {
+        throw new HarnessError(
+          'ARTICLE_DRAFT_CONFLICT',
+          'existing-Draft Fast Path observation differs from the Audit target'
+        );
+      }
+      adopted = { execution_mode: 'media_completion_v3_3', draft_binding: binding };
+    }
+
+    const expected = {
+      audit_digest: input.audit.audit_digest,
+      preflight_digest: input.audit.preflight.preflight_digest,
+      confirmation_digest: input.confirmation.confirmation_digest,
+      draft_target_digest: sha256(input.audit.draft_target),
+      capabilities_digest: sha256(input.capabilities),
+      release_set_digest: sha256(input.release_set),
+      source_observation_digest: input.source_observation === undefined
+        ? null
+        : sha256(input.source_observation)
+    } as const;
+    const key = input.confirmation.confirmation_digest.slice('sha256:'.length);
+    const recordPath = `x/fast-path/confirmations/${key}.json`;
+    const lockPath = `x/fast-path/confirmations/${key}.lock`;
+
+    return this.store.withLock(lockPath, async () => {
+      let consumption: XArticleFastPathConfirmationConsumptionV1;
+      if (await this.store.exists(recordPath)) {
+        consumption = await this.store.readJson<XArticleFastPathConfirmationConsumptionV1>(recordPath);
+        const { consumption_digest: _digest, execution_id: _executionId, created_at: _createdAt, schema_version: _schema, ...binding } = consumption;
+        void _digest; void _executionId; void _createdAt; void _schema;
+        const digestBody = Object.fromEntries(
+          Object.entries(consumption).filter(([field]) => field !== 'consumption_digest')
+        );
+        if (
+          consumption.schema_version !== 'x-article-fast-path-confirmation-consumption/v1'
+          || consumption.consumption_digest !== sha256(digestBody)
+          || !isDeepStrictEqual(binding, expected)
+        ) {
+          throw new HarnessError(
+            'ARTICLE_CHECKPOINT_CONFLICT',
+            'X Article Fast Path confirmation is already bound to different execution inputs'
+          );
+        }
+      } else {
+        const executionId = this.executionId();
+        this.assertId(executionId);
+        const body = {
+          schema_version: 'x-article-fast-path-confirmation-consumption/v1' as const,
+          execution_id: executionId,
+          ...expected,
+          created_at: this.now().toISOString()
+        };
+        consumption = { ...body, consumption_digest: sha256(body) };
+        await this.store.writeNew(recordPath, consumption);
+      }
+
+      const fastPath: XArticleFastPathExecutionBindingV1 = {
+        audit_digest: consumption.audit_digest,
+        preflight_digest: consumption.preflight_digest,
+        confirmation_digest: consumption.confirmation_digest,
+        started_at: consumption.created_at,
+        time_budget_seconds: 600,
+        recovery_budget_seconds: 120,
+        recovery_count: 0
+      };
+      return this.withExecutionLock(consumption.execution_id, () => this.prepareLocked(
+        plan,
+        input.capabilities,
+        consumption.execution_id,
+        adopted,
+        fastPath
+      ));
+    });
+  }
+
   private async prepareLocked(
     plan: XArticlePublicationPlanV1,
     capabilities: XArticleBrowserCapabilityManifestV1,
@@ -250,7 +403,8 @@ export class XArticleBrowserAdapter {
     adopted: {
       readonly execution_mode: 'media_completion_v3_3';
       readonly draft_binding: ReturnType<typeof createXArticleExistingDraftBinding>;
-    } | null = null
+    } | null = null,
+    fastPath: XArticleFastPathExecutionBindingV1 | null = null
   ): Promise<XArticleExecutionSnapshotV1> {
     const materializationPlan = createXArticleMaterializationPlan({
       execution_id: executionId,
@@ -267,6 +421,7 @@ export class XArticleBrowserAdapter {
     const context: AdapterContext = {
       schema_version: '1.0', plan, approval: null, capabilities,
       execution_mode: adopted?.execution_mode ?? 'materialization_v3_2', materialization_plan: materializationPlan,
+      fast_path: fastPath,
       import_strategy: 'bulk_document', bulk_import_issued: false, snapshot,
       latest_observation: null, editor_revision: null, preview_revision: null,
       latest_editor_observation_id: null, latest_preview_observation_id: null,
@@ -304,6 +459,7 @@ export class XArticleBrowserAdapter {
         || !isDeepStrictEqual(existing.plan, plan)
         || !isDeepStrictEqual(existing.capabilities, capabilities)
         || !isDeepStrictEqual(existing.materialization_plan, materializationPlan)
+        || !isDeepStrictEqual(existing.fast_path ?? null, fastPath)
         || existing.automation_started_at !== startEvidence.started_at
       ) {
         throw new HarnessError(
@@ -431,6 +587,7 @@ export class XArticleBrowserAdapter {
     const context: AdapterContext = {
       schema_version: '1.0', plan, approval, capabilities,
       execution_mode: 'legacy_preapproved', materialization_plan: null,
+      fast_path: null,
       import_strategy: importStrategy, snapshot,
       bulk_import_issued: false,
       latest_observation: null, editor_revision: null, preview_revision: null,

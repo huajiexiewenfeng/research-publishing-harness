@@ -14,9 +14,15 @@ import type { XArticlePageContract } from '../../harnesses/research-publishing/a
 import { createXArticleImportTemplate } from '../../harnesses/research-publishing/adapters/x/article-browser/article-import-template.js';
 import { approveXArticlePublication } from '../../harnesses/research-publishing/core/x-article-approval.js';
 import { sha256 } from '../../harnesses/research-publishing/core/digest.js';
+import {
+  confirmXArticleFastPath,
+  createXArticleFastPathAudit
+} from '../../harnesses/research-publishing/core/x-article-fast-path.js';
+import type { XArticleFastPathReleaseSetV1 } from '../../harnesses/research-publishing/core/x-article-fast-path-release.js';
 import { createXArticlePublishConfirmation } from '../../harnesses/research-publishing/core/x-article-publish-confirmation.js';
 import { createXArticlePublicationPlan } from '../../harnesses/research-publishing/core/x-article-publication-plan.js';
 import { computeXArticleExistingDraftRevision } from '../../harnesses/research-publishing/core/x-article-existing-draft-binding.js';
+import { createXArticlePublicationPreflight } from '../../harnesses/research-publishing/branches/x-article-harness/article-publication-preflight.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 
 const plan = createXArticlePublicationPlan({
@@ -111,6 +117,35 @@ const coverInlinePlan = createXArticlePublicationPlan({
   ],
   plannedAt: '2026-08-21T09:00:00.000Z', provenance: {}
 });
+
+const fastPathReleaseSet: XArticleFastPathReleaseSetV1 = {
+  harness_protocol: 'x-article-materialization/v3.4',
+  registry_protocol: 'x-article-materialization/v3.4',
+  skill_protocol: 'x-article-materialization/v3.4',
+  browser_host_protocol: 'x-article-materialization/v3.4'
+};
+
+function fastPathInput(draftTarget: { kind: 'new' } | { kind: 'existing'; draft_id: string }) {
+  const audit = createXArticleFastPathAudit({
+    preflight: createXArticlePublicationPreflight({
+      document: coverInlinePlan.intent.document,
+      visuals: coverInlinePlan.intent.visuals
+    }),
+    publication_plan: coverInlinePlan,
+    draft_target: draftTarget
+  });
+  return {
+    audit,
+    confirmation: confirmXArticleFastPath(
+      audit,
+      'human:Glen56121',
+      3_600_000,
+      new Date('2026-08-21T09:00:00.000Z')
+    ),
+    capabilities: coverBulkCapabilities,
+    release_set: fastPathReleaseSet
+  };
+}
 
 function observed(executionId: string, commandId: string, value: Record<string, unknown>) {
   const input = {
@@ -967,6 +1002,99 @@ describe('XArticleBrowserAdapter', () => {
       .resolves.toMatchObject({ execution_id: execution.execution_id, revision: 0, phase: 'preflight_pending' });
     await expect(store.exists(`runs/${execution.execution_id}/x-article/browser/approval.json`))
       .resolves.toBe(false);
+  });
+
+  it('prepares a new-Draft Fast Path and durably binds its one-time confirmation', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-new-')));
+    let executionIds = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => `execution_fast_path_new_${++executionIds}`,
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'new' });
+
+    const first = await adapter.prepareFastPath(input);
+    const retry = await adapter.prepareFastPath(input);
+
+    expect(retry).toEqual(first);
+    expect(executionIds).toBe(1);
+    await expect(adapter.prepareFastPath({
+      ...input,
+      capabilities: { ...input.capabilities, observed_at: '2026-08-21T09:00:01.000Z' }
+    })).rejects.toMatchObject({ code: 'ARTICLE_CHECKPOINT_CONFLICT' });
+    expect(executionIds).toBe(1);
+    await expect(store.readJson(`runs/${first.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({
+        execution_mode: 'materialization_v3_2',
+        fast_path: {
+          audit_digest: input.audit.audit_digest,
+          preflight_digest: input.audit.preflight.preflight_digest,
+          confirmation_digest: input.confirmation.confirmation_digest,
+          time_budget_seconds: 600,
+          recovery_budget_seconds: 120,
+          recovery_count: 0
+        }
+      });
+  });
+
+  it('blocks a stale Fast Path release before allocating an execution', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-stale-')));
+    let executionIds = 0;
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => { executionIds += 1; return 'must_not_be_allocated'; },
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'new' });
+
+    await expect(adapter.prepareFastPath({
+      ...input,
+      release_set: {
+        ...fastPathReleaseSet,
+        skill_protocol: 'x-article-materialization/v3.3'
+      } as unknown as XArticleFastPathReleaseSetV1
+    })).rejects.toMatchObject({ code: 'ARTICLE_RUNTIME_VERSION_MISMATCH' });
+    expect(executionIds).toBe(0);
+  });
+
+  it('blocks expired confirmation and a new-Draft source observation before allocation', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-gates-')));
+    let executionIds = 0;
+    const expiredAdapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => { executionIds += 1; return 'must_not_be_allocated'; },
+      now: () => new Date('2026-08-21T11:00:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'new' });
+
+    await expect(expiredAdapter.prepareFastPath(input)).rejects.toMatchObject({ code: 'APPROVAL_STALE' });
+
+    const currentAdapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => { executionIds += 1; return 'must_not_be_allocated'; },
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    await expect(currentAdapter.prepareFastPath({
+      ...input,
+      source_observation: existingBodyCompleteObservation('source_new', 'command_new')
+    })).rejects.toMatchObject({ code: 'ARTICLE_DRAFT_CONFLICT' });
+    expect(executionIds).toBe(0);
+  });
+
+  it('adopts only the existing Draft named by the Fast Path Audit', async () => {
+    const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-fast-path-existing-')));
+    const adapter = new XArticleBrowserAdapter(store, new XArticleWeb2026_08Contract(), {
+      executionId: () => 'execution_fast_path_existing_1',
+      now: () => new Date('2026-08-21T09:01:00.000Z')
+    });
+    const input = fastPathInput({ kind: 'existing', draft_id: '2092851979932647424' });
+    const source = existingBodyCompleteObservation('source_existing', 'command_existing');
+
+    const execution = await adapter.prepareFastPath({ ...input, source_observation: source });
+
+    await expect(store.readJson(`runs/${execution.execution_id}/x-article/browser/adapter-context.json`))
+      .resolves.toMatchObject({ execution_mode: 'media_completion_v3_3' });
+
+    const mismatched = fastPathInput({ kind: 'existing', draft_id: '9999999999999999999' });
+    await expect(adapter.prepareFastPath({ ...mismatched, source_observation: source }))
+      .rejects.toMatchObject({ code: 'ARTICLE_DRAFT_CONFLICT' });
   });
 
   it('adopts a body-complete Draft and issues the first media command without rewriting content', async () => {
