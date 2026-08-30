@@ -177,4 +177,83 @@ describe('bounded X Article editor extraction', () => {
     expect(pageFunctionText).toContain('[data-block="true"]');
     expect(pageFunctionText).not.toMatch(/\bprocess\b|localStorage|sessionStorage|cookie/i);
   });
+
+  it('reads outer block semantics and nested X link runs from the live DraftJS editor', async () => {
+    const link = {
+      getAttribute: (name) => name === 'href' ? 'https://example.com/reference' : null
+    };
+    const run = {
+      textContent: 'Opening.',
+      getAttribute: (name) => name === 'style' ? '' : null,
+      closest: (selector) => selector === 'a[href]' ? link : null
+    };
+    const innerBlock = {
+      tagName: 'DIV',
+      className: 'public-DraftStyleDefault-block public-DraftStyleDefault-ltr',
+      textContent: 'Opening.',
+      querySelectorAll: (selector) => selector === 'span[data-offset-key]' ? [run] : []
+    };
+    const container = {
+      tagName: 'DIV',
+      className: 'longform-unstyled',
+      textContent: 'Opening.',
+      children: [innerBlock],
+      querySelector: (selector) => selector === '.public-DraftStyleDefault-block'
+        ? innerBlock
+        : null
+    };
+    const composer = {
+      getAttribute: (name) => ({
+        'data-testid': 'composer',
+        role: 'textbox',
+        contenteditable: 'true'
+      })[name] ?? null,
+      querySelectorAll: (selector) => selector === '[data-block="true"]' ? [container] : []
+    };
+    const title = {
+      tagName: 'TEXTAREA',
+      value: 'From Skill Memory to Shared Agent Knowledge',
+      getAttribute: (name) => name === 'placeholder' ? 'Add a title' : null
+    };
+    const profile = {
+      getAttribute: (name) => name === 'href' ? '/Glen56121' : null
+    };
+    const documentBefore = globalThis.document;
+    const locationBefore = globalThis.location;
+    globalThis.document = {
+      querySelectorAll: (selector) => {
+        if (selector === 'textarea[placeholder="Add a title"]') return [title];
+        if (selector === '[data-testid="composer"][contenteditable="true"]') return [composer];
+        if (selector === 'span,div') return [{ textContent: 'Last saved just now' }];
+        return [];
+      },
+      querySelector: (selector) => selector === 'a[data-testid="AppTabBar_Profile_Link"]'
+        ? profile
+        : null
+    };
+    globalThis.location = {
+      href: 'https://x.com/compose/articles/edit/2093554993261654016'
+    };
+    const tab = { playwright: { evaluate: async (pageFunction) => pageFunction() } };
+
+    try {
+      await expect(extractXArticleEditorSnapshot({ tab })).resolves.toMatchObject({
+        editor: {
+          blocks: [{
+            kind: 'paragraph',
+            runs: [{
+              text: 'Opening.',
+              marks: [],
+              link: 'https://example.com/reference'
+            }]
+          }]
+        }
+      });
+    } finally {
+      if (documentBefore === undefined) delete globalThis.document;
+      else globalThis.document = documentBefore;
+      if (locationBefore === undefined) delete globalThis.location;
+      else globalThis.location = locationBefore;
+    }
+  });
 });

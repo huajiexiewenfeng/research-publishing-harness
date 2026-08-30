@@ -91,6 +91,9 @@ function fakeTab({
   count = 1,
   visible = true,
   enabled = true,
+  triggerCount = 1,
+  triggerVisible = true,
+  triggerEnabled = true,
   regionValid = true,
   chooserError = null,
   setFilesError = null,
@@ -99,6 +102,12 @@ function fakeTab({
 } = {}) {
   const calls = [];
   let evaluateCount = 0;
+  const trigger = {
+    async count() { calls.push(['trigger.count']); return triggerCount; },
+    async isVisible() { calls.push(['trigger.isVisible']); return triggerVisible; },
+    async isEnabled() { calls.push(['trigger.isEnabled']); return triggerEnabled; },
+    async click() { calls.push(['trigger.click']); }
+  };
   const input = {
     async count() { calls.push(['input.count']); return count; },
     async isVisible() { calls.push(['input.isVisible']); return visible; },
@@ -111,6 +120,15 @@ function fakeTab({
       }
       calls.push(['input.binding']);
       return bindingFiles;
+    },
+    locator(selector) {
+      calls.push(['input.locator', selector]);
+      return {
+        getByRole(role, options) {
+          calls.push(['parent.getByRole', role, options]);
+          return trigger;
+        }
+      };
     },
     async click() { calls.push(['input.click']); }
   };
@@ -175,15 +193,29 @@ describe('X Article causal cover Host', () => {
     expect(input.browser.calls).toEqual([
       ['getByTestId', 'fileInput'],
       ['input.count'],
-      ['input.isVisible'],
       ['input.isEnabled'],
       ['input.region'],
+      ['input.locator', '..'],
+      ['parent.getByRole', 'button', { name: 'Add photos or video', exact: true }],
+      ['trigger.count'],
+      ['trigger.isVisible'],
+      ['trigger.isEnabled'],
       ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
-      ['input.click'],
+      ['trigger.click'],
       ['chooser.isMultiple'],
       ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }],
       ['input.binding']
     ]);
+  });
+
+  it('uses the visible cover button as the chooser trigger and the file input only as the binding', async () => {
+    const input = await validInput();
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
+    });
+    expect(input.browser.calls).toContainEqual(['trigger.click']);
+    expect(input.browser.calls).not.toContainEqual(['input.click']);
   });
 
   it.each([
@@ -213,8 +245,9 @@ describe('X Article causal cover Host', () => {
 
   it.each([
     ['duplicate', { count: 2 }],
-    ['hidden', { visible: false }],
+    ['hidden trigger', { triggerVisible: false }],
     ['disabled', { enabled: false }],
+    ['disabled trigger', { triggerEnabled: false }],
     ['outside the 5:2 region', { regionValid: false }]
   ])('rejects a %s cover input as ambiguous', async (_name, browserOptions) => {
     const browser = fakeTab(browserOptions);

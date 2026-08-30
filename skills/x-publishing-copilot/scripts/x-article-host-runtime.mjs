@@ -11,6 +11,20 @@ const moduleRepositoryRoot = resolve(
   '..'
 );
 
+function normalizeHostJson(value, label) {
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) {
+      throw new TypeError(`${label} is not JSON serializable`);
+    }
+    return JSON.parse(encoded);
+  } catch (error) {
+    throw new Error(`${label} could not cross the X Article Host boundary`, {
+      cause: error
+    });
+  }
+}
+
 function discoverRegisteredCli(registryPath) {
   if (existsSync(registryPath)) {
     const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
@@ -83,12 +97,17 @@ export async function observeXArticleEditor(input) {
     ({ buildXArticleHostObservation: build } = await loadXArticleObservationBuilder({ cliPath }));
   }
 
-  const pageSnapshot = await extract({ tab: input.tab });
+  const pageSnapshot = normalizeHostJson(
+    await extract({ tab: input.tab }),
+    'X Article page snapshot'
+  );
   return build({
-    command: input.command,
-    context: input.context,
+    command: normalizeHostJson(input.command, 'X Article command'),
+    context: normalizeHostJson(input.context, 'X Article Host context'),
     page_snapshot: pageSnapshot,
-    previous_observation: input.previousObservation,
+    previous_observation: input.previousObservation === null
+      ? null
+      : normalizeHostJson(input.previousObservation, 'Previous X Article observation'),
     observation_id: input.observationId,
     observed_at: input.observedAt
   });

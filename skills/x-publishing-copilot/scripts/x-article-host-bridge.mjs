@@ -43,6 +43,10 @@ async function navigateTab(input) {
   if (typeof url !== 'string' || !url.startsWith('https://x.com/')) {
     throw new Error('X Article Host navigate command is invalid');
   }
+  const currentUrl = typeof input.tab?.url === 'function'
+    ? await input.tab.url()
+    : null;
+  if (currentUrl === url) return;
   if (typeof input.tab?.goto === 'function') {
     await input.tab.goto(url);
   } else if (typeof input.tab?.playwright?.goto === 'function') {

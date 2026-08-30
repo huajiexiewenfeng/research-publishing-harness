@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runInNewContext } from 'node:vm';
 
 import { validateContract } from '../../harnesses/research-publishing/core/schema-validator.js';
 
@@ -19,6 +20,16 @@ const candidate = {
 describe('validateContract', () => {
   it('returns a valid contract value', () => {
     expect(validateContract('candidate', candidate)).toEqual(candidate);
+  });
+
+  it('validates JSON contracts created in a foreign Host realm', () => {
+    const foreignCandidate = runInNewContext(
+      `(${JSON.stringify(candidate)})`
+    ) as typeof candidate;
+
+    const validated = validateContract('candidate', foreignCandidate);
+
+    expect(validated).toEqual(candidate);
   });
 
   it('rejects unknown fields with a stable error code', () => {

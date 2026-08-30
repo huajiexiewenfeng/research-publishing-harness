@@ -1,5 +1,3 @@
-import { isDeepStrictEqual } from 'node:util';
-
 import type { XArticleBlockV1 } from '../../../branches/x-article-harness/article-document.js';
 import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
@@ -88,6 +86,10 @@ interface BoundPlans {
   readonly template: XArticleImportTemplateV1;
 }
 
+function sameContractJson(left: unknown, right: unknown): boolean {
+  return sha256(left) === sha256(right);
+}
+
 type BlockVisualBinding = XArticleVisualBindingV1 & {
   readonly placement: { readonly kind: 'block'; readonly block_ordinal: number };
 };
@@ -106,6 +108,22 @@ function rejectAsset(message: string, details?: unknown): never {
 
 function rejectMedia(message: string, details?: unknown): never {
   throw new HarnessError('ARTICLE_MEDIA_AMBIGUOUS', message, details);
+}
+
+function normalizeHostBoundary<T>(value: T): T {
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) {
+      throw new TypeError('X Article Host observation input is not JSON serializable');
+    }
+    return JSON.parse(encoded) as T;
+  } catch (error) {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      'X Article Host observation input could not cross the JSON boundary',
+      error
+    );
+  }
 }
 
 function expectedMaterializationAnchor(
@@ -163,7 +181,7 @@ function bindPlans(context: XArticleHostObservationContextV1): BoundPlans {
     materialization.target_account !== publication.intent.target_account
     || materialization.document_digest !== template.source_document_digest
     || materialization.import_template_digest !== template.template_digest
-    || !isDeepStrictEqual(materialization.visual_anchors, expectedAnchors)
+    || !sameContractJson(materialization.visual_anchors, expectedAnchors)
   ) {
     rejectMaterialization('X Article materialization plan differs from its locked publication inputs');
   }
@@ -226,7 +244,7 @@ function commandTarget(command: XArticleBrowserCommandV1, plans: BoundPlans): Me
       plannedAnchor === undefined
       || command.payload.package_root !== articlePackage.root
       || command.payload.package_digest !== articlePackage.digest
-      || !isDeepStrictEqual(command.payload.asset, binding.asset)
+      || !sameContractJson(command.payload.asset, binding.asset)
     ) {
       rejectAsset('X Article command asset or anchor differs from the locked plan');
     }
@@ -245,7 +263,7 @@ function commandTarget(command: XArticleBrowserCommandV1, plans: BoundPlans): Me
       binding === null
       || command.payload.package_root !== articlePackage.root
       || command.payload.package_digest !== articlePackage.digest
-      || !isDeepStrictEqual(command.payload.asset, binding.asset)
+      || !sameContractJson(command.payload.asset, binding.asset)
     ) {
       rejectAsset('X Article cover command asset differs from the locked plan');
     }
@@ -255,7 +273,7 @@ function commandTarget(command: XArticleBrowserCommandV1, plans: BoundPlans): Me
     if (
       command.payload.package_root !== articlePackage.root
       || command.payload.package_digest !== articlePackage.digest
-      || !isDeepStrictEqual(command.payload.template, plans.template)
+      || !sameContractJson(command.payload.template, plans.template)
     ) {
       rejectMaterialization('X Article import command differs from the locked materialization plan');
     }
@@ -553,19 +571,20 @@ function bindEditor(input: {
 export function buildXArticleHostObservation(
   input: BuildXArticleHostObservationInputV1
 ): XArticleBrowserObservation {
-  const plans = bindPlans(input.context);
-  const command = validateCommand(input.command);
-  const previous = validatePreviousObservation(input.previous_observation);
-  assertPageIdentity(input, command, plans, previous);
+  const normalizedInput = normalizeHostBoundary(input);
+  const plans = bindPlans(normalizedInput.context);
+  const command = validateCommand(normalizedInput.command);
+  const previous = validatePreviousObservation(normalizedInput.previous_observation);
+  assertPageIdentity(normalizedInput, command, plans, previous);
   const target = commandTarget(command, plans);
-  const editor = bindEditor({ page: input.page_snapshot, plans, previous, target });
+  const editor = bindEditor({ page: normalizedInput.page_snapshot, plans, previous, target });
 
   const semanticFields = {
     origin: 'https://x.com' as const,
-    canonical_url: input.page_snapshot.canonical_url,
-    account_handle: input.page_snapshot.account_handle,
+    canonical_url: normalizedInput.page_snapshot.canonical_url,
+    account_handle: normalizedInput.page_snapshot.account_handle,
     page_kind: 'article_editor' as const,
-    controls: structuredClone(input.page_snapshot.controls),
+    controls: structuredClone(normalizedInput.page_snapshot.controls),
     editor,
     preview: null,
     publish_review: null,
@@ -573,12 +592,12 @@ export function buildXArticleHostObservation(
   };
   const observation: XArticleBrowserObservationInput = {
     schema_version: '1.0',
-    observation_id: input.observation_id,
+    observation_id: normalizedInput.observation_id,
     execution_id: command.execution_id,
     command_id: command.command_id,
     ...semanticFields,
     page_state_revision: computeXArticlePageStateRevision(semanticFields),
-    observed_at: input.observed_at
+    observed_at: normalizedInput.observed_at
   };
   return validateContract<XArticleBrowserObservation>('x-article-browser-observation', {
     ...observation,

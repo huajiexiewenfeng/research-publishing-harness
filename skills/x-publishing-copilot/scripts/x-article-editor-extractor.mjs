@@ -396,14 +396,14 @@ export async function extractXArticleEditorSnapshot({ tab }) {
     );
 
     const extractRuns = (block) => Array.from(
-      block.querySelectorAll(':scope > span[data-offset-key]')
+      block.querySelectorAll('span[data-offset-key]')
     ).map((span) => {
       const style = span.getAttribute('style') || '';
       return {
         text: span.textContent || '',
         bold: /font-weight:\s*(?:bold|[6-9]00)/i.test(style),
         italic: /font-style:\s*italic/i.test(style),
-        link: span.querySelector('a[href]')?.getAttribute('href') || null
+        link: span.closest('a[href]')?.getAttribute('href') || null
       };
     });
 
@@ -428,8 +428,8 @@ export async function extractXArticleEditorSnapshot({ tab }) {
       }
       const runs = block === null ? [] : extractRuns(block);
       return {
-        parent_tag: block?.tagName || container.tagName,
-        parent_class: block?.className || container.className || '',
+        parent_tag: container.tagName,
+        parent_class: container.className || '',
         runs,
         has_unknown_content: block === null
           || (runs.length === 0 && (block.textContent || '').length > 0)

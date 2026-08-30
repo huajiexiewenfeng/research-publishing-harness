@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -124,5 +125,37 @@ describe('official X Article editor observer', () => {
       observed_at: '2026-08-29T08:00:00.000Z'
     });
     expect(callerObserve).not.toHaveBeenCalled();
+  });
+
+  it('normalizes JSON contracts crossing a foreign Host realm before Builder validation', async () => {
+    const foreign = runInNewContext(`({
+      command: { command_id: 'command_foreign' },
+      context: { publication_plan: {}, materialization_plan: {} },
+      previous: { observation_id: 'observation_foreign_previous' },
+      pageSnapshot: { schema_version: 'x-article-host-page-snapshot/v1' }
+    })`);
+    const build = vi.fn((input) => {
+      expect(Object.getPrototypeOf(input.command)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(input.context)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(input.context.publication_plan)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(input.previous_observation)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(input.page_snapshot)).toBe(Object.prototype);
+      return { observation_id: input.observation_id };
+    });
+
+    await expect(observeXArticleEditor({
+      tab: { id: 'chrome-tab' },
+      command: foreign.command,
+      context: foreign.context,
+      previousObservation: foreign.previous,
+      observationId: 'observation_foreign',
+      observedAt: '2026-08-30T01:00:00.000Z',
+      dependencies: {
+        extractXArticleEditorSnapshot: vi.fn(async () => foreign.pageSnapshot),
+        buildXArticleHostObservation: build
+      }
+    })).resolves.toEqual({ observation_id: 'observation_foreign' });
+
+    expect(build).toHaveBeenCalledOnce();
   });
 });

@@ -115,8 +115,8 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-host-observation.ts",
-      "sha256": "742a48a00058353aed5dbee67e4e1845d8d5b05e430dd5e8ea8bd13570b9d5a6",
-      "bytes": 20996
+      "sha256": "41253cc3fb78ca544eb0ccc00b92c9b36d474064c42d5e546061ea5dabd1701e",
+      "bytes": 21652
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-protocol.ts",
@@ -830,8 +830,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/digest.ts",
-      "sha256": "b55f635c957284a5af3a9305549436f1c9ec096008292e328f43b2b519ef55ea",
-      "bytes": 1969
+      "sha256": "c1efaa3e767b23e132eb2235d94c7ced77c5cdd09fa8c21c58bddc45abcea262",
+      "bytes": 2383
     },
     {
       "path": "harnesses/research-publishing/core/errors.ts",
@@ -1130,8 +1130,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/schema-validator.ts",
-      "sha256": "e0dc7b45fd041079647bac72c5ff024200c905cff1dedd26bc90a89e81ff50cc",
-      "bytes": 4688
+      "sha256": "b62cab0d2c9625901f4ae8a5dafa6de622118663b83100dc990137060d02ad40",
+      "bytes": 6476
     },
     {
       "path": "harnesses/research-publishing/core/semantic-delta-service.ts",
@@ -1390,18 +1390,18 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-cover-host.mjs",
-      "sha256": "cb29fc6a4af4fb855413d0e810a3de5c5802390e7a13f02e15a8da54a733ff25",
-      "bytes": 3719
+      "sha256": "e3270cbb4bed3f40290f0f6d95bb50ca5ce64f3f56a8f79fdc567316669781fb",
+      "bytes": 3979
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs",
-      "sha256": "d2b0e569aeae10e991de63953e4011888b550d8291a7f5d9981f714436a1a425",
-      "bytes": 18963
+      "sha256": "efb75d67331f80b36730a873cb411049be39d0b11210cfaab58f29f7ee8b1e88",
+      "bytes": 18910
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs",
-      "sha256": "cf489e5abd1c7c57d23024a2ddfccad9a810fd2c85f443b4e57ab5067ad6369c",
-      "bytes": 3789
+      "sha256": "03a8c06504952fab8c1e05e47483cb5f596a51750a66d38b5831a953ec9d30d1",
+      "bytes": 3921
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-common.mjs",
@@ -1410,8 +1410,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs",
-      "sha256": "21034b433e3520d204056c45be107cd471b4c50f965e291b84476ebec7d97bad",
-      "bytes": 3132
+      "sha256": "9d2e30ed2081a14a727ea17f76059d6302e4dd749330a74168dca583f94f28c0",
+      "bytes": 3745
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs",

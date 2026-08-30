@@ -93,6 +93,58 @@ ajv.addKeyword({
 
 const validators = new Map<ContractName, ValidateFunction>();
 
+function isPlainContractObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  if (prototype === null || prototype === Object.prototype) return true;
+
+  const parent = Object.getPrototypeOf(prototype) as object | null;
+  const constructor = Object.prototype.hasOwnProperty.call(prototype, 'constructor')
+    ? Reflect.get(prototype, 'constructor')
+    : null;
+  return parent === null
+    && typeof constructor === 'function'
+    && constructor.name === 'Object';
+}
+
+function normalizeContractJson(value: unknown, ancestors = new Set<object>()): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new HarnessError('CONTRACT_INVALID', 'non-finite numbers are not JSON values');
+    }
+    return value;
+  }
+  if (typeof value !== 'object') {
+    throw new HarnessError(
+      'CONTRACT_INVALID',
+      `unsupported value in contract JSON: ${typeof value}`
+    );
+  }
+  if (ancestors.has(value)) {
+    throw new HarnessError('CONTRACT_INVALID', 'cyclic values are not contract JSON');
+  }
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return Array.from(value, (item) => normalizeContractJson(item, ancestors));
+    }
+    if (!isPlainContractObject(value)) {
+      throw new HarnessError('CONTRACT_INVALID', 'contract JSON accepts plain objects only');
+    }
+
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      normalized[key] = normalizeContractJson(Reflect.get(value, key), ancestors);
+    }
+    return normalized;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
 function loadValidator(name: ContractName): ValidateFunction {
   const cached = validators.get(name);
   if (cached !== undefined) {
@@ -122,8 +174,9 @@ function formatErrors(errors: ErrorObject[] | null | undefined): string {
 }
 
 export function validateContract<T>(name: ContractName, value: unknown): T {
+  const normalized = normalizeContractJson(value);
   const validator = loadValidator(name);
-  if (!validator(value)) {
+  if (!validator(normalized)) {
     throw new HarnessError(
       'CONTRACT_INVALID',
       `${name}: ${formatErrors(validator.errors)}`,

@@ -3,11 +3,11 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: V3.5 development and offline verification done; separately approved Draft-only smoke pending
+- status: V3.5 development and offline verification done; live smoke exposed and fixed the cover chooser trigger mismatch; one fresh Draft-only verification remains
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
-- updated_at: 2026-08-29
+- updated_at: 2026-08-30
 
 ## Routing
 
@@ -48,6 +48,9 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 - The merged TypeScript source exposed V3.4 while the committed `dist` CLI initially rejected `x-article fast-path audit` as an unknown operation; a local build made it available, proving packaged-output drift.
 - V3.5 now packages the bounded Editor Extractor, deterministic dual-Revision Observation Builder, runtime observer, reasoned cover and inline transactions, and the Draft-only Host Bridge dispatcher.
 - The pre-build parity gate first rejected the old CLI because `x-article-host-bridge/v3.5` was absent. A selective rebuild then exposed a second real failure: the new Adapter imported `createXArticleFastPathResult` from an old packaged dependency. Commit `802d14c` includes the minimal executable CLI dependency closure and the gate now passes before any build-capable test.
+- Live retry `x_article_execution_021cdc3b-2d86-47b3-8e02-9a23b5611ca7` proved that the scoped cover `input[type=file]` is only about `0.09 x 0.09` pixels and has no label; its same-parent visible button is the actual chooser trigger (`aria-label="Add photos or video"`).
+- The Cover Host incorrectly used the hidden binding input as `causalTrigger`. The chooser therefore never opened and the Host correctly reported `file_transfer_missing` with no possible selection and no X effect.
+- The Cover Host now uses the unique visible/enabled sibling button to open the chooser and keeps the exact scoped file input only for post-selection binding verification. The regression test failed before the change and the focused Host suite now passes 49/49.
 
 ## Reproduction
 
@@ -55,7 +58,7 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 - command_or_steps: prepare an existing-Draft Fast Path with one cover and three inline images; claim and attempt the first `upload_article_cover` command twice
 - observed: `Cover 0/1`, `Inline images 0/3`, fresh live page evidence proved no media effect, and the hard deadline stopped further writes at 905.985 seconds
 - expected: one verified cover or a terminal bounded failure
-- limitation: the first chooser call returned without a visible X effect, but the exact transport-layer cause is not yet proven
+- limitation: the root cause is proven and fixed offline, but the 15-minute live retry expired at 912.2 seconds while the fix was being verified, so that execution cannot legally prove the corrected transaction
 
 ## Scope
 
@@ -67,7 +70,7 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 
 ## Diagnosis
 
-The original failure had three independent layers: no packaged live Editor Observer, no deterministic Host-to-Harness Observation bridge, and no pre-build check for stale executable output. V3.5 closes those repository-owned gaps. It preserves legacy `page_revision` for command compatibility while adding semantic `page_state_revision` so consecutive equivalent reads remain stable across execution metadata changes. Media outcomes now persist stable reason codes, and one Draft-only dispatcher owns all allowed browser transactions. The remaining uncertainty is external: Chrome may still fail to bind the selected local file or X may reject the asset, which only the separately approved live smoke can distinguish.
+The original failure had three independent layers: no packaged live Editor Observer, no deterministic Host-to-Harness Observation bridge, and no pre-build check for stale executable output. V3.5 closes those repository-owned gaps. It preserves legacy `page_revision` for command compatibility while adding semantic `page_state_revision` so consecutive equivalent reads remain stable across execution metadata changes. Media outcomes now persist stable reason codes, and one Draft-only dispatcher owns all allowed browser transactions. The first live retry then exposed a fourth, page-specific integration mismatch: X separates the visible chooser button from the tiny file-binding input, while the Cover Host treated them as one control. The corrected transaction now models them as two scoped controls without weakening the one-chooser or exact-binding rules.
 
 ## External Findings
 
@@ -82,7 +85,9 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 5. [done] Route navigate, observe, cover, and inline commands through one Draft-only Host Bridge.
 6. [done] Preserve the attempt budget and shared hard deadline; Host code never retries locally.
 7. [done] Run packaged CLI parity before any build can mask stale `dist` artifacts.
-8. [pending external confirmation] Run one 15-minute Draft-only live smoke.
+8. [done] Run the first 15-minute Draft-only live smoke and prove the cover chooser trigger mismatch without producing any media effect.
+9. [done] Separate the visible cover chooser trigger from the scoped binding input and add RED/GREEN regression coverage.
+10. [pending external confirmation] Run one fresh bounded Draft-only execution; never reuse the timed-out command.
 
 ## RED / GREEN Ledger
 
@@ -97,16 +102,17 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 | 7 | No complete Draft-only dispatcher; acceptance lacked complete Host dispatch evidence | `5ac8623` |
 | 8 | parity tool absent; old `dist` lacked V3.5, then selective output failed on a stale runtime export | `802d14c` |
 | 9 | Skill fallback/authority language and generated manifest were stale | this `chore: package complete X Article Host Bridge` packaging commit |
+| 10 | Live X DOM placed the cover input and causal button beside each other; the Host clicked the binding input | focused RED showed input click, GREEN uses the visible `Add photos or video` button; 17/17 cover tests and 49/49 Host tests pass |
 
 ## Verification
 
-- status: offline_done
+- status: offline_done_live_verification_pending
 - commands_or_checks: pre-build `pnpm check:packaged-cli`; full lint and typecheck; 16-file focused V3.5 suite; `pnpm acceptance:x-article-fast-path`; complete `pnpm check`; final `git diff --check`
-- result_summary: packaged CLI parity passed against `x-article-host-bridge/v3.5`; Skill/manifest validation passed 10/10; focused regression passed 16/16 files and 238/238 tests in 110.00 seconds; complete check passed 184 files with 1 skipped and 1280 tests with 1 skipped, with Vitest duration 180.09 seconds and end-to-end command time about 224 seconds; full acceptance passed with network unused
+- result_summary: packaged CLI parity passed against `x-article-host-bridge/v3.5`; the latest complete Vitest run passed all 389 suites with 1288 tests passed, 1 skipped, and 0 failed; the focused Host suite passed 49/49; Fast Path acceptance passed all five 0/1/3/10/disconnect-recovery scenarios with network unused
 - draft_only_command_set: `navigate`, `observe_article_page`, `upload_article_cover`, `replace_article_visual_anchor`; Host Bridge rejects Preview and Publish before dispatch
 - fast_path_acceptance: 0, 1, 3, 10 inline-image cases plus one disconnect recovery all reached `draft_reconciled`; duplicate Draft/upload/write counts were zero; Preview and Publish command counts were zero; exact inline Alt verification was complete
-- limitation: offline tests cannot prove that the installed Chrome extension can bind an approved local file or that X accepts it. If Chrome reports missing file binding, enable **Allow access to file URLs** for the ChatGPT browser extension before a later separately approved attempt.
-- residual_risk: one digest-bound, separately confirmed 15-minute Draft-only smoke remains necessary; no X navigation or mutation occurred during this offline verification
+- limitation: the corrected cover-button transaction has not yet completed in a fresh live execution because the diagnostic execution reached its 900-second deadline before the fix was deployed
+- residual_risk: one fresh digest-bound Draft-only execution remains necessary; the timed-out execution produced no X media effect and issued no Preview or Publish command
 
 ## Flow Record
 
@@ -116,7 +122,7 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 | design | done | Complete Host Bridge confirmed and written to `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md` | 2026-08-29 |
 | plan | done | Inline implementation plan completed through Task 9 offline packaging | 2026-08-29 |
 | development | done | V3.5 Complete Host Bridge and packaged CLI parity gate implemented | 2026-08-29 |
-| testing | offline_done | 238 focused and 1280 aggregate tests passed; five Draft-only Fast Path acceptance scenarios passed | 2026-08-29 |
+| testing | offline_done_live_verification_pending | 49 focused Host tests and 1288 aggregate tests passed; five Draft-only Fast Path acceptance scenarios passed; live retry proved zero media effect before timeout | 2026-08-30 |
 | archive | pending |  |  |
 
 ## Artifacts
@@ -137,8 +143,8 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Open Questions
 
-Whether Chrome bound the selected file but X rejected it cannot be proven by the current Host. V3.5 must expose file-input binding evidence and distinguish it from an absent X media effect.
+Will the corrected visible-button chooser transaction bind the exact cover and produce stable X media evidence in one fresh bounded execution?
 
 ## Residual Risk
 
-The Codex Chrome runtime and its **Allow access to file URLs** setting remain environment dependencies. V3.5 can diagnose this boundary but cannot change extension permissions or guarantee that X accepts an asset.
+The Cover Host fix is verified offline against the exact live DOM shape, but X acceptance and autosave evidence remain external until one fresh bounded execution reaches `draft_reconciled`.

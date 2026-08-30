@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runInNewContext } from 'node:vm';
 
 import {
   buildXArticleHostObservation,
@@ -230,6 +231,20 @@ function legacyRevisionBody(observation: XArticleBrowserObservation): object {
 }
 
 describe('deterministic X Article Host observations', () => {
+  it('accepts JSON contracts originating in a foreign browser Host realm', () => {
+    const foreignInput = runInNewContext(
+      `(${JSON.stringify(validInput())})`
+    ) as typeof baseInput;
+
+    const result = buildXArticleHostObservation(foreignInput);
+
+    expect(result).toMatchObject({
+      execution_id: executionId,
+      command_id: baseInput.command.command_id,
+      account_handle: '@Glen56121'
+    });
+  });
+
   it('binds three exact anchors without guessing media ownership', () => {
     const result = buildXArticleHostObservation(validInput());
 

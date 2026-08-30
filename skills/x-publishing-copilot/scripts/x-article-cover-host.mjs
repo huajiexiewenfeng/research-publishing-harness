@@ -49,17 +49,27 @@ function classifyCover({ binding, observation, command }) {
   );
 }
 
-async function resolveCoverInput(tab) {
+async function resolveCoverControls(tab) {
   const input = tab.playwright.getByTestId('fileInput');
   if (
     await input.count() !== 1
-    || !await input.isVisible()
     || !await input.isEnabled()
     || !await input.evaluate((element) =>
       (element.parentElement?.parentElement?.textContent || '').includes('5:2 aspect ratio')
     )
   ) return null;
-  return input;
+
+  const trigger = input.locator('..').getByRole('button', {
+    name: 'Add photos or video',
+    exact: true
+  });
+  if (
+    await trigger.count() !== 1
+    || !await trigger.isVisible()
+    || !await trigger.isEnabled()
+  ) return null;
+
+  return { input, trigger };
 }
 
 export async function runCoverUpload({
@@ -87,13 +97,13 @@ export async function runCoverUpload({
     return outcome('rejected', 'none', 'command_or_asset_invalid', null);
   }
 
-  let input;
+  let controls;
   try {
-    input = await resolveCoverInput(tab);
+    controls = await resolveCoverControls(tab);
   } catch {
-    input = null;
+    controls = null;
   }
-  if (input === null) {
+  if (controls === null) {
     return outcome('rejected', 'none', 'cover_control_ambiguous', null);
   }
 
@@ -101,8 +111,8 @@ export async function runCoverUpload({
   try {
     binding = await selectOneVerifiedFile({
       tab,
-      causalTrigger: input,
-      resolveInput: async () => input,
+      causalTrigger: controls.trigger,
+      resolveInput: async () => controls.input,
       absoluteAssetPath,
       expected: verifiedAsset,
       timeoutMs

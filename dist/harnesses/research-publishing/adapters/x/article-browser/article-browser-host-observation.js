@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from 'node:util';
 import { sha256 } from '../../../core/digest.js';
 import { HarnessError } from '../../../core/errors.js';
 import { validateContract } from '../../../core/schema-validator.js';
@@ -6,6 +5,9 @@ import { assertXArticlePublicationPlan } from '../../../core/x-article-publicati
 import { normalizeXArticleHostEditor } from './article-browser-host-normalizer.js';
 import { computeXArticlePageRevision } from './article-browser-protocol.js';
 import { createXArticleImportTemplate } from './article-import-template.js';
+function sameContractJson(left, right) {
+    return sha256(left) === sha256(right);
+}
 function rejectDraft(message, details) {
     throw new HarnessError('ARTICLE_DRAFT_CONFLICT', message, details);
 }
@@ -17,6 +19,18 @@ function rejectAsset(message, details) {
 }
 function rejectMedia(message, details) {
     throw new HarnessError('ARTICLE_MEDIA_AMBIGUOUS', message, details);
+}
+function normalizeHostBoundary(value) {
+    try {
+        const encoded = JSON.stringify(value);
+        if (encoded === undefined) {
+            throw new TypeError('X Article Host observation input is not JSON serializable');
+        }
+        return JSON.parse(encoded);
+    }
+    catch (error) {
+        throw new HarnessError('CONTRACT_INVALID', 'X Article Host observation input could not cross the JSON boundary', error);
+    }
 }
 function expectedMaterializationAnchor(publication, template, anchor) {
     const binding = publication.intent.visuals.find((candidate) => candidate.placement.kind === 'block'
@@ -55,7 +69,7 @@ function bindPlans(context) {
     if (materialization.target_account !== publication.intent.target_account
         || materialization.document_digest !== template.source_document_digest
         || materialization.import_template_digest !== template.template_digest
-        || !isDeepStrictEqual(materialization.visual_anchors, expectedAnchors)) {
+        || !sameContractJson(materialization.visual_anchors, expectedAnchors)) {
         rejectMaterialization('X Article materialization plan differs from its locked publication inputs');
     }
     return { publication, materialization, template };
@@ -94,7 +108,7 @@ function commandTarget(command, plans) {
         if (plannedAnchor === undefined
             || command.payload.package_root !== articlePackage.root
             || command.payload.package_digest !== articlePackage.digest
-            || !isDeepStrictEqual(command.payload.asset, binding.asset)) {
+            || !sameContractJson(command.payload.asset, binding.asset)) {
             rejectAsset('X Article command asset or anchor differs from the locked plan');
         }
         return {
@@ -109,7 +123,7 @@ function commandTarget(command, plans) {
         if (binding === null
             || command.payload.package_root !== articlePackage.root
             || command.payload.package_digest !== articlePackage.digest
-            || !isDeepStrictEqual(command.payload.asset, binding.asset)) {
+            || !sameContractJson(command.payload.asset, binding.asset)) {
             rejectAsset('X Article cover command asset differs from the locked plan');
         }
         return { kind: 'cover', asset_id: binding.asset.asset_id, block_ordinal: null };
@@ -117,7 +131,7 @@ function commandTarget(command, plans) {
     if (command.kind === 'import_article_document') {
         if (command.payload.package_root !== articlePackage.root
             || command.payload.package_digest !== articlePackage.digest
-            || !isDeepStrictEqual(command.payload.template, plans.template)) {
+            || !sameContractJson(command.payload.template, plans.template)) {
             rejectMaterialization('X Article import command differs from the locked materialization plan');
         }
     }
@@ -341,18 +355,19 @@ function bindEditor(input) {
     });
 }
 export function buildXArticleHostObservation(input) {
-    const plans = bindPlans(input.context);
-    const command = validateCommand(input.command);
-    const previous = validatePreviousObservation(input.previous_observation);
-    assertPageIdentity(input, command, plans, previous);
+    const normalizedInput = normalizeHostBoundary(input);
+    const plans = bindPlans(normalizedInput.context);
+    const command = validateCommand(normalizedInput.command);
+    const previous = validatePreviousObservation(normalizedInput.previous_observation);
+    assertPageIdentity(normalizedInput, command, plans, previous);
     const target = commandTarget(command, plans);
-    const editor = bindEditor({ page: input.page_snapshot, plans, previous, target });
+    const editor = bindEditor({ page: normalizedInput.page_snapshot, plans, previous, target });
     const semanticFields = {
         origin: 'https://x.com',
-        canonical_url: input.page_snapshot.canonical_url,
-        account_handle: input.page_snapshot.account_handle,
+        canonical_url: normalizedInput.page_snapshot.canonical_url,
+        account_handle: normalizedInput.page_snapshot.account_handle,
         page_kind: 'article_editor',
-        controls: structuredClone(input.page_snapshot.controls),
+        controls: structuredClone(normalizedInput.page_snapshot.controls),
         editor,
         preview: null,
         publish_review: null,
@@ -360,12 +375,12 @@ export function buildXArticleHostObservation(input) {
     };
     const observation = {
         schema_version: '1.0',
-        observation_id: input.observation_id,
+        observation_id: normalizedInput.observation_id,
         execution_id: command.execution_id,
         command_id: command.command_id,
         ...semanticFields,
         page_state_revision: computeXArticlePageStateRevision(semanticFields),
-        observed_at: input.observed_at
+        observed_at: normalizedInput.observed_at
     };
     return validateContract('x-article-browser-observation', {
         ...observation,

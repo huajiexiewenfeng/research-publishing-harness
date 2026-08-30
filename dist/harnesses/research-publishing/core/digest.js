@@ -1,5 +1,17 @@
 import { createHash } from 'node:crypto';
 import { HarnessError } from './errors.js';
+function isPlainJsonObject(value) {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null || prototype === Object.prototype)
+        return true;
+    const parent = Object.getPrototypeOf(prototype);
+    const constructor = Object.prototype.hasOwnProperty.call(prototype, 'constructor')
+        ? Reflect.get(prototype, 'constructor')
+        : null;
+    return parent === null
+        && typeof constructor === 'function'
+        && constructor.name === 'Object';
+}
 function normalize(value, ancestors) {
     if (value === null ||
         typeof value === 'string' ||
@@ -23,8 +35,7 @@ function normalize(value, ancestors) {
         if (Array.isArray(value)) {
             return value.map((item) => normalize(item, ancestors));
         }
-        const prototype = Object.getPrototypeOf(value);
-        if (prototype !== Object.prototype && prototype !== null) {
+        if (!isPlainJsonObject(value)) {
             throw new HarnessError('CONTRACT_INVALID', 'canonical JSON accepts plain objects only');
         }
         const input = value;
