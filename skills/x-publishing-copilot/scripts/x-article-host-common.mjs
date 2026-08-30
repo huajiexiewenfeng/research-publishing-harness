@@ -1,10 +1,17 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { copyFile, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 
 const MEDIA_COMMANDS = new Set([
   'upload_article_cover',
   'replace_article_visual_anchor'
+]);
+const MIME_EXTENSIONS = new Map([
+  ['image/png', '.png'],
+  ['image/jpeg', '.jpg'],
+  ['image/gif', '.gif'],
+  ['image/webp', '.webp']
 ]);
 
 function startsWith(bytes, prefix, offset = 0) {
@@ -74,6 +81,61 @@ export async function verifyHostMediaInput({ command, claim, absoluteAssetPath }
   };
 }
 
+export async function prepareBrowserUploadPath({
+  command,
+  claim,
+  absoluteAssetPath,
+  maxPathLength = 240
+}) {
+  if (!Number.isSafeInteger(maxPathLength) || maxPathLength <= 0) {
+    throw new Error('X Article browser upload path limit is invalid');
+  }
+  if (typeof absoluteAssetPath !== 'string' || absoluteAssetPath.length <= maxPathLength) {
+    return {
+      absoluteAssetPath,
+      staged: false,
+      cleanup: async () => undefined
+    };
+  }
+
+  const source = await verifyHostMediaInput({ command, claim, absoluteAssetPath });
+  if (!source) throw new Error('X Article browser upload source verification failed');
+
+  const extension = MIME_EXTENSIONS.get(source.mime_type);
+  if (!extension) throw new Error('X Article browser upload MIME type is unsupported');
+
+  const stagingDirectory = await mkdtemp(join(tmpdir(), 'rph-x-upload-'));
+  const stagedPath = join(stagingDirectory, `asset${extension}`);
+  try {
+    await copyFile(absoluteAssetPath, stagedPath);
+    const staged = await verifyHostMediaInput({
+      command,
+      claim,
+      absoluteAssetPath: stagedPath
+    });
+    if (
+      !staged
+      || staged.digest !== source.digest
+      || staged.byte_length !== source.byte_length
+      || staged.mime_type !== source.mime_type
+    ) throw new Error('X Article browser upload staging verification failed');
+
+    let cleaned = false;
+    return {
+      absoluteAssetPath: stagedPath,
+      staged: true,
+      cleanup: async () => {
+        if (cleaned) return;
+        cleaned = true;
+        await rm(stagingDirectory, { recursive: true, force: true });
+      }
+    };
+  } catch (error) {
+    await rm(stagingDirectory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function deliverOneFile({
   tab,
   causalTrigger,
@@ -117,87 +179,6 @@ export async function deliverOneFile({
     throw selectionFailure('X Article file delivery is uncertain', true, error);
   }
   return { kind: 'submitted' };
-}
-
-export async function selectOneVerifiedFile({
-  tab,
-  causalTrigger,
-  resolveInput,
-  absoluteAssetPath,
-  expected,
-  timeoutMs
-}) {
-  if (
-    typeof tab?.playwright?.waitForEvent !== 'function'
-    || typeof causalTrigger?.click !== 'function'
-    || typeof resolveInput !== 'function'
-    || !isAbsolute(absoluteAssetPath)
-    || !Number.isSafeInteger(expected?.byte_length)
-    || expected.byte_length < 0
-    || typeof expected?.mime_type !== 'string'
-    || !Number.isFinite(timeoutMs)
-    || timeoutMs <= 0
-  ) {
-    throw selectionFailure('X Article file selection input is invalid', false);
-  }
-
-  let chooserPromise;
-  let chooser;
-  try {
-    chooserPromise = tab.playwright.waitForEvent('filechooser', { timeoutMs });
-    void chooserPromise.catch(() => undefined);
-    await causalTrigger.click();
-    chooser = await chooserPromise;
-  } catch (error) {
-    throw selectionFailure('X Article file chooser was not opened', false, error);
-  }
-
-  let multiple;
-  try {
-    multiple = await chooser.isMultiple();
-  } catch (error) {
-    throw selectionFailure('X Article file chooser multiplicity is unavailable', false, error);
-  }
-  if (multiple) {
-    throw selectionFailure('X Article multiple file chooser is not allowed', false);
-  }
-
-  try {
-    await chooser.setFiles([absoluteAssetPath], { timeoutMs });
-  } catch (error) {
-    throw selectionFailure('X Article file selection transport is uncertain', true, error);
-  }
-
-  let input;
-  let bindings;
-  try {
-    input = await resolveInput();
-    if (typeof input?.evaluate !== 'function') {
-      throw new Error('Resolved X Article file input is incompatible');
-    }
-    bindings = await input.evaluate((element) =>
-      Array.from(element.files || []).map((file) => ({
-        byte_length: file.size,
-        mime_type: file.type
-      }))
-    );
-  } catch (error) {
-    throw selectionFailure('X Article file input binding is unavailable', true, error);
-  }
-
-  if (
-    !Array.isArray(bindings)
-    || bindings.length !== 1
-    || bindings[0]?.byte_length !== expected.byte_length
-    || bindings[0]?.mime_type !== expected.mime_type
-  ) {
-    return { kind: 'missing' };
-  }
-  return {
-    kind: 'bound',
-    byte_length: bindings[0].byte_length,
-    mime_type: bindings[0].mime_type
-  };
 }
 
 export async function waitForStableHostObservation({

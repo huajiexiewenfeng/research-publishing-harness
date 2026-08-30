@@ -1,5 +1,6 @@
 import { runCoverUpload } from './x-article-cover-host.mjs';
 import { runInlineImageUpload } from './x-article-inline-image-host.mjs';
+import { prepareBrowserUploadPath } from './x-article-host-common.mjs';
 import { observeXArticleEditor } from './x-article-host-runtime.mjs';
 
 const ALLOWED = new Set([
@@ -12,6 +13,10 @@ const FORBIDDEN = new Set([
   'open_article_preview',
   'open_publish_review',
   'publish_article_once'
+]);
+const MEDIA = new Set([
+  'upload_article_cover',
+  'replace_article_visual_anchor'
 ]);
 
 function observationValue(value, fallback) {
@@ -103,6 +108,31 @@ async function dispatchOne(input) {
   });
 }
 
+async function dispatchWithBrowserTransport(input) {
+  const maxPathLength = input.dependencies?.maxBrowserUploadPathLength ?? 240;
+  if (
+    !MEDIA.has(input.command.kind)
+    || typeof input.absoluteAssetPath !== 'string'
+    || input.absoluteAssetPath.length <= maxPathLength
+  ) return dispatchOne(input);
+
+  const prepare = input.dependencies?.prepareBrowserUploadPath ?? prepareBrowserUploadPath;
+  const transport = await prepare({
+    command: input.command,
+    claim: input.claim,
+    absoluteAssetPath: input.absoluteAssetPath,
+    maxPathLength
+  });
+  try {
+    return await dispatchOne({
+      ...input,
+      absoluteAssetPath: transport.absoluteAssetPath
+    });
+  } finally {
+    await transport.cleanup();
+  }
+}
+
 export async function runXArticleHostBridge(input) {
   const kind = input.command?.kind;
   if (FORBIDDEN.has(kind)) {
@@ -118,7 +148,7 @@ export async function runXArticleHostBridge(input) {
     throw new Error('X Article Fast Path deadline exceeded');
   }
 
-  const outcome = await dispatchOne(input);
+  const outcome = await dispatchWithBrowserTransport(input);
   return {
     ...outcome,
     report: {

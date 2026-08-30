@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as hostCommon from '../../skills/x-publishing-copilot/scripts/x-article-host-common.mjs';
 
 const {
-  selectOneVerifiedFile,
   verifyHostMediaInput,
   waitForStableHostObservation
 } = hostCommon;
@@ -107,7 +106,7 @@ describe('X Article Host media verification', () => {
   });
 });
 
-describe('one verified Browser file selection', () => {
+describe('one verified Browser file delivery', () => {
   it('submits one file without reading the transient file input binding', async () => {
     const browser = selectionFixture({ files: [] });
 
@@ -126,57 +125,31 @@ describe('one verified Browser file selection', () => {
     expect(browser.calls).not.toContainEqual(['input.binding']);
   });
 
-  it('arms the chooser before clicking one input and binds exactly one file', async () => {
-    const browser = selectionFixture();
-    const absoluteAssetPath = selectionPath;
-
-    await expect(selectOneVerifiedFile({
-      tab: browser.tab,
-      causalTrigger: browser.input,
-      resolveInput: async () => browser.input,
-      absoluteAssetPath,
-      expected: { byte_length: pngBytes.length, mime_type: 'image/png' },
-      timeoutMs: 10_000
-    })).resolves.toEqual({
-      kind: 'bound',
-      byte_length: pngBytes.length,
-      mime_type: 'image/png'
-    });
-    expect(browser.calls).toEqual([
-      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
-      ['input.click'],
-      ['chooser.isMultiple'],
-      ['setFiles', [absoluteAssetPath], { timeoutMs: 10_000 }],
-      ['input.binding']
-    ]);
-  });
-
-  it('returns missing when the bound input has zero files', async () => {
-    const browser = selectionFixture({ files: [] });
-
-    await expect(selectOneVerifiedFile({
-      tab: browser.tab,
-      causalTrigger: browser.input,
-      resolveInput: async () => browser.input,
-      absoluteAssetPath: selectionPath,
-      expected: { byte_length: pngBytes.length, mime_type: 'image/png' },
-      timeoutMs: 10_000
-    })).resolves.toEqual({ kind: 'missing' });
-    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
-  });
-
   it('fails closed for a multiple chooser before selecting a file', async () => {
     const browser = selectionFixture({ multiple: true });
 
-    await expect(selectOneVerifiedFile({
+    await expect(hostCommon.deliverOneFile({
       tab: browser.tab,
       causalTrigger: browser.input,
-      resolveInput: async () => browser.input,
       absoluteAssetPath: selectionPath,
-      expected: { byte_length: pngBytes.length, mime_type: 'image/png' },
       timeoutMs: 10_000
     })).rejects.toThrow(/multiple/i);
     expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
+  });
+
+  it('marks a setFiles error as a possibly completed selection', async () => {
+    const browser = selectionFixture({ setFilesError: new Error('transport uncertain') });
+
+    const error = await hostCommon.deliverOneFile({
+      tab: browser.tab,
+      causalTrigger: browser.input,
+      absoluteAssetPath: selectionPath,
+      timeoutMs: 10_000
+    }).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.selection_may_have_occurred).toBe(true);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
   });
 });
 
