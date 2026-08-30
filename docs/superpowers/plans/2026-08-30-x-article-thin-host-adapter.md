@@ -50,7 +50,7 @@
 
 - [ ] **Step 1: Write the failing delivery test**
 
-Replace the existing binding-success test with a test whose fake input contains zero files but is never read:
+Add a delivery test whose fake input contains zero files but is never read. Keep the legacy binding tests only until Cover and Inline have both migrated in Tasks 2–3:
 
 ```js
 it('submits one file without reading the transient file input binding', async () => {
@@ -81,11 +81,11 @@ Keep the existing multiple-chooser rejection test, updated to call `deliverOneFi
 pnpm exec vitest run tests/skills/x-article-host-common.test.mjs
 ```
 
-Expected: FAIL because `deliverOneFile` is not exported and the old helper still reads `input.files`.
+Expected: FAIL because `deliverOneFile` is not exported.
 
 - [ ] **Step 3: Implement the minimal delivery primitive**
 
-Rename `selectOneVerifiedFile` to `deliverOneFile`, remove `resolveInput` and `expected`, and finish immediately after one successful `setFiles`:
+Add `deliverOneFile` beside the legacy `selectOneVerifiedFile`, without `resolveInput` or `expected`, and finish immediately after one successful `setFiles`:
 
 ```js
 export async function deliverOneFile({
@@ -124,7 +124,7 @@ export async function deliverOneFile({
 }
 ```
 
-Delete the post-`setFiles` input resolution and binding comparison block.
+Do not modify the legacy helper in this Task; it remains only to keep the not-yet-migrated Cover and Inline modules loadable.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -132,7 +132,7 @@ Delete the post-`setFiles` input resolution and binding comparison block.
 pnpm exec vitest run tests/skills/x-article-host-common.test.mjs
 ```
 
-Expected: all Host Common tests pass; call traces contain no `input.binding`.
+Expected: all Host Common tests pass; the new delivery test contains no `input.binding`.
 
 - [ ] **Step 5: Commit Task 1**
 
@@ -292,6 +292,8 @@ try {
 ```
 
 After this block, always run the existing stable Observation, target-visual, anchor-removal, Alt write/readback, and final autosave checks.
+
+After both consumers use `deliverOneFile`, delete `selectOneVerifiedFile` from Host Common and replace its legacy binding tests with the final delivery-only assertions.
 
 - [ ] **Step 4: Run GREEN**
 
