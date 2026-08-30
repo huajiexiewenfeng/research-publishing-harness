@@ -181,6 +181,62 @@ export async function deliverOneFile({
   return { kind: 'submitted' };
 }
 
+export async function completeMediaEditor({
+  tab,
+  timeoutMs,
+  appearanceTimeoutMs = timeoutMs
+}) {
+  if (
+    typeof tab?.playwright?.getByRole !== 'function'
+    || !Number.isFinite(timeoutMs)
+    || timeoutMs <= 0
+    || !Number.isFinite(appearanceTimeoutMs)
+    || appearanceTimeoutMs < 0
+  ) return { kind: 'not_present' };
+
+  const dialog = tab.playwright.getByRole('dialog', {
+    name: 'Edit media',
+    exact: true
+  });
+  let count = await dialog.count();
+  if (count === 0 && appearanceTimeoutMs > 0) {
+    try {
+      await dialog.waitFor({ state: 'visible', timeoutMs: appearanceTimeoutMs });
+    } catch {
+      return { kind: 'not_present' };
+    }
+    count = await dialog.count();
+  }
+  if (count === 0) return { kind: 'not_present' };
+  if (count !== 1 || !await dialog.isVisible()) {
+    throw selectionFailure('X Article media editor is ambiguous', true);
+  }
+
+  const loading = dialog.getByRole('progressbar', {
+    name: 'Loading image',
+    exact: true
+  });
+  const loadingCount = await loading.count();
+  if (loadingCount > 1) {
+    throw selectionFailure('X Article media loading state is ambiguous', true);
+  }
+  if (loadingCount === 1) {
+    await loading.waitFor({ state: 'hidden', timeoutMs });
+  }
+
+  const apply = dialog.getByRole('button', { name: 'Apply', exact: true });
+  if (
+    await apply.count() !== 1
+    || !await apply.isVisible()
+    || !await apply.isEnabled()
+  ) {
+    throw selectionFailure('X Article media Apply control is unavailable', true);
+  }
+  await apply.click({ timeoutMs });
+  await dialog.waitFor({ state: 'hidden', timeoutMs });
+  return { kind: 'applied' };
+}
+
 export async function waitForStableHostObservation({
   observe,
   timeoutMs = 20_000,

@@ -1,4 +1,5 @@
 import {
+  completeMediaEditor,
   deliverOneFile,
   hostSelectionMayHaveOccurred,
   verifyHostMediaInput,
@@ -93,26 +94,55 @@ export async function runCoverUpload({
     return outcome('rejected', 'none', 'command_or_asset_invalid', null);
   }
 
-  let controls;
+  let mediaEditor;
   try {
-    controls = await resolveCoverControls(tab);
+    mediaEditor = await completeMediaEditor({
+      tab,
+      timeoutMs,
+      appearanceTimeoutMs: 0
+    });
   } catch {
-    controls = null;
-  }
-  if (controls === null) {
-    return outcome('rejected', 'none', 'cover_control_ambiguous', null);
+    return outcome(
+      'uncertain',
+      'unknown',
+      'observation_unavailable_after_selection',
+      null
+    );
   }
 
-  try {
-    await deliverOneFile({
-      tab,
-      causalTrigger: controls.trigger,
-      absoluteAssetPath,
-      timeoutMs
-    });
-  } catch (error) {
-    if (!hostSelectionMayHaveOccurred(error)) {
-      return outcome('transient_failure', 'none', 'file_transfer_missing', null);
+  if (mediaEditor.kind === 'not_present') {
+    let controls;
+    try {
+      controls = await resolveCoverControls(tab);
+    } catch {
+      controls = null;
+    }
+    if (controls === null) {
+      return outcome('rejected', 'none', 'cover_control_ambiguous', null);
+    }
+
+    try {
+      await deliverOneFile({
+        tab,
+        causalTrigger: controls.trigger,
+        absoluteAssetPath,
+        timeoutMs
+      });
+    } catch (error) {
+      if (!hostSelectionMayHaveOccurred(error)) {
+        return outcome('transient_failure', 'none', 'file_transfer_missing', null);
+      }
+    }
+
+    try {
+      await completeMediaEditor({ tab, timeoutMs, appearanceTimeoutMs: timeoutMs });
+    } catch {
+      return outcome(
+        'uncertain',
+        'unknown',
+        'observation_unavailable_after_selection',
+        null
+      );
     }
   }
 

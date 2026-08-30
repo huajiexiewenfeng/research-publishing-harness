@@ -98,9 +98,12 @@ function fakeTab({
   chooserError = null,
   setFilesError = null,
   multiple = false,
-  bindingFiles = [{ byte_length: pngBytes.length, mime_type: 'image/png' }]
+  bindingFiles = [{ byte_length: pngBytes.length, mime_type: 'image/png' }],
+  mediaEditorInitiallyOpen = false,
+  mediaEditorAfterSelection = false
 } = {}) {
   const calls = [];
+  let mediaEditorVisible = mediaEditorInitiallyOpen;
   let evaluateCount = 0;
   const trigger = {
     async count() { calls.push(['trigger.count']); return triggerCount; },
@@ -140,6 +143,35 @@ function fakeTab({
     async setFiles(files, options) {
       calls.push(['setFiles', files, options]);
       if (setFilesError !== null) throw setFilesError;
+      if (mediaEditorAfterSelection) mediaEditorVisible = true;
+    }
+  };
+  const loading = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async waitFor(options) { calls.push(['loading.waitFor', options]); }
+  };
+  const apply = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async isEnabled() { return mediaEditorVisible; },
+    async click(options) {
+      calls.push(['apply.click', options]);
+      mediaEditorVisible = false;
+    }
+  };
+  const mediaEditor = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async waitFor(options) {
+      if (!mediaEditorInitiallyOpen && !mediaEditorAfterSelection) {
+        throw new Error('media editor not present');
+      }
+      calls.push(['mediaEditor.waitFor', options]);
+    },
+    getByRole(role, options) {
+      if (role === 'progressbar' && options.name === 'Loading image') return loading;
+      if (role === 'button' && options.name === 'Apply') return apply;
+      throw new Error(`unexpected media editor role: ${role}/${options.name}`);
     }
   };
   return {
@@ -155,6 +187,10 @@ function fakeTab({
           return chooserError === null
             ? Promise.resolve(chooser)
             : Promise.reject(chooserError);
+        },
+        getByRole(role, options) {
+          if (role === 'dialog' && options.name === 'Edit media') return mediaEditor;
+          throw new Error(`unexpected role: ${role}/${options.name}`);
         }
       }
     }
@@ -180,6 +216,32 @@ async function validInput(overrides = {}) {
 }
 
 describe('X Article causal cover Host', () => {
+  it('applies X media editing before accepting uploaded cover evidence', async () => {
+    const browser = fakeTab({ mediaEditorAfterSelection: true });
+    const input = await validInput({ tab: browser.tab, browser });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
+    });
+    expect(browser.calls).toEqual(expect.arrayContaining([
+      ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }],
+      ['loading.waitFor', { state: 'hidden', timeoutMs: 10_000 }],
+      ['apply.click', { timeoutMs: 10_000 }],
+      ['mediaEditor.waitFor', { state: 'hidden', timeoutMs: 10_000 }]
+    ]));
+  });
+
+  it('completes an already-open media editor without selecting the cover twice', async () => {
+    const browser = fakeTab({ mediaEditorInitiallyOpen: true });
+    const input = await validInput({ tab: browser.tab, browser });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
+    });
+    expect(browser.calls).toContainEqual(['apply.click', { timeoutMs: 10_000 }]);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
+  });
+
   it('selects one verified cover and succeeds only after uploaded/saved evidence', async () => {
     const input = await validInput();
 

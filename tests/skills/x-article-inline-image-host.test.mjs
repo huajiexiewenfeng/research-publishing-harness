@@ -180,9 +180,12 @@ function fakeBrowser({
   selectionText = marker,
   bindingFiles = [{ byte_length: pngBytes.length, mime_type: 'image/png' }],
   addDescriptionCount = 1,
-  plusAltCount = 0
+  plusAltCount = 0,
+  mediaEditorInitiallyOpen = false,
+  mediaEditorAfterSelection = false
 } = {}) {
   const calls = [];
+  let mediaEditorVisible = mediaEditorInitiallyOpen;
   const anchorLocator = {
     async count() { return anchorCount; },
     async textContent() { calls.push(['anchor.textContent']); return anchorText; },
@@ -233,7 +236,35 @@ function fakeBrowser({
   };
   const chooser = {
     async isMultiple() { return false; },
-    async setFiles(files, options) { calls.push(['setFiles', files, options]); }
+    async setFiles(files, options) {
+      calls.push(['setFiles', files, options]);
+      if (mediaEditorAfterSelection) mediaEditorVisible = true;
+    }
+  };
+  const loading = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async waitFor(options) { calls.push(['loading.waitFor', options]); }
+  };
+  const apply = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async isEnabled() { return mediaEditorVisible; },
+    async click(options) { calls.push(['apply.click', options]); mediaEditorVisible = false; }
+  };
+  const mediaEditor = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async waitFor(options) {
+      if (!mediaEditorInitiallyOpen && !mediaEditorAfterSelection) {
+        throw new Error('media editor not present');
+      }
+      calls.push(['mediaEditor.waitFor', options]);
+    },
+    getByRole(role, options) {
+      if (role === 'progressbar' && options.name === 'Loading image') return loading;
+      if (role === 'button' && options.name === 'Apply') return apply;
+      throw new Error(`unexpected media editor role: ${role}/${options.name}`);
+    }
   };
   const description = {
     async count() { return 1; },
@@ -255,6 +286,7 @@ function fakeBrowser({
           throw new Error(`unexpected test id: ${testId}`);
         },
         getByRole(role, options) {
+          if (role === 'dialog' && options.name === 'Edit media') return mediaEditor;
           if (role === 'button' && options.name === 'Add Media') return addMedia;
           if (role === 'menuitem' && options.name === 'Media') return mediaMenu;
           if (role === 'textbox' && options.name === 'Description') return description;
@@ -298,6 +330,20 @@ async function validInput(options = {}) {
 }
 
 describe('one exact X Article inline image transaction', () => {
+  it('applies X media editing before replacing the anchor and setting Alt', async () => {
+    const input = await validInput({ browser: { mediaEditorAfterSelection: true } });
+
+    await expect(runInlineImageUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'inline_image_uploaded'
+    });
+    const applyIndex = input.browser.calls.findIndex(([name]) => name === 'apply.click');
+    const deleteIndex = input.browser.calls.findIndex(([name, key]) =>
+      name === 'anchor.press' && key === 'Backspace'
+    );
+    expect(applyIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(applyIndex);
+  });
+
   it('targets one locked anchor, one chooser, removes only the marker, and verifies Alt', async () => {
     const input = await validInput();
 

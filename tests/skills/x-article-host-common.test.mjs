@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as hostCommon from '../../skills/x-publishing-copilot/scripts/x-article-host-common.mjs';
 
 const {
+  completeMediaEditor,
   verifyHostMediaInput,
   waitForStableHostObservation
 } = hostCommon;
@@ -150,6 +151,66 @@ describe('one verified Browser file delivery', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.selection_may_have_occurred).toBe(true);
     expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+  });
+});
+
+describe('bounded X media editor completion', () => {
+  it('waits for image loading, applies once, and waits for the dialog to close', async () => {
+    const calls = [];
+    let visible = true;
+    const loading = {
+      async count() { return 1; },
+      async waitFor(options) { calls.push(['loading.waitFor', options]); }
+    };
+    const apply = {
+      async count() { return 1; },
+      async isVisible() { return true; },
+      async isEnabled() { return true; },
+      async click(options) { calls.push(['apply.click', options]); visible = false; }
+    };
+    const dialog = {
+      async count() { return visible ? 1 : 0; },
+      async isVisible() { return visible; },
+      async waitFor(options) { calls.push(['dialog.waitFor', options]); },
+      getByRole(role, options) {
+        if (role === 'progressbar' && options.name === 'Loading image') return loading;
+        if (role === 'button' && options.name === 'Apply') return apply;
+        throw new Error(`unexpected media editor role: ${role}/${options.name}`);
+      }
+    };
+    const tab = {
+      playwright: {
+        getByRole(role, options) {
+          expect([role, options]).toEqual(['dialog', { name: 'Edit media', exact: true }]);
+          return dialog;
+        }
+      }
+    };
+
+    await expect(completeMediaEditor({
+      tab,
+      timeoutMs: 10_000,
+      appearanceTimeoutMs: 0
+    })).resolves.toEqual({ kind: 'applied' });
+    expect(calls).toEqual([
+      ['loading.waitFor', { state: 'hidden', timeoutMs: 10_000 }],
+      ['apply.click', { timeoutMs: 10_000 }],
+      ['dialog.waitFor', { state: 'hidden', timeoutMs: 10_000 }]
+    ]);
+  });
+
+  it('returns not_present when X does not use a media editor', async () => {
+    const dialog = {
+      async count() { return 0; },
+      async isVisible() { return false; }
+    };
+    const tab = { playwright: { getByRole: () => dialog } };
+
+    await expect(completeMediaEditor({
+      tab,
+      timeoutMs: 10_000,
+      appearanceTimeoutMs: 0
+    })).resolves.toEqual({ kind: 'not_present' });
   });
 });
 

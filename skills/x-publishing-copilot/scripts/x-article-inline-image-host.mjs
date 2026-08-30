@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import {
+  completeMediaEditor,
   deliverOneFile,
   hostSelectionMayHaveOccurred,
   verifyHostMediaInput,
@@ -210,21 +211,50 @@ export async function runInlineImageUpload({
     return outcome('rejected', 'none', 'anchor_context_changed', beforeObservation ?? null);
   }
 
+  let mediaEditor;
   try {
-    await anchorLocator.click({ timeoutMs });
-    await anchorLocator.press('Home', { timeoutMs });
-    const addMedia = tab.playwright.getByRole('button', { name: 'Add Media', exact: true });
-    await addMedia.click({ timeoutMs });
-    const mediaMenu = tab.playwright.getByRole('menuitem', { name: 'Media', exact: true });
-    await deliverOneFile({
+    mediaEditor = await completeMediaEditor({
       tab,
-      causalTrigger: mediaMenu,
-      absoluteAssetPath,
-      timeoutMs
+      timeoutMs,
+      appearanceTimeoutMs: 0
     });
-  } catch (error) {
-    if (!hostSelectionMayHaveOccurred(error)) {
-      return outcome('transient_failure', 'none', 'file_transfer_missing', null);
+  } catch {
+    return outcome(
+      'uncertain',
+      'unknown',
+      'observation_unavailable_after_selection',
+      null
+    );
+  }
+
+  if (mediaEditor.kind === 'not_present') {
+    try {
+      await anchorLocator.click({ timeoutMs });
+      await anchorLocator.press('Home', { timeoutMs });
+      const addMedia = tab.playwright.getByRole('button', { name: 'Add Media', exact: true });
+      await addMedia.click({ timeoutMs });
+      const mediaMenu = tab.playwright.getByRole('menuitem', { name: 'Media', exact: true });
+      await deliverOneFile({
+        tab,
+        causalTrigger: mediaMenu,
+        absoluteAssetPath,
+        timeoutMs
+      });
+    } catch (error) {
+      if (!hostSelectionMayHaveOccurred(error)) {
+        return outcome('transient_failure', 'none', 'file_transfer_missing', null);
+      }
+    }
+
+    try {
+      await completeMediaEditor({ tab, timeoutMs, appearanceTimeoutMs: timeoutMs });
+    } catch {
+      return outcome(
+        'uncertain',
+        'unknown',
+        'observation_unavailable_after_selection',
+        null
+      );
     }
   }
 

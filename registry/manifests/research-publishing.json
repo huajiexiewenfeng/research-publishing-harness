@@ -1390,8 +1390,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-cover-host.mjs",
-      "sha256": "df5aac6ae056cb58a37ed11f3d3ceb4e8806934102ce095b8df0c4411f87822b",
-      "bytes": 3483
+      "sha256": "7c93b0bbed434f59eb7905c9956162e3547ef814bf3c14f4ff143a7927b99e49",
+      "bytes": 4125
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs",
@@ -1405,8 +1405,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-common.mjs",
-      "sha256": "207d7fc2f2d52356042cd2ea5a1e988efc73b0136e34c7cc670e626dbb29537a",
-      "bytes": 6642
+      "sha256": "96119814e7f7d3e6dafc88040df34d3c930efe5e63907621ddd18889fccd7305",
+      "bytes": 8269
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs",
@@ -1415,8 +1415,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs",
-      "sha256": "1b9e26d5504205b7d7e62c936c62f8e6413afbd30539f3c9523608450e464dfa",
-      "bytes": 11371
+      "sha256": "d469ca65d68afbe36fe783445283f050ab5a5f530e54dbce6ce657aee70bdb1c",
+      "bytes": 12005
     },
     {
       "path": "tools/acceptance.ts",
