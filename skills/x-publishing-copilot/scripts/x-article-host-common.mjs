@@ -74,6 +74,51 @@ export async function verifyHostMediaInput({ command, claim, absoluteAssetPath }
   };
 }
 
+export async function deliverOneFile({
+  tab,
+  causalTrigger,
+  absoluteAssetPath,
+  timeoutMs
+}) {
+  if (
+    typeof tab?.playwright?.waitForEvent !== 'function'
+    || typeof causalTrigger?.click !== 'function'
+    || !isAbsolute(absoluteAssetPath)
+    || !Number.isFinite(timeoutMs)
+    || timeoutMs <= 0
+  ) {
+    throw selectionFailure('X Article file delivery input is invalid', false);
+  }
+
+  let chooserPromise;
+  let chooser;
+  try {
+    chooserPromise = tab.playwright.waitForEvent('filechooser', { timeoutMs });
+    void chooserPromise.catch(() => undefined);
+    await causalTrigger.click();
+    chooser = await chooserPromise;
+  } catch (error) {
+    throw selectionFailure('X Article file chooser was not opened', false, error);
+  }
+
+  let multiple;
+  try {
+    multiple = await chooser.isMultiple();
+  } catch (error) {
+    throw selectionFailure('X Article file chooser multiplicity is unavailable', false, error);
+  }
+  if (multiple) {
+    throw selectionFailure('X Article multiple file chooser is not allowed', false);
+  }
+
+  try {
+    await chooser.setFiles([absoluteAssetPath], { timeoutMs });
+  } catch (error) {
+    throw selectionFailure('X Article file delivery is uncertain', true, error);
+  }
+  return { kind: 'submitted' };
+}
+
 export async function selectOneVerifiedFile({
   tab,
   causalTrigger,

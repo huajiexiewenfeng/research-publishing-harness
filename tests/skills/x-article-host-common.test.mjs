@@ -5,11 +5,13 @@ import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
+import * as hostCommon from '../../skills/x-publishing-copilot/scripts/x-article-host-common.mjs';
+
+const {
   selectOneVerifiedFile,
   verifyHostMediaInput,
   waitForStableHostObservation
-} from '../../skills/x-publishing-copilot/scripts/x-article-host-common.mjs';
+} = hostCommon;
 
 const pngBytes = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -106,6 +108,24 @@ describe('X Article Host media verification', () => {
 });
 
 describe('one verified Browser file selection', () => {
+  it('submits one file without reading the transient file input binding', async () => {
+    const browser = selectionFixture({ files: [] });
+
+    await expect(hostCommon.deliverOneFile({
+      tab: browser.tab,
+      causalTrigger: browser.input,
+      absoluteAssetPath: selectionPath,
+      timeoutMs: 10_000
+    })).resolves.toEqual({ kind: 'submitted' });
+    expect(browser.calls).toEqual([
+      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
+      ['input.click'],
+      ['chooser.isMultiple'],
+      ['setFiles', [selectionPath], { timeoutMs: 10_000 }]
+    ]);
+    expect(browser.calls).not.toContainEqual(['input.binding']);
+  });
+
   it('arms the chooser before clicking one input and binds exactly one file', async () => {
     const browser = selectionFixture();
     const absoluteAssetPath = selectionPath;
