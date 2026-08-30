@@ -126,7 +126,7 @@ describe('one verified Browser file delivery', () => {
     expect(browser.calls).not.toContainEqual(['input.binding']);
   });
 
-  it('fails closed for a multiple chooser before selecting a file', async () => {
+  it('submits exactly one file through a chooser that supports multiple files', async () => {
     const browser = selectionFixture({ multiple: true });
 
     await expect(hostCommon.deliverOneFile({
@@ -134,8 +134,10 @@ describe('one verified Browser file delivery', () => {
       causalTrigger: browser.input,
       absoluteAssetPath: selectionPath,
       timeoutMs: 10_000
-    })).rejects.toThrow(/multiple/i);
-    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
+    })).resolves.toEqual({ kind: 'submitted' });
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toEqual([
+      ['setFiles', [selectionPath], { timeoutMs: 10_000 }]
+    ]);
   });
 
   it('marks a setFiles error as a possibly completed selection', async () => {

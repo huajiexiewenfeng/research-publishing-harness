@@ -163,14 +163,10 @@ export async function deliverOneFile({
     throw selectionFailure('X Article file chooser was not opened', false, error);
   }
 
-  let multiple;
   try {
-    multiple = await chooser.isMultiple();
+    await chooser.isMultiple();
   } catch (error) {
     throw selectionFailure('X Article file chooser multiplicity is unavailable', false, error);
-  }
-  if (multiple) {
-    throw selectionFailure('X Article multiple file chooser is not allowed', false);
   }
 
   try {

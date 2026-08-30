@@ -137,6 +137,23 @@ async function uniqueVisible(locator) {
   return await locator.count() === 1 && await locator.isVisible();
 }
 
+async function resolveInsertFileInput(tab, timeoutMs) {
+  const dialog = tab.playwright.getByRole('dialog', {
+    name: 'Insert',
+    exact: true
+  });
+  try {
+    await dialog.waitFor({ state: 'visible', timeoutMs });
+  } catch {
+    return null;
+  }
+  if (await dialog.count() !== 1 || !await dialog.isVisible()) return null;
+
+  const input = dialog.locator('input[type="file"]');
+  if (await input.count() !== 1 || !await input.isEnabled()) return null;
+  return input;
+}
+
 async function resolveAltControl(mediaBlock) {
   const addDescription = mediaBlock.getByRole('button', {
     name: 'Add description',
@@ -234,9 +251,12 @@ export async function runInlineImageUpload({
       const addMedia = tab.playwright.getByRole('button', { name: 'Add Media', exact: true });
       await addMedia.click({ timeoutMs });
       const mediaMenu = tab.playwright.getByRole('menuitem', { name: 'Media', exact: true });
+      await mediaMenu.click({ timeoutMs });
+      const fileInput = await resolveInsertFileInput(tab, timeoutMs);
+      if (fileInput === null) throw new Error('X Article Insert file input is unavailable');
       await deliverOneFile({
         tab,
-        causalTrigger: mediaMenu,
+        causalTrigger: fileInput,
         absoluteAssetPath,
         timeoutMs
       });

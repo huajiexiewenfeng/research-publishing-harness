@@ -186,6 +186,7 @@ function fakeBrowser({
 } = {}) {
   const calls = [];
   let mediaEditorVisible = mediaEditorInitiallyOpen;
+  let insertDialogVisible = false;
   const anchorLocator = {
     async count() { return anchorCount; },
     async textContent() { calls.push(['anchor.textContent']); return anchorText; },
@@ -227,12 +228,26 @@ function fakeBrowser({
     async click() { calls.push(['addMedia.click']); }
   };
   const mediaMenu = {
-    async click() { calls.push(['mediaMenu.click']); }
+    async click() {
+      calls.push(['mediaMenu.click']);
+      insertDialogVisible = true;
+    }
   };
   const fileInput = {
     async count() { return 1; },
     async isEnabled() { return true; },
+    async click() { calls.push(['fileInput.click']); },
     async evaluate() { calls.push(['input.binding']); return bindingFiles; }
+  };
+  const insertDialog = {
+    async count() { return insertDialogVisible ? 1 : 0; },
+    async isVisible() { return insertDialogVisible; },
+    async waitFor(options) { calls.push(['insertDialog.waitFor', options]); },
+    locator(selector) {
+      expect(selector).toBe('input[type="file"]');
+      calls.push(['insertDialog.locator', selector]);
+      return fileInput;
+    }
   };
   const chooser = {
     async isMultiple() { return false; },
@@ -287,6 +302,7 @@ function fakeBrowser({
         },
         getByRole(role, options) {
           if (role === 'dialog' && options.name === 'Edit media') return mediaEditor;
+          if (role === 'dialog' && options.name === 'Insert') return insertDialog;
           if (role === 'button' && options.name === 'Add Media') return addMedia;
           if (role === 'menuitem' && options.name === 'Media') return mediaMenu;
           if (role === 'textbox' && options.name === 'Description') return description;
@@ -357,8 +373,11 @@ describe('one exact X Article inline image transaction', () => {
       ['anchor.click'],
       ['anchor.press', 'Home'],
       ['addMedia.click'],
-      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
       ['mediaMenu.click'],
+      ['insertDialog.waitFor', { state: 'visible', timeoutMs: 10_000 }],
+      ['insertDialog.locator', 'input[type="file"]'],
+      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
+      ['fileInput.click'],
       ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }],
       ['anchor.press', 'Shift+End'],
       ['readSelection'],
