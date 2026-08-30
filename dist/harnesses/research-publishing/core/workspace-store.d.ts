@@ -18,10 +18,17 @@ export interface WorkspaceEntry {
     readonly relative_path: string;
     readonly kind: 'file' | 'directory' | 'symlink';
 }
+export interface WorkspaceStoreDependencies {
+    readonly renameDirectory?: (source: string, destination: string) => Promise<void>;
+    readonly wait?: (milliseconds: number) => Promise<void>;
+}
 export declare class WorkspaceStore {
     readonly root: string;
+    private readonly renameDirectory;
+    private readonly wait;
     private constructor();
-    static open(root: string): Promise<WorkspaceStore>;
+    static open(root: string, dependencies?: WorkspaceStoreDependencies): Promise<WorkspaceStore>;
+    private installDirectory;
     private resolveAllowed;
     writeNew(relativePath: string, value: string | object): Promise<ArtifactRef>;
     writeNewBytes(relativePath: string, value: Uint8Array): Promise<ArtifactRef>;

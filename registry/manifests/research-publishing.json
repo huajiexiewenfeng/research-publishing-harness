@@ -1185,8 +1185,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/workspace-store.ts",
-      "sha256": "872251f29ad1c420b5acd3789b4e78d4081b44fd463b41294b52f52f5488ddd4",
-      "bytes": 17495
+      "sha256": "30f4e54d91032204129bada33590ac783490b70e23e8c9962ceb321e572b2f31",
+      "bytes": 19027
     },
     {
       "path": "harnesses/research-publishing/core/x-article-approval.ts",

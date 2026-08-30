@@ -45,14 +45,29 @@ export interface WorkspaceEntry {
   readonly kind: 'file' | 'directory' | 'symlink';
 }
 
+export interface WorkspaceStoreDependencies {
+  readonly renameDirectory?: (source: string, destination: string) => Promise<void>;
+  readonly wait?: (milliseconds: number) => Promise<void>;
+}
+
+const DIRECTORY_RENAME_RETRY_DELAYS_MS = [25, 100, 250] as const;
+const TRANSIENT_DIRECTORY_RENAME_ERRORS = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+const waitFor = async (milliseconds: number): Promise<void> =>
+  new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+
 export class WorkspaceStore {
   readonly root: string;
+  private readonly renameDirectory: (source: string, destination: string) => Promise<void>;
+  private readonly wait: (milliseconds: number) => Promise<void>;
 
-  private constructor(root: string) {
+  private constructor(root: string, dependencies: WorkspaceStoreDependencies) {
     this.root = root;
+    this.renameDirectory = dependencies.renameDirectory ?? rename;
+    this.wait = dependencies.wait ?? waitFor;
   }
 
-  static async open(root: string): Promise<WorkspaceStore> {
+  static async open(root: string, dependencies: WorkspaceStoreDependencies = {}): Promise<WorkspaceStore> {
     const resolvedRoot = resolve(root);
     await mkdir(resolvedRoot, { recursive: true });
     await Promise.all(
@@ -60,7 +75,33 @@ export class WorkspaceStore {
         mkdir(resolve(resolvedRoot, folder), { recursive: true })
       )
     );
-    return new WorkspaceStore(resolvedRoot);
+    return new WorkspaceStore(resolvedRoot, dependencies);
+  }
+
+  private async installDirectory(temporaryPath: string, absolutePath: string, normalized: string): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.renameDirectory(temporaryPath, absolutePath);
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        const destinationExists = await lstat(absolutePath).then(
+          () => true,
+          (statError: NodeJS.ErrnoException) => {
+            if (statError.code === 'ENOENT') return false;
+            throw statError;
+          }
+        );
+        if (destinationExists) {
+          throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
+        }
+        const delay = DIRECTORY_RENAME_RETRY_DELAYS_MS[attempt];
+        if (!code || !TRANSIENT_DIRECTORY_RENAME_ERRORS.has(code) || delay === undefined) {
+          throw error;
+        }
+        await this.wait(delay);
+      }
+    }
   }
 
   private resolveAllowed(relativePath: string): { absolutePath: string; normalized: string } {
@@ -195,15 +236,7 @@ export class WorkspaceStore {
           await handle.close();
         }
       }
-      try {
-        await rename(temporaryPath, absolutePath);
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EPERM') {
-          throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
-        }
-        throw error;
-      }
+      await this.installDirectory(temporaryPath, absolutePath, normalized);
     } finally {
       await rm(temporaryPath, { recursive: true, force: true });
     }

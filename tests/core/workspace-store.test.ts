@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -60,6 +60,43 @@ describe('WorkspaceStore', () => {
     await expect(store.writeNewDirectory('articles/atomic/run_2', { '../escape.md': 'no' }))
       .rejects.toMatchObject({ code: 'WORKSPACE_PATH_INVALID' });
     await expect(store.exists('articles/atomic/run_2')).resolves.toBe(false);
+  });
+
+  it('retries a transient Windows directory rename failure when the destination is absent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'rph-workspace-directory-retry-'));
+    let attempts = 0;
+    const store = await WorkspaceStore.open(root, {
+      renameDirectory: async (source, destination) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw Object.assign(new Error('transient Windows file lock'), { code: 'EPERM' });
+        }
+        await rename(source, destination);
+      },
+      wait: async () => undefined
+    });
+
+    await expect(store.writeNewDirectory('runs/retry/run_1', { 'audit.json': { ok: true } }))
+      .resolves.toBeUndefined();
+    expect(attempts).toBe(2);
+    await expect(store.readJson('runs/retry/run_1/audit.json')).resolves.toEqual({ ok: true });
+  });
+
+  it('preserves a persistent Windows rename error when the destination is absent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'rph-workspace-directory-error-'));
+    let attempts = 0;
+    const store = await WorkspaceStore.open(root, {
+      renameDirectory: async () => {
+        attempts += 1;
+        throw Object.assign(new Error('persistent Windows file lock'), { code: 'EPERM' });
+      },
+      wait: async () => undefined
+    });
+
+    await expect(store.writeNewDirectory('runs/retry/run_2', { 'audit.json': { ok: true } }))
+      .rejects.toMatchObject({ code: 'EPERM' });
+    expect(attempts).toBe(4);
+    await expect(store.exists('runs/retry/run_2')).resolves.toBe(false);
   });
 
   it('creates an atomic artifact and round-trips JSON', async () => {
