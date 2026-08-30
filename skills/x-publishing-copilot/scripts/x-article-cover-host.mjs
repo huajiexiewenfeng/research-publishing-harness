@@ -1,6 +1,6 @@
 import {
+  deliverOneFile,
   hostSelectionMayHaveOccurred,
-  selectOneVerifiedFile,
   verifyHostMediaInput,
   waitForStableHostObservation
 } from './x-article-host-common.mjs';
@@ -9,11 +9,7 @@ function outcome(status, effect, reason, observation) {
   return { status, effect, reason, observation, retry_authorized: false };
 }
 
-function classifyCover({ binding, observation, command }) {
-  if (binding.kind === 'missing') {
-    return outcome('transient_failure', 'none', 'file_transfer_missing', null);
-  }
-
+function classifyCover({ observation, command }) {
   const visuals = observation?.editor?.visuals ?? [];
   const matches = visuals.filter((visual) =>
     visual.kind === 'cover'
@@ -107,29 +103,17 @@ export async function runCoverUpload({
     return outcome('rejected', 'none', 'cover_control_ambiguous', null);
   }
 
-  let binding;
   try {
-    binding = await selectOneVerifiedFile({
+    await deliverOneFile({
       tab,
       causalTrigger: controls.trigger,
-      resolveInput: async () => controls.input,
       absoluteAssetPath,
-      expected: verifiedAsset,
       timeoutMs
     });
   } catch (error) {
-    if (hostSelectionMayHaveOccurred(error)) {
-      return outcome(
-        'uncertain',
-        'unknown',
-        'observation_unavailable_after_selection',
-        null
-      );
+    if (!hostSelectionMayHaveOccurred(error)) {
+      return outcome('transient_failure', 'none', 'file_transfer_missing', null);
     }
-    return outcome('transient_failure', 'none', 'file_transfer_missing', null);
-  }
-  if (binding.kind === 'missing') {
-    return classifyCover({ binding, observation: null, command });
   }
 
   let observation;
@@ -149,5 +133,5 @@ export async function runCoverUpload({
       null
     );
   }
-  return classifyCover({ binding, observation, command });
+  return classifyCover({ observation, command });
 }

@@ -203,12 +203,11 @@ describe('X Article causal cover Host', () => {
       ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
       ['trigger.click'],
       ['chooser.isMultiple'],
-      ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }],
-      ['input.binding']
+      ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }]
     ]);
   });
 
-  it('uses the visible cover button as the chooser trigger and the file input only as the binding', async () => {
+  it('uses the visible cover button as the chooser trigger', async () => {
     const input = await validInput();
 
     await expect(runCoverUpload(input)).resolves.toMatchObject({
@@ -216,6 +215,19 @@ describe('X Article causal cover Host', () => {
     });
     expect(input.browser.calls).toContainEqual(['trigger.click']);
     expect(input.browser.calls).not.toContainEqual(['input.click']);
+  });
+
+  it('accepts uploaded page evidence even when X clears the file input', async () => {
+    const browser = fakeTab({ bindingFiles: [] });
+    const input = await validInput({ tab: browser.tab, browser });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success',
+      effect: 'complete',
+      reason: 'cover_uploaded'
+    });
+    expect(browser.calls).not.toContainEqual(['input.binding']);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
   });
 
   it.each([
@@ -260,14 +272,6 @@ describe('X Article causal cover Host', () => {
   });
 
   it.each([
-    [
-      'file binding missing',
-      { bindingFiles: [] },
-      async () => coverObservation(),
-      'transient_failure',
-      'none',
-      'file_transfer_missing'
-    ],
     [
       'bound but no X effect',
       {},
@@ -320,13 +324,13 @@ describe('X Article causal cover Host', () => {
     expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
   });
 
-  it('does not retry or claim no effect when setFiles transport is uncertain', async () => {
+  it('uses page evidence when setFiles transport is uncertain', async () => {
     const browser = fakeTab({ setFilesError: new Error('transport failed') });
     const input = await validInput({ tab: browser.tab, browser });
 
     await expect(runCoverUpload(input)).resolves.toMatchObject({
-      status: 'uncertain', effect: 'unknown',
-      reason: 'observation_unavailable_after_selection', retry_authorized: false
+      status: 'success', effect: 'complete',
+      reason: 'cover_uploaded', retry_authorized: false
     });
     expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
   });
