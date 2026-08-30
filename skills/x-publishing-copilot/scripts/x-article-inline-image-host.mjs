@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 
 import {
+  deliverOneFile,
   hostSelectionMayHaveOccurred,
-  selectOneVerifiedFile,
   verifyHostMediaInput,
   waitForStableHostObservation
 } from './x-article-host-common.mjs';
@@ -210,40 +210,22 @@ export async function runInlineImageUpload({
     return outcome('rejected', 'none', 'anchor_context_changed', beforeObservation ?? null);
   }
 
-  let binding;
   try {
     await anchorLocator.click({ timeoutMs });
     await anchorLocator.press('Home', { timeoutMs });
     const addMedia = tab.playwright.getByRole('button', { name: 'Add Media', exact: true });
     await addMedia.click({ timeoutMs });
     const mediaMenu = tab.playwright.getByRole('menuitem', { name: 'Media', exact: true });
-    binding = await selectOneVerifiedFile({
+    await deliverOneFile({
       tab,
       causalTrigger: mediaMenu,
-      resolveInput: async () => {
-        const input = tab.playwright.getByTestId('fileInput');
-        if (await input.count() !== 1 || !await input.isEnabled()) {
-          throw new Error('Inline media file input is ambiguous');
-        }
-        return input;
-      },
       absoluteAssetPath,
-      expected: verifiedAsset,
       timeoutMs
     });
   } catch (error) {
-    if (hostSelectionMayHaveOccurred(error)) {
-      return outcome(
-        'uncertain',
-        'unknown',
-        'observation_unavailable_after_selection',
-        null
-      );
+    if (!hostSelectionMayHaveOccurred(error)) {
+      return outcome('transient_failure', 'none', 'file_transfer_missing', null);
     }
-    return outcome('transient_failure', 'none', 'file_transfer_missing', null);
-  }
-  if (binding.kind === 'missing') {
-    return outcome('transient_failure', 'none', 'file_transfer_missing', null);
   }
 
   let afterUpload;

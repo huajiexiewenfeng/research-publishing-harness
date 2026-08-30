@@ -324,6 +324,18 @@ describe('one exact X Article inline image transaction', () => {
     expect(input.browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
   });
 
+  it('completes from visual and Alt evidence without file input binding', async () => {
+    const input = await validInput({ browser: { bindingFiles: [] } });
+
+    await expect(runInlineImageUpload(input)).resolves.toMatchObject({
+      status: 'success',
+      effect: 'complete',
+      reason: 'inline_image_uploaded'
+    });
+    expect(input.browser.calls).not.toContainEqual(['input.binding']);
+    expect(input.browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+  });
+
   it.each([
     ['missing anchor', 0],
     ['duplicate anchor', 2]
