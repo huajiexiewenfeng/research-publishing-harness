@@ -76,6 +76,7 @@ interface CliOptions {
   readonly adapter?: 'manual' | 'browser';
   readonly runtimeExecutable?: string;
   readonly runtimeLauncher?: 'console-script' | 'python-module';
+  readonly runtimeVersion?: '0.2.0' | '0.3.0';
   readonly output: string;
 }
 
@@ -113,6 +114,10 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
     throw new HarnessError('CONTRACT_INVALID', '--adapter must be manual or browser');
   }
   const runtimeLauncher = values['runtime-launcher'];
+  const runtimeVersion = values['runtime-version'];
+  if (runtimeVersion !== undefined && !['0.2.0', '0.3.0'].includes(runtimeVersion)) {
+    throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', 'unsupported --runtime-version');
+  }
   if (
     runtimeLauncher !== undefined &&
     runtimeLauncher !== 'console-script' && runtimeLauncher !== 'python-module'
@@ -135,6 +140,7 @@ function parseArguments(argv: readonly string[]): { positional: string[]; option
         ? {}
         : { runtimeExecutable: values['runtime-executable'] }),
       ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
+      ...(runtimeVersion === undefined ? {} : { runtimeVersion: runtimeVersion as '0.2.0' | '0.3.0' }),
       output: values['output'] ?? 'json'
     }
   };
@@ -189,7 +195,7 @@ async function configuredMemoryRuntime(
   return createLLMWikiRuntimeAdapter({
     launcher: options.runtimeLauncher,
     executable: options.runtimeExecutable,
-    expected_version: '0.2.0',
+    expected_version: options.runtimeVersion ?? '0.2.0',
     workspace: options.workspace,
     profile_path: assets.profilePath,
     mapping_path: assets.mappingPath,

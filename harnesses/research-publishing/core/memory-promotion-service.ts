@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { parse as parseYaml } from 'yaml';
 
 import type { RuntimeEnvelope } from '../adapters/llm-wiki/runtime-protocol.js';
 import { sha256, sha256Bytes } from './digest.js';
@@ -10,7 +11,7 @@ import type {
   ResearchIndexCatalogV1,
   ResearchIndexSourceRecordV1
 } from './research-index-types.js';
-import { RESEARCH_MEMORY_POLICY_V1 } from './research-memory-policy.js';
+
 import { STABLE_ID_PATTERN } from './research-memory-contracts.js';
 import type {
   MemoryPromotionApprovalV2,
@@ -47,7 +48,7 @@ export interface RuntimeCatalogLookupFound {
 export type RuntimeCatalogLookup = RuntimeCatalogLookupNotFound | RuntimeCatalogLookupFound;
 
 export interface MemoryPromotionRuntime {
-  version(): Promise<'0.2.0'>;
+  version(): Promise<'0.2.0' | '0.3.0'>;
   validateMapping(): Promise<RuntimeEnvelope>;
   findCatalog(trackId: string): Promise<RuntimeCatalogLookup>;
   copySource(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;
@@ -227,9 +228,28 @@ export class MemoryPromotionService {
       }
     }
     const replacements = new Map(review.operation_replacements.map((item) => [item.operation_id, item]));
+    const profile = parseYaml(await readFile(this.assets.profile_path, 'utf8')) as {
+      write_rules: { records: Record<string, { required_vars: string[]; required_refs: string[] }> }
+    };
+    for (const operation of accepted) {
+      const target = operation.target_content as unknown as PromotionTargetContent;
+      const rule = profile.write_rules.records[operation.record_type];
+      if (rule === undefined) throw new HarnessError('CONTRACT_INVALID', `unknown record type: ${operation.record_type}`);
+      for (const variable of rule.required_vars) {
+        if (!target.variables?.[variable]) throw new HarnessError('CONTRACT_INVALID', `missing required variable: ${variable}`);
+      }
+      for (const ref of rule.required_refs) {
+        if (ref !== 'source_id' && !target.refs?.[ref]) throw new HarnessError('CONTRACT_INVALID', `missing required ref: ${ref}`);
+      }
+    }
+    const runtimeVersion = await this.runtime.version();
     const rendered = accepted.map((operation) => this.renderOperation(operation, replacements.get(operation.operation_id)));
     const recordMap = new Map(priorRecords.map((record) => [record.ref, record]));
-    for (const item of rendered) recordMap.set(item.indexEntry.ref, item.indexEntry);
+    for (const item of rendered) {
+      // Documents are reached through semantic records; chunks are not separate knowledge entries.
+      if (item.operation.record_type === 'canonical_document_manifest' || item.operation.record_type === 'canonical_document_chunk') continue;
+      recordMap.set(item.indexEntry.ref, item.indexEntry);
+    }
     const projection = new ResearchIndexProjector().project({
       track_id: trackId, prior_catalog: priorCatalog, records: [...recordMap.values()]
     });
@@ -301,7 +321,7 @@ export class MemoryPromotionService {
       plan_id: planId,
       track_id: trackId,
       workspace_identity_digest: this.workspaceDigest(),
-      runtime_requirement: RESEARCH_MEMORY_POLICY_V1.runtime_requirement,
+      runtime_requirement: { name: 'llm-wiki-runtime' as const, version: runtimeVersion },
       ...domain,
       evidence_snapshots: evidenceSnapshots,
       delta_ref: `delta:${delta.delta_id}`,
@@ -643,7 +663,7 @@ export class MemoryPromotionService {
       plan_id: plan.plan_id,
       plan_digest: plan.plan_digest,
       approval_digest: approval.approval_digest,
-      runtime_version: '0.2.0' as const,
+      runtime_version: plan.runtime_requirement.version,
       status,
       steps: state.steps,
       record_refs: state.record_refs,

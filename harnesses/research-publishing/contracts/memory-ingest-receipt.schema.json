@@ -3,7 +3,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["schema_version", "receipt_id", "ingest_plan_digest", "approval_digest", "runtime_version", "status", "steps", "records", "log_event_ref", "resume_cursor", "receipt_digest"],
   "properties": {
-    "schema_version": { "const": "memory-ingest-receipt/v1" }, "receipt_id": { "$ref": "#/$defs/text" }, "ingest_plan_digest": { "$ref": "#/$defs/digest" }, "approval_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "const": "0.2.0" },
+    "schema_version": { "const": "memory-ingest-receipt/v1" }, "receipt_id": { "$ref": "#/$defs/text" }, "ingest_plan_digest": { "$ref": "#/$defs/digest" }, "approval_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "enum": ["0.2.0", "0.3.0"] },
     "status": { "enum": ["succeeded", "already_exists", "partial", "failed"] }, "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }, "records": { "type": "array", "items": { "$ref": "#/$defs/artifactRef" } },
     "log_event_ref": { "type": ["string", "null"] }, "resume_cursor": { "anyOf": [{ "$ref": "#/$defs/stepName" }, { "type": "null" }] }, "receipt_digest": { "$ref": "#/$defs/digest" }
   },

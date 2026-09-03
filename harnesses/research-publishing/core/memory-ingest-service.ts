@@ -32,7 +32,7 @@ const STEPS = [
 const COMPLETE_STEP = new Set(['succeeded', 'already_exists']);
 
 export interface MemoryIngestRuntime {
-  version(): Promise<'0.2.0'>;
+  version(): Promise<'0.2.0' | '0.3.0'>;
   validateMapping(): Promise<RuntimeEnvelope>;
   copySource(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;
   writeRecord(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;
@@ -296,7 +296,7 @@ export class MemoryIngestService {
       target_domain: 'research-publishing' as const,
       target_profile: 'research-publishing' as const,
       workspace_identity_digest: this.workspaceDigest(),
-      runtime_version: '0.2.0' as const,
+      runtime_version: await this.runtime.version(),
       record_operations: recordOperations,
       source_artifact: staging.source_artifact,
       artifact_operation: artifactOperation,
@@ -772,7 +772,7 @@ export class MemoryIngestService {
       receipt_id: this.ids.receiptId?.() ?? `memory_receipt_${randomUUID().replaceAll('-', '')}`,
       ingest_plan_digest: plan.plan_digest,
       approval_digest: approval.approval_digest,
-      runtime_version: '0.2.0' as const,
+      runtime_version: plan.runtime_version,
       status,
       steps: state.steps,
       records: state.records,

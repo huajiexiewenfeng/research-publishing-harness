@@ -92,6 +92,8 @@ describe('ResearchFlywheelService', () => {
     expect(delta.proposed_operations[1]?.target_content).toMatchObject({
       semantic_record: { event_type: 'publication_attached', resulting_state: 'published' },
       publication_verification_strength: 'public_verified',
+      variables: {increment_id: 'increment_flywheel'},
+      index_entry: {record_path: 'domains/research-publishing/tracks/enterprise-agent-runtime/increments/increment_flywheel/lifecycle/event_flywheel_published.md'},
       refs: { publication_receipt_ref: expressionReceiptRef() }
     });
     await expect(store.exists('memory/reviews/review_flywheel/review.json')).resolves.toBe(false);

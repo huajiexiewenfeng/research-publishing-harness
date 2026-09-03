@@ -5,7 +5,7 @@
   "properties": {
     "schema_version": { "const": "memory-ingest-plan/v1" }, "ingest_id": { "$ref": "#/$defs/text" }, "ingest_kind": { "enum": ["publication_checkpoint", "feedback_insight"] }, "research_track": { "$ref": "#/$defs/text" },
     "source_publication_receipt_digest": { "$ref": "#/$defs/digest" }, "source_feedback_snapshot_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] }, "candidate_insight_digests": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } },
-    "target_domain": { "const": "research-publishing" }, "target_profile": { "const": "research-publishing" }, "workspace_identity_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "const": "0.2.0" },
+    "target_domain": { "const": "research-publishing" }, "target_profile": { "const": "research-publishing" }, "workspace_identity_digest": { "$ref": "#/$defs/digest" }, "runtime_version": { "enum": ["0.2.0", "0.3.0"] },
     "record_operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/recordOperation" } }, "source_artifact": { "$ref": "#/$defs/artifactRef" },
     "artifact_operation": { "type": "object", "additionalProperties": false, "required": ["artifact_type", "artifact_id"], "properties": { "artifact_type": { "enum": ["publication_receipt", "memory_ingest_receipt"] }, "artifact_id": { "$ref": "#/$defs/text" } } },
     "log_event": { "type": "object", "additionalProperties": false, "required": ["log_type", "event_id"], "properties": { "log_type": { "const": "memory_event" }, "event_id": { "$ref": "#/$defs/text" } } },

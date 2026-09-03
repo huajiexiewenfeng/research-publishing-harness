@@ -16,13 +16,13 @@
   "files": [
     {
       "path": "docs/examples/research-import-manifest.example.json",
-      "sha256": "7354e5f69e404122ea2b7aa557fd398fad9ee0bb3da764830441c3d4f019ab9f",
-      "bytes": 4168
+      "sha256": "b7711a69c71582c719c8064d8bc9fb3a542a05986dc87eebea61936672476d5c",
+      "bytes": 4212
     },
     {
       "path": "docs/guides/memory-loop.md",
-      "sha256": "ab5f9ea640fa999274b38a262e9df722dcc7877a4b5d69b359976dbb13699857",
-      "bytes": 3208
+      "sha256": "2ea33e4daf42b1626a198eb2724f218d7cab619e437b475cd968f32b821210f3",
+      "bytes": 3414
     },
     {
       "path": "docs/guides/quickstart.md",
@@ -30,9 +30,14 @@
       "bytes": 9171
     },
     {
+      "path": "docs/guides/skill-harness-llm-wiki-runtime-integration.zh-CN.md",
+      "sha256": "9577d340cd7d286d83f0c382a22498f9c8970dae8c39d13cc897919056d2344f",
+      "bytes": 40925
+    },
+    {
       "path": "harnesses/research-publishing/adapters/llm-wiki/runtime-adapter.ts",
-      "sha256": "734ba3d2539ae4138cb7fd03ce62c82d5dab37bf037fd53c55914f263232c68f",
-      "bytes": 21271
+      "sha256": "86a05a4e1526d1287dbe79aec9238a8bd178e840079ebe1060b76382c709dc34",
+      "bytes": 21406
     },
     {
       "path": "harnesses/research-publishing/adapters/llm-wiki/runtime-process.ts",
@@ -41,8 +46,8 @@
     },
     {
       "path": "harnesses/research-publishing/adapters/llm-wiki/runtime-protocol.ts",
-      "sha256": "13ae9931dec5d670ddf3e5db572e79d9efb238dc9d3057225eb90f045c6a7f61",
-      "bytes": 2069
+      "sha256": "875a410959e255ff281f0ee616e9a2145f5f4e62ea0ee2be79bbc3fa470982d8",
+      "bytes": 2089
     },
     {
       "path": "harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.ts",
@@ -171,8 +176,8 @@
     },
     {
       "path": "harnesses/research-publishing/cli/index.ts",
-      "sha256": "d763ed0214c3ad63bb4995078b0255d503fe0292fbeb32bf970704d5991da5cd",
-      "bytes": 42937
+      "sha256": "e894e7f223b2f12135d8bbb04a2a683390862b9a5d97b7005ebceae936b3e00b",
+      "bytes": 43350
     },
     {
       "path": "harnesses/research-publishing/contracts/approval-v2-1.schema.json",
@@ -231,8 +236,8 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/context-snapshot.schema.json",
-      "sha256": "b0794eb1ce0687d12c27fa4a57eb714f22a6ac413eb223a30fc4c90b1645707e",
-      "bytes": 1817
+      "sha256": "c73a9310648d71bbec07e0c2c5fa7f5882288a8eee92e56fd6a4ae0be39c3e03",
+      "bytes": 1826
     },
     {
       "path": "harnesses/research-publishing/contracts/generation-task.schema.json",
@@ -251,13 +256,13 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-ingest-plan.schema.json",
-      "sha256": "01ba80edc50842ff4f3b35282a145e1c7b41d82d612e0dc01002df1fc73210a8",
-      "bytes": 3579
+      "sha256": "549a1229d6fc02b6b26384bf8c1dc828b1c1c7cc1a09db18406144a2e0863e08",
+      "bytes": 3589
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-ingest-receipt.schema.json",
-      "sha256": "498c972c40919260f48ac76c4c7335d168810bb9043c5e04d7de99df90a0294c",
-      "bytes": 1942
+      "sha256": "fa93438476694841c38762f359f0bd7215d690b1948afb019b081f38a7875713",
+      "bytes": 1952
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-promotion-approval-v2.schema.json",
@@ -266,18 +271,18 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-promotion-plan-v2.schema.json",
-      "sha256": "600cc5dd4d4440a612563184802a539019731a58fcbb498bada6498537762a6b",
-      "bytes": 4778
+      "sha256": "cae51b2c6cd0524ea6ed8c7c6e5fb78cc3e48bdf97682fba0be1b74374ec1c32",
+      "bytes": 4788
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-promotion-receipt-v2.schema.json",
-      "sha256": "d8b5541922ad62e789bc98598def3723a80927000e5e82d97cd1d39dcd4f3fc3",
-      "bytes": 2840
+      "sha256": "54b51fda14d10df43ef5e510f36cbaf8164f0943580ea9acd6f33d51e62c887b",
+      "bytes": 2850
     },
     {
       "path": "harnesses/research-publishing/contracts/memory-query-plan.schema.json",
-      "sha256": "1cd750cc0457f3885397240696b522bc283d008005ff99fb7d62c2938862e862",
-      "bytes": 1992
+      "sha256": "e9e0505e195d2d603ea04a5a98a6a0a549a9a854ce56cca841201fa2f478ae63",
+      "bytes": 2002
     },
     {
       "path": "harnesses/research-publishing/contracts/open-question-version.schema.json",
@@ -336,8 +341,8 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/research-context-snapshot-v2.schema.json",
-      "sha256": "488230a11f00a397dae5fb018e6610c2aebc0a5c5c40abc6f912d5f205118d61",
-      "bytes": 4080
+      "sha256": "c6209c422a06de9910f68ccca6f75a686986280df924ad9f57c217a217acd7f2",
+      "bytes": 4089
     },
     {
       "path": "harnesses/research-publishing/contracts/research-decision.schema.json",
@@ -361,8 +366,8 @@
     },
     {
       "path": "harnesses/research-publishing/contracts/research-import-manifest.schema.json",
-      "sha256": "a3c7a0137fbb63ee717c5b6fd8bc232a12d73f8669f53403e7c54695b2204d7b",
-      "bytes": 5415
+      "sha256": "5e4f8cd682ac33e9c6bd7763b532e7332530b59ace9cfc97e0d56b041277b0da",
+      "bytes": 5500
     },
     {
       "path": "harnesses/research-publishing/contracts/research-increment-revision.schema.json",
@@ -536,8 +541,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/legacy-memory-adapter.ts",
-      "sha256": "5156a49763ca8f16a97501711f461931ac782cdcc6578860c8a295bd812ac797",
-      "bytes": 5168
+      "sha256": "d4540604592f8d8844892366aabdf909833b950e8510d62fb072b195ed40a051",
+      "bytes": 5192
     },
     {
       "path": "harnesses/research-publishing/core/markdown-chunker.ts",
@@ -556,8 +561,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/memory-ingest-service.ts",
-      "sha256": "b27c549118140f59257c19a3d19809ab04252a0d0c1bf3641595fdadb0dca463",
-      "bytes": 33319
+      "sha256": "dbd333c1552c701059c09b6ea18e81bfa7b49a328e04d78c035076102d97a179",
+      "bytes": 33345
     },
     {
       "path": "harnesses/research-publishing/core/memory-insight-service.ts",
@@ -571,13 +576,13 @@
     },
     {
       "path": "harnesses/research-publishing/core/memory-promotion-service.ts",
-      "sha256": "2eef29347d351fe36a41eb3e135a98dad1687602d07446266c74d62717a450b2",
-      "bytes": 32340
+      "sha256": "5f61196c4911e87389b5787d13578401f7dc5788c1a056e904e498af4057d911",
+      "bytes": 33559
     },
     {
       "path": "harnesses/research-publishing/core/memory-query-service.ts",
-      "sha256": "64015bbc2451a7acbd800259ee483eacb3a21316c282e2a88eba9ea9753e394b",
-      "bytes": 11514
+      "sha256": "6fdcbd5a5f9c58e2e86c15f17ccfa68d6b4ebdfc330e9250e8fb9df146876e9a",
+      "bytes": 11590
     },
     {
       "path": "harnesses/research-publishing/core/memory-renderer.ts",
@@ -591,8 +596,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/memory-types.ts",
-      "sha256": "99150119b4b9f05d2f84a3db12bdc39ce86b0d08f7de6bd193c7f11a319c7595",
-      "bytes": 8067
+      "sha256": "447104a4c02685f0aa1e70a7c972ce7ec1db65b424885d1e44ed378044559617",
+      "bytes": 8117
     },
     {
       "path": "harnesses/research-publishing/core/package-service.ts",
@@ -601,8 +606,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/progressive-research-query-service.ts",
-      "sha256": "89f5ceac965af718846e72ed600d2ab8233120374a18225585416f117756b921",
-      "bytes": 19422
+      "sha256": "ff9b86f33a646ebd7d0d59c01484aea21881f8fbbb8b3f41be168442c09aa715",
+      "bytes": 19628
     },
     {
       "path": "harnesses/research-publishing/core/promotion-lock.ts",
@@ -636,13 +641,13 @@
     },
     {
       "path": "harnesses/research-publishing/core/research-flywheel-service.ts",
-      "sha256": "a97a3b273f989ee23659fe11b1f73979a6380b8823272472aa47d880cca151ad",
-      "bytes": 12050
+      "sha256": "459e97db5f40279b82f390515de148bd3f66cfe9f9f4243d68152769e41a5c92",
+      "bytes": 12331
     },
     {
       "path": "harnesses/research-publishing/core/research-import-service.ts",
-      "sha256": "dc7672baad2e0cdc245cc4152bc015d5ff7443b41fe1e2df47708a48e4eead14",
-      "bytes": 24855
+      "sha256": "911c2e744f16b7de4f816f6857a8767e56dcefd2843bf16a29d41bea2c6c6f37",
+      "bytes": 24977
     },
     {
       "path": "harnesses/research-publishing/core/research-increment-service.ts",
@@ -656,8 +661,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/research-index-projector.ts",
-      "sha256": "17440a256bb8a996ec262cdf29ecea64d2b9989fda9acf1e026a74976851b7dc",
-      "bytes": 11241
+      "sha256": "10e67872d897d6a4367865f3d83e60a8fbc5cde7e78be188267e27868f8202a4",
+      "bytes": 11205
     },
     {
       "path": "harnesses/research-publishing/core/research-index-types.ts",
@@ -681,8 +686,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/research-memory-types.ts",
-      "sha256": "a4e9f4a503e1706909b2cb9f419ffe36c3683001d2a7e01b8f2ad15b4eab2ff3",
-      "bytes": 15980
+      "sha256": "0bf34e9b7e5cab5c8db2ae268a003ac433d830e350aa0ac964f7c0ea4f78edc6",
+      "bytes": 16000
     },
     {
       "path": "harnesses/research-publishing/core/research-promotion-state.ts",
@@ -696,8 +701,8 @@
     },
     {
       "path": "harnesses/research-publishing/core/research-query-types.ts",
-      "sha256": "903e29184ce1c88360c074b9773c282129aa92d5f33985ad3662660dbfc891e9",
-      "bytes": 11642
+      "sha256": "e7f1b9a7c0cb280d2a479c54ae1cbd159491b99d0ddf1b0919e090c442635fd1",
+      "bytes": 11652
     },
     {
       "path": "harnesses/research-publishing/core/research-record-renderer.ts",
@@ -781,8 +786,8 @@
     },
     {
       "path": "harnesses/research-publishing/memory/llm-wiki-profile.yml",
-      "sha256": "ff4a6926abe263b850cb067b1d1f80f85421d1ae0ed24fe96ca7ef23bc8f8e6e",
-      "bytes": 4365
+      "sha256": "21fa376879323e04bc9f184f66eab45582af290287b36969f542e29b06cda894",
+      "bytes": 4319
     },
     {
       "path": "harnesses/research-publishing/memory/scp.yml",
@@ -825,14 +830,19 @@
       "bytes": 270
     },
     {
+      "path": "skills/x-publishing-copilot/memory-binding.example.json",
+      "sha256": "41a5a950aa9df9f8bb742e950ecd811d52e8e182166b020b85d85d70328e61fe",
+      "bytes": 282
+    },
+    {
       "path": "skills/x-publishing-copilot/references/browser-adapter-flow.md",
       "sha256": "f94d7cfebbd3fbbd86b9c51ef66eee7c0edd49c714d437a9c1d0296ef7a64086",
       "bytes": 1625
     },
     {
       "path": "skills/x-publishing-copilot/references/memory-loop.md",
-      "sha256": "43a9ce449c9e365ac5b9e9b237bdb221665fdf1b640cf4498e809b07d6e51c9a",
-      "bytes": 1685
+      "sha256": "719926fdd27f8b950b00144bedc4d5aa5a5dcf875fae357049414177fa290f23",
+      "bytes": 2739
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-browser-flow.md",
@@ -846,8 +856,13 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/invoke.mjs",
-      "sha256": "0653b1c47693fae15b482337b59236b8477faee326dbaa3e79f71292400cedca",
-      "bytes": 2080
+      "sha256": "0dce36e456f2163c1a9ae4d85a2ebef70c209d73ca1555cd14d1c0dd4a082d30",
+      "bytes": 2412
+    },
+    {
+      "path": "skills/x-publishing-copilot/scripts/memory-routing.mjs",
+      "sha256": "75f6591bb13175db3b6ace00c73452b4f8559cf25356acc514fce30338c12050",
+      "bytes": 2087
     }
   ]
 }

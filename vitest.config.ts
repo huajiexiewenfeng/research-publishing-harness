@@ -6,6 +6,8 @@ export default defineConfig({
     // Keep the bound finite while avoiding false failures from the 5 s default.
     testTimeout: 15_000,
     exclude: [
+      // These launcher tests use Node's test runner.
+      'tests/skills/*.test.mjs',
       '**/dist/**',
       '**/node_modules/**',
       '**/.worktrees/**',
