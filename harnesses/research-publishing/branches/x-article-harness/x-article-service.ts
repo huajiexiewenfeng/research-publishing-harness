@@ -132,7 +132,7 @@ export class XArticleService {
       }
       return { asset: binding.asset, placement: slot.placement };
     });
-    const document = compileXArticleDocument({ markdown, visuals: compilerVisuals });
+    const document = compileXArticleDocument({ markdown, visuals: compilerVisuals, sections: draft.sections });
     const assets = new Map(manifest.bindings.map((binding) => [binding.asset.asset_id, binding.asset]));
     const visuals: XArticleVisualBindingV1[] = [];
     if (document.cover_asset_id !== null) {
