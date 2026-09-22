@@ -77,6 +77,19 @@ async function stagedCoverBridgeInput() {
 }
 
 describe('complete Draft-only X Article Host Bridge', () => {
+  it('passes a long PNG inline path directly without temporary chooser staging', async () => {
+    const input = bridgeInput('replace_article_visual_anchor');
+    input.command.payload.asset = { mime_type: 'image/png' };
+    input.absoluteAssetPath = `C:/${'nested/'.repeat(50)}diagram.png`;
+    input.dependencies.prepareBrowserUploadPath = vi.fn(() => { throw new Error('unexpected staging'); });
+    input.dependencies.runInlineImageUpload = vi.fn(async ({ absoluteAssetPath }) => {
+      expect(absoluteAssetPath).toBe(input.absoluteAssetPath);
+      return { status: 'success', observation: {} };
+    });
+    expect(await runXArticleHostBridge(input)).toMatchObject({ status: 'success' });
+    expect(input.dependencies.prepareBrowserUploadPath).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['navigate', 'runNavigate'],
     ['observe_article_page', 'runObserve'],

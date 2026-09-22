@@ -8,8 +8,13 @@ const ALLOWED_PROBE_KEYS = new Set([
   'media',
   'autosave_text'
 ]);
+const ALLOWED_INDEX_PROBE_KEYS = new Set([
+  'canonical_url',
+  'account_handle',
+  'controls'
+]);
 
-const TITLE_KEYS = new Set(['tag', 'placeholder', 'value']);
+const TITLE_KEYS = new Set(['tag', 'placeholder', 'value', 'disabled']);
 const COMPOSER_KEYS = new Set([
   'test_id',
   'role',
@@ -43,6 +48,7 @@ const FILE_INPUT_KEYS = new Set([
 
 const ANCHOR = /^RPH_VISUAL_ANCHOR:([A-Za-z0-9_-]+):([1-9][0-9]*)$/;
 const DRAFT_URL = /^https:\/\/x\.com\/compose\/articles\/edit\/([0-9]+)(?:[?#].*)?$/;
+const INDEX_URL = /^https:\/\/x\.com\/compose\/articles(?:[?#].*)?$/;
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -188,7 +194,9 @@ function normalizeControls(value) {
       throw new Error(`Control ${index + 1} contains unexpected metadata`);
     }
     const role = requireString(control.role, `control ${index + 1} role`);
-    const name = requireString(control.name, `control ${index + 1} name`);
+    const name = requireString(control.name, `control ${index + 1} name`, {
+      allowEmpty: control.test_id === 'composer'
+    });
     if (control.test_id !== null && typeof control.test_id !== 'string') {
       throw new Error(`Control ${index + 1} test id must be a string or null`);
     }
@@ -208,6 +216,16 @@ function normalizeControls(value) {
       disabled: control.disabled
     };
   });
+}
+
+function normalizeIndexControls(value) {
+  const controls = normalizeControls(value).filter((control) =>
+    control.role === 'button' && /^(?:Create|New Article)$/iu.test(control.name)
+  );
+  if (controls.length !== 1) {
+    throw new Error('X Articles index must expose exactly one create control');
+  }
+  return [{ ...controls[0], name: 'create' }];
 }
 
 function validateFileInputs(value) {
@@ -258,7 +276,7 @@ function normalizeCover(value) {
     if (cover !== null) throw new Error('X Article probe contains duplicate cover media');
     cover = {
       ref: normalized.normalized.ref,
-      alt_text: normalized.normalized.alt_text,
+      alt_text: null,
       status: normalized.normalized.status
     };
   }
@@ -271,6 +289,67 @@ function autosaveState(value) {
   if (/^Saving(?:\s|$)/iu.test(text)) return 'saving';
   if (/^Save failed(?:\s|$)/iu.test(text)) return 'failed';
   return 'failed';
+}
+
+export function normalizeXArticleIndexProbe(probeCandidate) {
+  const probe = requireRecord(probeCandidate, 'X Articles index probe');
+  for (const key of Object.keys(probe)) {
+    if (!ALLOWED_INDEX_PROBE_KEYS.has(key)) {
+      throw new Error(`Unexpected index snapshot key: ${key}`);
+    }
+  }
+
+  const url = requireString(probe.canonical_url, 'canonical URL');
+  if (INDEX_URL.exec(url) === null) {
+    throw new Error('Canonical URL is not the X Articles index');
+  }
+  if (probe.account_handle !== null && typeof probe.account_handle !== 'string') {
+    throw new Error('Account handle must be a string or null');
+  }
+
+  return {
+    schema_version: 'x-article-host-page-snapshot/v1',
+    canonical_url: 'https://x.com/compose/articles',
+    account_handle: probe.account_handle,
+    page_kind: 'articles_index',
+    controls: normalizeIndexControls(probe.controls)
+  };
+}
+
+export async function extractXArticleIndexSnapshot({ tab }) {
+  if (typeof tab?.playwright?.evaluate !== 'function') {
+    throw new Error('X Article extractor requires a Playwright tab');
+  }
+
+  const probe = await tab.playwright.evaluate(() => {
+    if (location.origin !== 'https://x.com' || location.pathname !== '/compose/articles') {
+      throw new Error('Current page is not https://x.com/compose/articles');
+    }
+    const profile = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
+    const profileHref = profile?.getAttribute('href') || '';
+    const accountMatch = /^\/([A-Za-z0-9_]{1,15})$/u.exec(profileHref);
+    const controls = Array.from(
+      document.querySelectorAll('button,[role="button"]')
+    ).map((element) => ({
+      element,
+      name: (element.getAttribute('aria-label') || element.textContent || '').trim()
+    })).filter(({ name }) => /^(?:Create|New Article)$/iu.test(name))
+      .map(({ element, name }) => ({
+        role: 'button',
+        name,
+        test_id: element.getAttribute('data-testid'),
+        disabled: element.hasAttribute('disabled')
+          || element.getAttribute('aria-disabled') === 'true'
+      }));
+
+    return {
+      canonical_url: 'https://x.com/compose/articles',
+      account_handle: accountMatch === null ? null : `@${accountMatch[1]}`,
+      controls
+    };
+  });
+
+  return normalizeXArticleIndexProbe(probe);
 }
 
 export function normalizeXArticleEditorProbe(probeCandidate) {
@@ -298,7 +377,7 @@ export function normalizeXArticleEditorProbe(probeCandidate) {
     || titleControl.placeholder !== 'Add a title') {
     throw new Error('X Article title control does not match the bounded contract');
   }
-  const title = requireString(titleControl.value, 'X Article title');
+  const title = requireString(titleControl.value, 'X Article title', { allowEmpty: true });
 
   const composers = requireArray(probe.composers, 'composers');
   if (composers.length !== 1) {
@@ -312,14 +391,26 @@ export function normalizeXArticleEditorProbe(probeCandidate) {
 
   validateFileInputs(probe.file_inputs);
   const controls = normalizeControls(probe.controls);
+  if (!controls.some((control) => control.role === 'textbox' && control.name === 'Add a title')) {
+    controls.push({
+      ref: 'role:textbox|name:Add a title', role: 'textbox', name: 'Add a title',
+      test_id: null, disabled: titleControl.disabled === true
+    });
+  }
   const coverResult = normalizeCover(probe.media);
   hasUnknownContent ||= coverResult.hasUnknownContent;
 
   const blocks = [];
   let openListKind = null;
-  for (const [index, candidate] of requireArray(composer.blocks, 'composer blocks').entries()) {
+  const sourceBlocks = requireArray(composer.blocks, 'composer blocks');
+  for (const [index, candidate] of sourceBlocks.entries()) {
     const block = normalizeBlock(candidate, index);
     hasUnknownContent ||= block.hasUnknownContent;
+    // DraftJS leaves an empty spacer when a marker between two atomic images is
+    // removed. It is layout, not article text; keep all nonempty/unknown blocks.
+    if (block.kind === 'paragraph' && !block.hasUnknownContent
+      && block.runs.every((run) => run.text === '')
+      && (sourceBlocks[index - 1]?.media || sourceBlocks[index + 1]?.media)) continue;
 
     if (block.type === 'list_row') {
       if (openListKind === block.kind) {
@@ -382,6 +473,60 @@ export function normalizeXArticleEditorProbe(probeCandidate) {
   };
 }
 
+// A shortcut only when the exact marker still borders its new image. Ambiguity falls back to full observation.
+export async function probeXArticleInlineMedia({ tab, marker, blockOrdinal }) {
+  return tab.playwright.evaluate(({ expectedMarker, expectedOrdinal }) => {
+    if (!Number.isSafeInteger(expectedOrdinal) || expectedOrdinal < 1) return null;
+    const composers = document.querySelectorAll('[data-testid="composer"][contenteditable="true"]');
+    if (composers.length !== 1) return null;
+    const composer = composers[0];
+    const anchors = Array.from(composer.querySelectorAll('.public-DraftStyleDefault-block'))
+      .filter((element) => element.textContent === expectedMarker);
+    if (anchors.length !== 1) return null;
+    const anchorBlock = anchors[0].closest('[data-block="true"]');
+    // DraftJS puts each data-block inside a draggable wrapper. End-of-marker
+    // insertion leaves the marker before the new media until cleanup.
+    const following = anchorBlock?.nextElementSibling
+      ?? anchorBlock?.parentElement?.nextElementSibling?.querySelector('[data-block="true"]');
+    const preceding = anchorBlock?.previousElementSibling
+      ?? anchorBlock?.parentElement?.previousElementSibling?.querySelector('[data-block="true"]');
+    const followingImage = following?.querySelector('figure img,img');
+    // In a diagram group the preceding image belongs to the previous marker.
+    // Prefer the following image, then still require this marker's ordinal.
+    const mediaAfterAnchor = !!followingImage;
+    const mediaBlock = mediaAfterAnchor ? following : preceding;
+    const image = mediaBlock?.querySelector('figure img,img');
+    if (!image) return null;
+    const blocks = Array.from(composer.querySelectorAll('[data-block="true"]'));
+    const mediaIndex = blocks.indexOf(mediaBlock);
+    if (mediaIndex < 0) return null;
+    // Match the full extractor's list-row grouping without extracting article text.
+    let ordinal = 0;
+    let previousList = null;
+    for (const block of blocks.slice(0, mediaIndex + 1)) {
+      if (block === anchorBlock) continue;
+      const classes = new Set(String(block.className || '').split(/\s+/));
+      const at = blocks.indexOf(block);
+      if (classes.has('longform-unstyled') && block.textContent === ''
+        && (blocks[at - 1]?.querySelector?.('img') || blocks[at + 1]?.querySelector?.('img'))) continue;
+      const list = classes.has('longform-unordered-list-item') ? 'bullet'
+        : classes.has('longform-ordered-list-item') ? 'ordered' : null;
+      if (list === null || list !== previousList) ordinal += 1;
+      previousList = list;
+    }
+    if (ordinal !== expectedOrdinal) return null;
+    return {
+      status: image.complete && image.naturalWidth > 0 && !/processing/i.test(mediaBlock.textContent || '')
+        ? 'uploaded' : 'processing',
+      anchor_present: true, media_dom_index: mediaIndex,
+      media_edit_index: blocks.slice(0, mediaIndex).filter((block) => block.querySelector?.('figure img,img')).length,
+      alt_text: image.closest?.('[role="group"][aria-label]')?.getAttribute('aria-label')
+        || image.getAttribute?.('alt') || '',
+      ...(mediaAfterAnchor ? { anchor_dom_index: blocks.indexOf(anchorBlock), media_after_anchor: true } : {})
+    };
+  }, { expectedMarker: marker, expectedOrdinal: blockOrdinal });
+}
+
 export async function extractXArticleEditorSnapshot({ tab }) {
   if (typeof tab?.playwright?.evaluate !== 'function') {
     throw new Error('X Article extractor requires a Playwright tab');
@@ -413,6 +558,7 @@ export async function extractXArticleEditorSnapshot({ tab }) {
       const block = container.querySelector('.public-DraftStyleDefault-block');
       const image = container.querySelector('figure img,img');
       if (image !== null) {
+        const mediaGroup = image.closest('[role="group"][aria-label]');
         return {
           parent_tag: 'FIGURE',
           parent_class: container.className || 'longform-atomic',
@@ -421,7 +567,7 @@ export async function extractXArticleEditorSnapshot({ tab }) {
             kind: 'inline',
             ref: `inline-media-${index + 1}`,
             block_ordinal: index + 1,
-            alt_text: image.getAttribute('alt'),
+            alt_text: mediaGroup?.getAttribute('aria-label') || image.getAttribute('alt'),
             status: /processing/i.test(container.textContent || '') ? 'processing' : 'uploaded'
           }
         };
@@ -443,30 +589,44 @@ export async function extractXArticleEditorSnapshot({ tab }) {
       blocks: extractBlocks(element)
     }));
 
-    const controls = Array.from(document.querySelectorAll('button,[role="button"]'))
-      .map((element) => ({
-        element,
-        name: (element.getAttribute('aria-label') || element.textContent || '').trim()
-      }))
-      .filter(({ name }) => /^(Add Media|Publish|Preview)$/i.test(name))
-      .map(({ element, name }) => ({
-        role: element.getAttribute('role') || element.tagName.toLowerCase(),
-        name,
+    const controls = [
+      ...Array.from(document.querySelectorAll('button,[role="button"]'))
+        .map((element) => ({
+          element,
+          name: (element.getAttribute('aria-label') || element.textContent || '').trim()
+        }))
+        .filter(({ name }) => /^(Add Media|Publish|Preview)$/i.test(name))
+        .map(({ element, name }) => ({
+          role: element.getAttribute('role') || element.tagName.toLowerCase(),
+          name,
+          test_id: element.getAttribute('data-testid'),
+          disabled: element.hasAttribute('disabled')
+            || element.getAttribute('aria-disabled') === 'true'
+        })),
+      ...composers.map((element) => ({
+        role: element.getAttribute('role') || 'textbox',
+        name: '',
         test_id: element.getAttribute('data-testid'),
-        disabled: element.hasAttribute('disabled')
-          || element.getAttribute('aria-disabled') === 'true'
-      }));
+        disabled: element.getAttribute('aria-disabled') === 'true'
+      }))
+    ];
 
     const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
     const findCoverRegion = (input) => {
       let candidate = input.parentElement;
+      let structuralMatch = null;
       for (let depth = 0; depth < 7 && candidate !== null; depth += 1) {
         if ((candidate.textContent || '').includes(
           'We recommend an image with a 5:2 aspect ratio for best results.'
         )) return candidate;
+        if (
+          structuralMatch === null
+          && candidate.querySelector('img') !== null
+          && candidate.querySelector('[aria-label="Add photos or video"]') !== null
+        ) structuralMatch = candidate;
         candidate = candidate.parentElement;
       }
-      return null;
+      return structuralMatch;
     };
     const coverMedia = fileInputs.flatMap((input) => {
       const region = findCoverRegion(input);
@@ -481,7 +641,7 @@ export async function extractXArticleEditorSnapshot({ tab }) {
       }];
     });
     const inlineMedia = composerProbes.flatMap((composer) => composer.blocks
-      .flatMap((block) => block.media === undefined ? [] : [block.media]));
+      .flatMap((block) => block.media === undefined ? [] : [{ ...block.media }]));
     const autosaveText = Array.from(document.querySelectorAll('span,div'))
       .map((element) => (element.textContent || '').trim())
       .map((text) => /^(Last saved(?: just now| \d+ (?:second|minute|hour|day)s? ago)?|Saving(?:\.\.\.)?|Save failed(?:\.\.\.)?)/i.exec(text)?.[1] || null)
@@ -494,7 +654,9 @@ export async function extractXArticleEditorSnapshot({ tab }) {
       title_controls: titleControls.map((element) => ({
         tag: element.tagName,
         placeholder: element.getAttribute('placeholder'),
-        value: element.value
+        value: element.value,
+        disabled: element.disabled === true || element.readOnly === true
+          || element.getAttribute('aria-disabled') === 'true'
       })),
       composers: composerProbes,
       file_inputs: fileInputs.map((element) => {

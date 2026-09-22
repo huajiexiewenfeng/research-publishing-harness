@@ -21,6 +21,7 @@ const selectionPath = resolve('verified', 'asset.png');
 const temporaryRoots = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   await Promise.all(temporaryRoots.splice(0).map((root) =>
     rm(root, { recursive: true, force: true })
@@ -108,6 +109,26 @@ describe('X Article Host media verification', () => {
 });
 
 describe('one verified Browser file delivery', () => {
+  it('checks the write fence again after waiting for the chooser', async () => {
+    const browser = selectionFixture();
+    let checks = 0;
+    await expect(hostCommon.deliverOneFile({ tab: browser.tab, causalTrigger: browser.input,
+      absoluteAssetPath: selectionPath, timeoutMs: 10_000,
+      beforeWrite: () => { if (++checks === 2) throw new Error('paused'); }
+    })).rejects.toThrow();
+    expect(browser.calls.some(([name]) => name === 'setFiles')).toBe(false);
+  });
+
+  it('bounds a read that never returns instead of hanging the whole polling loop', async () => {
+    vi.useFakeTimers();
+    const result = waitForStableHostObservation({ observe: () => new Promise(() => {}),
+      isStable: () => false, timeoutMs: 1000 });
+    let settled = false;
+    void result.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(true);
+    expect(await result).toBeNull();
+  });
   it('submits one file without reading the transient file input binding', async () => {
     const browser = selectionFixture({ files: [] });
 
@@ -233,19 +254,21 @@ describe('bounded Host Observation stability', () => {
     expect(observe).toHaveBeenCalledTimes(2);
   });
 
-  it('stops before another poll when the shared deadline expires', async () => {
-    const observe = vi.fn(async () => ({ editor: { autosave_state: 'saving' } }));
-    const deadlineExceeded = vi.fn()
-      .mockReturnValueOnce(false)
-      .mockReturnValue(true);
+  it('keeps a locally bounded stability poll running after the soft budget warning', async () => {
+    const observations = [
+      { editor: { autosave_state: 'saving' } },
+      { editor: { autosave_state: 'saved' } }
+    ];
+    const observe = vi.fn(async () => observations.shift());
+    const deadlineExceeded = vi.fn(() => true);
 
     await expect(waitForStableHostObservation({
       observe,
       timeoutMs: 100,
       pollMs: 1,
       deadlineExceeded,
-      isStable: () => false
-    })).rejects.toThrow(/deadline/i);
-    expect(observe).toHaveBeenCalledOnce();
+      isStable: (observation) => observation?.editor?.autosave_state === 'saved'
+    })).resolves.toEqual({ editor: { autosave_state: 'saved' } });
+    expect(observe).toHaveBeenCalledTimes(2);
   });
 });

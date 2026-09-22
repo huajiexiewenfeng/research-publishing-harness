@@ -140,7 +140,8 @@ export async function deliverOneFile({
   tab,
   causalTrigger,
   absoluteAssetPath,
-  timeoutMs
+  timeoutMs,
+  beforeWrite = () => {}
 }) {
   if (
     typeof tab?.playwright?.waitForEvent !== 'function'
@@ -157,6 +158,7 @@ export async function deliverOneFile({
   try {
     chooserPromise = tab.playwright.waitForEvent('filechooser', { timeoutMs });
     void chooserPromise.catch(() => undefined);
+    beforeWrite();
     await causalTrigger.click();
     chooser = await chooserPromise;
   } catch (error) {
@@ -170,6 +172,7 @@ export async function deliverOneFile({
   }
 
   try {
+    beforeWrite();
     await chooser.setFiles([absoluteAssetPath], { timeoutMs });
   } catch (error) {
     throw selectionFailure('X Article file delivery is uncertain', true, error);
@@ -180,7 +183,8 @@ export async function deliverOneFile({
 export async function completeMediaEditor({
   tab,
   timeoutMs,
-  appearanceTimeoutMs = timeoutMs
+  appearanceTimeoutMs = timeoutMs,
+  beforeWrite = () => {}
 }) {
   if (
     typeof tab?.playwright?.getByRole !== 'function'
@@ -228,6 +232,7 @@ export async function completeMediaEditor({
   ) {
     throw selectionFailure('X Article media Apply control is unavailable', true);
   }
+  beforeWrite();
   await apply.click({ timeoutMs });
   await dialog.waitFor({ state: 'hidden', timeoutMs });
   return { kind: 'applied' };
@@ -255,8 +260,19 @@ export async function waitForStableHostObservation({
   let latest = null;
 
   while (true) {
-    if (deadlineExceeded()) throw new Error('X Article Fast Path deadline exceeded');
-    latest = await observe();
+    const timeLeft = expiresAt - Date.now();
+    if (timeLeft <= 0) return latest;
+    const expired = Symbol('observation_timeout');
+    let readTimer;
+    let value;
+    try {
+      value = await Promise.race([
+        Promise.resolve().then(observe),
+        new Promise((resolveTimeout) => { readTimer = setTimeout(() => resolveTimeout(expired), timeLeft); })
+      ]);
+    } finally { clearTimeout(readTimer); }
+    if (value === expired) return latest;
+    latest = value;
     if (isStable(latest)) return latest;
 
     const remainingMs = expiresAt - Date.now();

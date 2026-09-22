@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   extractXArticleEditorSnapshot,
+  extractXArticleIndexSnapshot,
+  normalizeXArticleIndexProbe,
   normalizeXArticleEditorProbe
 } from '../../skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs';
 
@@ -18,6 +20,42 @@ function cloneProbe() {
 }
 
 describe('bounded X Article editor extraction', () => {
+  it('ignores only empty media-adjacent spacer paragraphs when computing ordinals', () => {
+    const changed = cloneProbe();
+    const media = { ref: 'inline-1', block_ordinal: 1, alt_text: 'Diagram', status: 'uploaded' };
+    const spacer = { parent_tag: 'DIV', parent_class: 'longform-unstyled', runs: [], has_unknown_content: false };
+    changed.media = [media];
+    changed.composers[0].blocks = [
+      { parent_tag: 'FIGURE', parent_class: 'longform-atomic', runs: [], media },
+      spacer,
+      { parent_tag: 'DIV', parent_class: 'longform-unstyled', runs: [{ text: 'RPH_VISUAL_ANCHOR:asset-next:2', bold: false, italic: false, link: null }] }
+    ];
+    expect(normalizeXArticleEditorProbe(changed).editor.blocks).toHaveLength(2);
+    changed.composers[0].blocks[1] = { ...spacer, runs: [{ text: 'Do not discard me', bold: false, italic: false, link: null }] };
+    expect(() => normalizeXArticleEditorProbe(changed)).toThrow(/anchor ordinal/);
+  });
+  it('exposes the observed unique title textarea to the title transaction', () => {
+    expect(normalizeXArticleEditorProbe(probe).controls).toContainEqual({
+      ref: 'role:textbox|name:Add a title', role: 'textbox', name: 'Add a title',
+      test_id: null, disabled: false
+    });
+  });
+  it('observes a newly created draft with an empty title and body', () => {
+    const changed = cloneProbe();
+    changed.title_controls[0].value = '';
+    changed.composers[0].blocks = [];
+    changed.media = [];
+    expect(normalizeXArticleEditorProbe(changed).editor).toMatchObject({
+      draft_id: '2093554993261654016', title: '', blocks: [], cover: null
+    });
+  });
+
+  it.each([null, undefined, 42])('rejects a non-string title: %s', (value) => {
+    const changed = cloneProbe();
+    changed.title_controls[0].value = value;
+    expect(() => normalizeXArticleEditorProbe(changed)).toThrow(/X Article title must be a string/);
+  });
+
   it('groups DraftJS list rows and preserves marks, links, and exact anchors', () => {
     const snapshot = normalizeXArticleEditorProbe(probe);
 
@@ -40,6 +78,10 @@ describe('bounded X Article editor extraction', () => {
           name: 'Publish',
           test_id: null,
           disabled: false
+        },
+        {
+          ref: 'role:textbox|name:Add a title', role: 'textbox', name: 'Add a title',
+          test_id: null, disabled: false
         }
       ],
       editor: {
@@ -123,6 +165,23 @@ describe('bounded X Article editor extraction', () => {
     });
   });
 
+  it('normalizes the unobservable cover Alt value to null', () => {
+    const changed = cloneProbe();
+    changed.media = [{
+      kind: 'cover',
+      ref: 'cover-media',
+      block_ordinal: 1,
+      alt_text: '',
+      status: 'uploaded'
+    }];
+
+    expect(normalizeXArticleEditorProbe(changed).editor.cover).toEqual({
+      ref: 'cover-media',
+      alt_text: null,
+      status: 'uploaded'
+    });
+  });
+
   it('rejects ambiguous identity, unsupported block classes, and foreign top-level keys', () => {
     expect(() => normalizeXArticleEditorProbe({ ...probe, title_controls: [] }))
       .toThrow(/title/i);
@@ -175,6 +234,8 @@ describe('bounded X Article editor extraction', () => {
     expect(pageFunctionText).toContain('textarea[placeholder="Add a title"]');
     expect(pageFunctionText).toContain('[data-testid="composer"][contenteditable="true"]');
     expect(pageFunctionText).toContain('[data-block="true"]');
+    expect(pageFunctionText).toContain('{ ...block.media }');
+    expect(pageFunctionText).toContain("closest('[role=\"group\"][aria-label]')");
     expect(pageFunctionText).not.toMatch(/\bprocess\b|localStorage|sessionStorage|cookie/i);
   });
 
@@ -247,7 +308,15 @@ describe('bounded X Article editor extraction', () => {
               link: 'https://example.com/reference'
             }]
           }]
-        }
+        },
+      controls: [{
+        ref: 'testid:composer',
+        role: 'textbox',
+        name: '',
+        test_id: 'composer'
+      }, {
+        ref: 'role:textbox|name:Add a title', role: 'textbox', name: 'Add a title', test_id: null
+      }]
       });
     } finally {
       if (documentBefore === undefined) delete globalThis.document;
@@ -255,5 +324,53 @@ describe('bounded X Article editor extraction', () => {
       if (locationBefore === undefined) delete globalThis.location;
       else globalThis.location = locationBefore;
     }
+  });
+});
+
+describe('bounded X Articles index extraction', () => {
+  const indexProbe = {
+    canonical_url: 'https://x.com/compose/articles',
+    account_handle: '@Glen56121',
+    controls: [{
+      role: 'button',
+      name: 'Create',
+      test_id: null,
+      disabled: false
+    }]
+  };
+
+  it('normalizes the unique create control into the page contract', () => {
+    expect(normalizeXArticleIndexProbe(indexProbe)).toEqual({
+      schema_version: 'x-article-host-page-snapshot/v1',
+      canonical_url: 'https://x.com/compose/articles',
+      account_handle: '@Glen56121',
+      page_kind: 'articles_index',
+      controls: [{
+        ref: 'role:button|name:Create',
+        role: 'button',
+        name: 'create',
+        test_id: null,
+        disabled: false
+      }]
+    });
+  });
+
+  it('evaluates one read-only index page function', async () => {
+    let pageFunctionText = '';
+    const tab = {
+      playwright: {
+        evaluate: async (pageFunction) => {
+          pageFunctionText = String(pageFunction);
+          return indexProbe;
+        }
+      }
+    };
+
+    await expect(extractXArticleIndexSnapshot({ tab })).resolves.toMatchObject({
+      page_kind: 'articles_index',
+      controls: [{ name: 'create' }]
+    });
+    expect(pageFunctionText).toContain('compose/articles');
+    expect(pageFunctionText).not.toMatch(/localStorage|sessionStorage|cookie/i);
   });
 });

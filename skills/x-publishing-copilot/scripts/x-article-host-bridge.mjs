@@ -2,6 +2,7 @@ import { runCoverUpload } from './x-article-cover-host.mjs';
 import { runInlineImageUpload } from './x-article-inline-image-host.mjs';
 import { prepareBrowserUploadPath } from './x-article-host-common.mjs';
 import { observeXArticleEditor } from './x-article-host-runtime.mjs';
+import { probeXArticleInlineMedia } from './x-article-editor-extractor.mjs';
 
 const ALLOWED = new Set([
   'navigate',
@@ -103,6 +104,8 @@ async function dispatchOne(input) {
   return transaction({
     ...input,
     beforeObservation,
+    probeInline: () => probeXArticleInlineMedia({ tab: input.tab, marker: input.command.payload.anchor.marker,
+      blockOrdinal: input.command.payload.anchor.block_ordinal }),
     observe,
     deadlineExceeded: input.deadline.exceeded
   });
@@ -110,8 +113,11 @@ async function dispatchOne(input) {
 
 async function dispatchWithBrowserTransport(input) {
   const maxPathLength = input.dependencies?.maxBrowserUploadPathLength ?? 240;
+  const clipboardInline = input.command.kind === 'replace_article_visual_anchor'
+    && input.command.payload?.asset?.mime_type === 'image/png'
+    && input.transport !== 'file_chooser';
   if (
-    !MEDIA.has(input.command.kind)
+    clipboardInline || !MEDIA.has(input.command.kind)
     || typeof input.absoluteAssetPath !== 'string'
     || input.absoluteAssetPath.length <= maxPathLength
   ) return dispatchOne(input);

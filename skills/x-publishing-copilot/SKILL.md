@@ -23,6 +23,8 @@ For V3.4, run Fast Path status and continuously consume the existing atomic `nex
 
 For claimed `navigate`, `observe_article_page`, `upload_article_cover`, and `replace_article_visual_anchor` commands, use the packaged Complete Host Bridge exactly as defined by the V3.4 reference. Never call the Cover or Inline Host modules directly or recreate their browser transactions in the task.
 
+PNG Article inline images use the Host's verified clipboard-paste path by default, at their approved source positions. Cover upload is unchanged. Do not repeat a paste or switch to a chooser after an uncertain result; reconcile the existing image. Alt, content, position, autosave and publication approval checks remain mandatory.
+
 ## Single, Thread, and Reply Browser Adapter required flow
 
 1. Run `scripts/invoke.mjs doctor --workspace <path> --output json` and stop if the Harness is unavailable or incompatible.

@@ -45,6 +45,14 @@ describe('article-publishing-copilot boundary', () => {
 });
 
 describe('x-publishing-copilot boundary', () => {
+  it('documents PNG clipboard transport without weakening source placement or publish authority', async () => {
+    const reference = await readFile(resolve('skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md'), 'utf8');
+    expect(reference).toContain('PNG inline images default to clipboard');
+    expect(reference).toContain('actual source location');
+    expect(reference).toContain('current-focus keyboard');
+    expect(reference).toContain('never paste again');
+    expect(reference).toContain('does not authorize Preview or Publish');
+  });
   it('requires exact preview and content-specific approval without implementing gates', async () => {
     const content = await skill('x-publishing-copilot');
     const frontmatter = parse(content.split('---')[1]!) as { name: string; description: string };
@@ -128,12 +136,15 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toContain('cover region');
     expect(reference).toContain('scripts/x-article-host-bridge.mjs');
     expect(reference).toContain('runXArticleHostBridge');
-    expect(reference).toMatch(/prefer.*input\[type=file\][\s\S]*filechooser[\s\S]*setFiles/is);
+    expect(reference).toContain('await runXArticleHostBridge');
+    expect(reference).toContain('same Node REPL call');
+    expect(reference).toContain('Do not start a background browser promise');
     expect(reference).toMatch(/never.*directly.*runCoverUpload/is);
     expect(reference).toMatch(/do not call.*Cover.*Inline Host.*directly/is);
     expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
     expect(reference).toMatch(/do not locally retry/is);
-    expect(reference).toMatch(/prefer.*scoped.*input\[type=file\]/is);
+    expect(reference).toContain('visible scoped upload button');
+    expect(reference).not.toContain('Verify the selected input binding');
     expect(reference).toMatch(/register.*chooser.*before.*causal click/is);
     expect(reference).toMatch(/never.*locator\.setInputFiles/is);
     expect(reference).toContain('stage progress');
