@@ -25,6 +25,7 @@ import type {
 import type { WorkspaceStore } from './workspace-store.js';
 
 interface ProgressiveQueryRuntime {
+  version?(): Promise<'0.2.0' | '0.3.0'>;
   findRecords(input: Readonly<Record<string, unknown>>): Promise<Readonly<Record<string, unknown>>>;
   loadPaths(input: Readonly<{
     paths: readonly string[]; max_items: number; max_item_chars: number; max_total_chars: number;
@@ -149,15 +150,17 @@ export class ProgressiveResearchQueryService {
     if (plan.catalog_ref === null) {
       throw new HarnessError('CONTRACT_INVALID', 'Progressive Query execution requires a planned Catalog ref');
     }
+    let runtimeVersion: '0.2.0' | '0.3.0' = '0.2.0';
     let lookup: Readonly<Record<string, unknown>>;
     try {
+      runtimeVersion = await this.runtime.version?.() ?? '0.2.0';
       lookup = await this.runtime.findRecords({
         record_type: 'research_index_catalog', lookup: { index_id: plan.index_id }
       });
     } catch (error) {
       if (
         !(error instanceof HarnessError) ||
-        !['MEMORY_RUNTIME_UNAVAILABLE', 'MEMORY_RUNTIME_TIMEOUT', 'MEMORY_RUNTIME_FAILED'].includes(error.code)
+        !['MEMORY_RUNTIME_UNAVAILABLE', 'MEMORY_RUNTIME_TIMEOUT', 'MEMORY_RUNTIME_FAILED', 'MEMORY_RUNTIME_INCOMPATIBLE'].includes(error.code)
       ) throw error;
       return this.persistSnapshot(plan, {
         index_refs: [], context_items: [], selected_summary_refs: [], selected_record_refs: [], selected_evidence_refs: [],
@@ -168,7 +171,7 @@ export class ProgressiveResearchQueryService {
     if (lookup.status === 'not_found') {
       return this.persistSnapshot(plan, {
         index_refs: [], context_items: [], selected_summary_refs: [], selected_record_refs: [], selected_evidence_refs: [],
-        risk_flags: [], query_status: 'index_unavailable', runtime_version: '0.2.0'
+        risk_flags: [], query_status: 'index_unavailable', runtime_version: runtimeVersion
       });
     }
     if (lookup.status !== 'found') {
@@ -306,7 +309,7 @@ export class ProgressiveResearchQueryService {
       selected_record_refs: plan.selected_record_refs,
       selected_evidence_refs: sortedUnique(plan.selected_record_refs.flatMap((item) => item.evidence_refs)),
       risk_flags: sortedUnique(contextItems.flatMap((item) => item.risk_flags)),
-      query_status: contextItems.length > 0 ? 'loaded' : 'empty', runtime_version: '0.2.0'
+      query_status: contextItems.length > 0 ? 'loaded' : 'empty', runtime_version: runtimeVersion
     });
   }
 

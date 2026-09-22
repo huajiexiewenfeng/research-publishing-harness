@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { routeMemoryArgs } from './memory-routing.mjs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,15 +13,16 @@ const repositoryRoot = resolve(skillDir, '..', '..');
 function forwardedArgs() {
   const args = [...process.argv.slice(2)];
   if (args[0] !== 'memory') return args;
-  const executable = process.env.LLM_WIKI_RUNTIME_EXECUTABLE;
-  const launcher = process.env.LLM_WIKI_RUNTIME_LAUNCHER;
-  if (executable && !args.includes('--runtime-executable')) {
-    args.push('--runtime-executable', executable);
-  }
-  if (launcher && !args.includes('--runtime-launcher')) {
-    args.push('--runtime-launcher', launcher);
-  }
-  return args;
+  const configPath = process.env.RESEARCH_PUBLISHING_MEMORY_BINDING
+    ? resolve(process.env.RESEARCH_PUBLISHING_MEMORY_BINDING)
+    : resolve(skillDir, 'memory-binding.json');
+  const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : null;
+  const inputIndex = args.indexOf('--input');
+  const input = args[1] === 'query' && args[2] === 'plan' && inputIndex >= 0
+    ? JSON.parse(readFileSync(resolve(args[inputIndex + 1]), 'utf8')) : null;
+  const routed = routeMemoryArgs(args, config, process.env, input);
+  if (routed.diagnostic) process.stderr.write(`${routed.diagnostic}\n`);
+  return routed.args;
 }
 
 try {

@@ -97,6 +97,10 @@ function parseArguments(argv) {
         throw new HarnessError('CONTRACT_INVALID', '--adapter must be manual or browser');
     }
     const runtimeLauncher = values['runtime-launcher'];
+    const runtimeVersion = values['runtime-version'];
+    if (runtimeVersion !== undefined && !['0.2.0', '0.3.0'].includes(runtimeVersion)) {
+        throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', 'unsupported --runtime-version');
+    }
     if (runtimeLauncher !== undefined &&
         runtimeLauncher !== 'console-script' && runtimeLauncher !== 'python-module') {
         throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', '--runtime-launcher must be console-script or python-module');
@@ -129,6 +133,7 @@ function parseArguments(argv) {
                 ? {}
                 : { runtimeExecutable: values['runtime-executable'] }),
             ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
+            ...(runtimeVersion === undefined ? {} : { runtimeVersion: runtimeVersion }),
             output: values['output'] ?? 'json'
         },
         providedOptions: new Set(Object.keys(values))
@@ -443,7 +448,7 @@ async function configuredMemoryRuntime(options, assets) {
     return createLLMWikiRuntimeAdapter({
         launcher: options.runtimeLauncher,
         executable: options.runtimeExecutable,
-        expected_version: '0.2.0',
+        expected_version: options.runtimeVersion ?? '0.2.0',
         workspace: options.workspace,
         profile_path: assets.profilePath,
         mapping_path: assets.mappingPath,

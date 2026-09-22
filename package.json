@@ -31,7 +31,8 @@
     "acceptance": "tsx tools/acceptance.ts",
     "acceptance:x-article-fast-path": "tsx tools/x-article-fast-path-acceptance.ts",
     "check:packaged-cli": "tsx tools/check-packaged-x-article-cli.ts",
-    "check": "pnpm check:packaged-cli && pnpm lint && pnpm typecheck && pnpm test && pnpm acceptance"
+    "check": "pnpm check:packaged-cli && pnpm lint && pnpm typecheck && pnpm test && pnpm test:skills && pnpm acceptance",
+    "test:skills": "node --test tests/skills/memory-routing.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",

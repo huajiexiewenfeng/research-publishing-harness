@@ -1,4 +1,4 @@
-import type { VisualAssetRef } from '../../core/types.js';
+import type { VisualAssetRef, VisualSlot } from '../../core/types.js';
 export type XArticleInlineMarkV1 = 'bold' | 'italic';
 export interface XArticleInlineRunV1 {
     readonly text: string;
@@ -24,14 +24,13 @@ export interface XArticleDocumentV1 {
 }
 export interface XArticleCompilerVisual {
     readonly asset: VisualAssetRef;
-    readonly placement: {
-        readonly kind: 'cover';
-    } | {
-        readonly kind: 'after_section';
-        readonly section_id: string;
-    };
+    readonly placement: VisualSlot['placement'];
 }
 export interface CompileXArticleDocumentInput {
     readonly markdown: string;
     readonly visuals: readonly XArticleCompilerVisual[];
+    readonly sections?: readonly {
+        readonly section_id?: string;
+        readonly heading: string;
+    }[];
 }

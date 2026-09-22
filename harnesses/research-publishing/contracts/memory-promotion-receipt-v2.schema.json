@@ -7,7 +7,7 @@
     "schema_version": { "const": "memory-promotion-receipt/v2" },
     "receipt_id": { "$ref": "#/$defs/id" }, "plan_id": { "$ref": "#/$defs/id" },
     "plan_digest": { "$ref": "#/$defs/digest" }, "approval_digest": { "$ref": "#/$defs/digest" },
-    "runtime_version": { "const": "0.2.0" },
+    "runtime_version": { "enum": ["0.2.0", "0.3.0"] },
     "status": { "enum": ["complete", "partial", "failed", "reconciliation_required"] },
     "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
     "record_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },

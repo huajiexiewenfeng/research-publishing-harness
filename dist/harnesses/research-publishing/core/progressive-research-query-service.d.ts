@@ -4,6 +4,7 @@ import { type PlanResearchQueryInput, type ResearchContextReviewV2, type Researc
 import type { ResearchContentPackageV1_1, ResearchContentPackageV1_2 } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 interface ProgressiveQueryRuntime {
+    version?(): Promise<'0.2.0' | '0.3.0'>;
     findRecords(input: Readonly<Record<string, unknown>>): Promise<Readonly<Record<string, unknown>>>;
     loadPaths(input: Readonly<{
         paths: readonly string[];

@@ -10,7 +10,7 @@ export type LLMWikiRuntimeAdapterConfig = RuntimeLaunchConfig & Readonly<{
 }>;
 export interface RuntimeDoctorResult {
     readonly status: 'ok' | 'not_configured';
-    readonly runtime_version: '0.2.0';
+    readonly runtime_version: '0.2.0' | '0.3.0';
     readonly configured: boolean;
     readonly profile: 'research-publishing';
     readonly mapping_id: string | null;
@@ -59,7 +59,7 @@ export declare class LLMWikiRuntimeAdapter {
     private readonly wikiRoot;
     constructor(config: LLMWikiRuntimeAdapterConfig);
     private invoke;
-    version(): Promise<'0.2.0'>;
+    version(): Promise<'0.2.0' | '0.3.0'>;
     doctor(): Promise<RuntimeDoctorResult>;
     query(input: RuntimeQueryInput): Promise<RuntimeContextResult>;
     findRecords(input: RuntimeFindRecordsInput): Promise<RuntimeFindRecordsResult>;

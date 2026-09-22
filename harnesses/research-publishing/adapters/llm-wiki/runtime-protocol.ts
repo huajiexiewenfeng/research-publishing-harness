@@ -24,12 +24,12 @@ export type RuntimeLaunchConfig =
   | Readonly<{
       launcher: 'console-script';
       executable: string;
-      expected_version: '0.2.0';
+      expected_version: '0.2.0' | '0.3.0';
     }>
   | Readonly<{
       launcher: 'python-module';
       executable: string;
-      expected_version: '0.2.0';
+      expected_version: '0.2.0' | '0.3.0';
     }>;
 
 export interface RuntimeEnvelope extends Readonly<Record<string, unknown>> {

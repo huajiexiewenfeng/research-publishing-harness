@@ -22,7 +22,7 @@ export class LegacyMemoryAdapter {
             paths: [ref.path], max_items: 1,
             max_item_chars: MAX_RECORD_CHARS, max_total_chars: MAX_RECORD_CHARS
         });
-        if (result.status !== 'loaded' || result.runtime_version !== '0.2.0' || result.items.length !== 1) {
+        if (result.status !== 'loaded' || !['0.2.0', '0.3.0'].includes(result.runtime_version ?? '') || result.items.length !== 1) {
             throw new HarnessError('ARTIFACT_NOT_FOUND', 'legacy Runtime record was not loaded exactly');
         }
         const item = result.items[0];

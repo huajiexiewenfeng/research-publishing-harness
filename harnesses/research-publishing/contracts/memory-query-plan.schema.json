@@ -23,7 +23,7 @@
     "scp_digest": { "$ref": "#/$defs/digest" },
     "runtime_requirement": {
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
-      "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "const": "0.2.0" } }
+      "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "enum": ["0.2.0", "0.3.0"] } }
     },
     "created_at": { "type": "string", "format": "date-time" },
     "plan_digest": { "$ref": "#/$defs/digest" }

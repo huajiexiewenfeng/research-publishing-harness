@@ -8,7 +8,7 @@
     "schema_version": { "const": "context-snapshot/v1" },
     "snapshot_id": { "type": "string", "minLength": 1 },
     "query_plan_digest": { "$ref": "#/$defs/digest" },
-    "runtime_version": { "enum": ["0.2.0", null] },
+    "runtime_version": { "enum": ["0.2.0", "0.3.0", null] },
     "status": { "enum": ["loaded", "empty", "unavailable", "failed"] },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "excluded_count": { "type": "integer", "minimum": 0 },

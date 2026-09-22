@@ -14,6 +14,28 @@ import {
 } from '../fixtures/research-program.js';
 
 describe('weekly research cycle contracts', () => {
+  it.each(['0.2.0', '0.3.0'] as const)('preserves Runtime %s in weekly context bindings', (runtime_version) => {
+    expect(createWeeklyResearchCycle({
+      ...weeklyCycleInput,
+      context_binding: { ...weeklyCycleInput.context_binding, runtime_version }
+    }).context_binding.runtime_version).toBe(runtime_version);
+    expect(createWeeklyCandidateSet({
+      ...weeklyCandidateSetInput,
+      context_binding: { ...weeklyCandidateSetInput.context_binding, runtime_version }
+    }).context_binding.runtime_version).toBe(runtime_version);
+  });
+
+  it('rejects unsupported Runtime versions in weekly context bindings', () => {
+    expect(() => createWeeklyResearchCycle({
+      ...weeklyCycleInput,
+      context_binding: { ...weeklyCycleInput.context_binding, runtime_version: '9.0.0' }
+    } as never)).toThrow();
+    expect(() => createWeeklyCandidateSet({
+      ...weeklyCandidateSetInput,
+      context_binding: { ...weeklyCandidateSetInput.context_binding, runtime_version: '9.0.0' }
+    } as never)).toThrow();
+  });
+
   it('requires two or three Candidate Briefs', () => {
     expect(() => createWeeklyCandidateSet({
       ...weeklyCandidateSetInput,
