@@ -226,6 +226,13 @@ export class ArticleService {
       if (slot.placement.kind === 'after_section' && !sectionIds.has(slot.placement.section_id)) {
         throw new HarnessError('CONTRACT_INVALID', `Visual Slot ${slot.slot_id} references an unknown section`);
       }
+      if (slot.placement.kind === 'after_heading') {
+        const placement = slot.placement;
+        const matches = draft.sections.filter((section) => section.section_id === placement.heading_id);
+        if (matches.length !== 1 || matches[0]!.heading.normalize('NFC') !== placement.heading_text.normalize('NFC')) {
+          throw new HarnessError('CONTRACT_INVALID', `Visual Slot ${slot.slot_id} has a missing, ambiguous, or changed heading`);
+        }
+      }
     }
     await this.store.writeNew(`${prefix}/draft-candidate.json`, draft);
     return {
@@ -558,10 +565,13 @@ export class ArticleService {
       : `\n\n${this.renderVisual(selected.get(cover.slot_id)!)}`;
     const sections = draft.sections
       .map((section) => {
+        const headingVisuals = slots.filter((slot) => slot.placement.kind === 'after_heading' && slot.placement.heading_id === section.section_id)
+          .flatMap((slot) => selected.has(slot.slot_id) ? [`\n\n${this.renderVisual(selected.get(slot.slot_id)!)}`] : [])
+          .join('');
         const sectionVisuals = slots.filter((slot) => slot.placement.kind === 'after_section' && slot.placement.section_id === section.section_id)
           .flatMap((slot) => selected.has(slot.slot_id) ? [`\n\n${this.renderVisual(selected.get(slot.slot_id)!)}`] : [])
           .join('');
-        return `## ${section.heading}\n\n${renderInPlace(section.markdown)}${sectionVisuals}`;
+        return `## ${section.heading}${headingVisuals}\n\n${renderInPlace(section.markdown)}${sectionVisuals}`;
       })
       .join('\n\n');
     const questions = draft.open_questions.length === 0

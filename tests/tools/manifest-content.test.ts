@@ -74,6 +74,14 @@ describe('canonicalManifestBytes', () => {
     expect(paths).toContain(
       'skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md'
     );
+    for (const path of [
+      'skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-common.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs'
+    ]) expect(paths).toContain(path);
     expect(paths.every((path) => !/^(?:[A-Za-z]:|\/|\\\\)/.test(path))).toBe(true);
     expect(paths.every((path) => !path.includes('\\'))).toBe(true);
     expect(paths).toEqual(expect.arrayContaining([

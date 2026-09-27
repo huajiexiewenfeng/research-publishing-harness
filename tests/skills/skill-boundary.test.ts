@@ -45,6 +45,15 @@ describe('article-publishing-copilot boundary', () => {
 });
 
 describe('x-publishing-copilot boundary', () => {
+  it('documents chooser default and explicit clipboard without weakening source placement or publish authority', async () => {
+    const reference = await readFile(resolve('skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md'), 'utf8');
+    expect(reference).toContain('including PNG, default to standard file-chooser');
+    expect(reference).toContain("explicitly selected with `transport: 'clipboard'`");
+    expect(reference).toContain('actual source location');
+    expect(reference).toContain('current-focus keyboard');
+    expect(reference).toContain('never paste again');
+    expect(reference).toContain('does not authorize Preview or Publish');
+  });
   it('requires exact preview and content-specific approval without implementing gates', async () => {
     const content = await skill('x-publishing-copilot');
     const frontmatter = parse(content.split('---')[1]!) as { name: string; description: string };
@@ -102,7 +111,7 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/never.*publish.*twice/i);
   });
 
-  it('orchestrates the one-confirmation V3.4 Fast Path as a continuous Draft-only loop', async () => {
+  it('orchestrates the V3.4 Fast Path through the complete V3.5 Draft-only Host Bridge', async () => {
     const content = await skill('x-publishing-copilot');
     const [reference, browserFlow] = await Promise.all([
       readFile(
@@ -116,6 +125,7 @@ describe('x-publishing-copilot boundary', () => {
     ]);
 
     expect(content).toContain('x-article-materialization/v3.4');
+    expect(content).toContain('x-article-host-bridge/v3.5');
     expect(content).toContain('references/x-article-fast-path-v3-4.md');
     expect(content).toContain('one confirmation');
     expect(content).toContain('one recovery');
@@ -123,12 +133,21 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/status[\s\S]*next[\s\S]*verify[\s\S]*claim[\s\S]*transaction[\s\S]*observation[\s\S]*report[\s\S]*continue/i);
     expect(reference).toContain('no per-image `continue`');
     expect(reference).toContain('No Subagent');
-    expect(reference).toContain('Insert -> Media');
+    expect(reference).toContain('Add Media → Media');
     expect(reference).toContain('cover region');
-    expect(reference).toContain('scripts/x-article-cover-host.mjs');
-    expect(reference).toContain('runCoverUpload');
+    expect(reference).toContain('scripts/x-article-host-bridge.mjs');
+    expect(reference).toContain('runXArticleHostBridge');
+    expect(reference).toContain('await runXArticleHostBridge');
+    expect(reference).toContain('same Node REPL call');
+    expect(reference).toContain('Do not start a background browser promise');
+    expect(reference).toMatch(/never.*directly.*runCoverUpload/is);
+    expect(reference).toMatch(/do not call.*Cover.*Inline Host.*directly/is);
     expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
     expect(reference).toMatch(/do not locally retry/is);
+    expect(reference).toContain('already-visible dialog-scoped control');
+    expect(reference).not.toContain('Verify the selected input binding');
+    expect(reference).toMatch(/register.*chooser.*before.*causal click/is);
+    expect(reference).toContain('not a direct `setInputFiles` API');
     expect(reference).toContain('stage progress');
     expect(reference).toContain('one recovery');
     expect(reference).toContain('draft_reconciled');
@@ -140,9 +159,15 @@ describe('x-publishing-copilot boundary', () => {
       resolve('registry/manifests/research-publishing.json'),
       'utf8'
     )) as { files: Array<{ path: string }> };
-    expect(manifest.files.map((file) => file.path)).toContain(
-      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs'
-    );
+    const manifestPaths = manifest.files.map((file) => file.path);
+    for (const path of [
+      'skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-common.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-cover-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs',
+      'skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs'
+    ]) expect(manifestPaths).toContain(path);
   });
 
   it('routes one-confirmation Publication Bundles through bind-before-next boundaries', async () => {

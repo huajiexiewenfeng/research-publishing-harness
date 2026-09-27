@@ -216,6 +216,7 @@ describe('research-publish CLI', () => {
       ok: true,
       operation: 'help',
       artifact: {
+        host_protocol: 'Host protocol: x-article-host-bridge/v3.5',
         routes: [
           'x-article fast-path audit --workspace <path> --input <input.json> --output json',
           'x-article fast-path confirm --workspace <path> --input <input.json> --output json',

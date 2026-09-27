@@ -94,10 +94,25 @@ export interface XArticleBrowserCapabilityManifestV1 {
   readonly observed_at: string;
 }
 
+export type XArticleBrowserHostReason =
+  | 'observation_captured'
+  | 'cover_uploaded'
+  | 'inline_image_uploaded'
+  | 'file_transfer_missing'
+  | 'x_media_effect_absent'
+  | 'x_media_still_processing'
+  | 'observation_unavailable_after_selection'
+  | 'command_or_asset_invalid'
+  | 'cover_control_ambiguous'
+  | 'anchor_control_ambiguous'
+  | 'anchor_context_changed'
+  | 'inline_alt_unverified';
+
 export interface XArticleBrowserReportInput {
   readonly command: XArticleBrowserCommandV1;
   readonly status: 'success' | 'transient_failure' | 'uncertain' | 'rejected';
   readonly observation: XArticleBrowserObservation | null;
+  readonly host_reason?: XArticleBrowserHostReason;
 }
 
 interface AdapterContext {
@@ -2363,11 +2378,18 @@ export class XArticleBrowserAdapter {
       : payload.kind === 'upload_article_cover'
         ? payload.asset.asset_id
         : null;
-    const observedEffect = input.status === 'success'
-      ? input.observation === null ? 'unknown' as const : 'complete' as const
-      : input.status === 'uncertain'
+    const observedEffect = input.host_reason === 'x_media_still_processing'
+      ? 'partial' as const
+      : input.host_reason === 'observation_unavailable_after_selection'
         ? 'unknown' as const
-        : 'none' as const;
+        : input.host_reason === 'file_transfer_missing'
+          || input.host_reason === 'x_media_effect_absent'
+          ? 'none' as const
+          : input.status === 'success'
+            ? input.observation === null ? 'unknown' as const : 'complete' as const
+            : input.status === 'uncertain'
+              ? 'unknown' as const
+              : 'none' as const;
     const waitingFor = observedEffect === 'unknown' || input.status === 'transient_failure'
       ? 'browser_effect_reconciliation'
       : null;

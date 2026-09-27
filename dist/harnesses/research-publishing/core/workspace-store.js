@@ -18,16 +18,47 @@ const ALLOWED_TOP_LEVEL = new Set([
     'runs',
     'x'
 ]);
+const DIRECTORY_RENAME_RETRY_DELAYS_MS = [25, 100, 250];
+const TRANSIENT_DIRECTORY_RENAME_ERRORS = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const waitFor = async (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 export class WorkspaceStore {
     root;
-    constructor(root) {
+    renameDirectory;
+    wait;
+    constructor(root, dependencies) {
         this.root = root;
+        this.renameDirectory = dependencies.renameDirectory ?? rename;
+        this.wait = dependencies.wait ?? waitFor;
     }
-    static async open(root) {
+    static async open(root, dependencies = {}) {
         const resolvedRoot = resolve(root);
         await mkdir(resolvedRoot, { recursive: true });
         await Promise.all([...ALLOWED_TOP_LEVEL].map((folder) => mkdir(resolve(resolvedRoot, folder), { recursive: true })));
-        return new WorkspaceStore(resolvedRoot);
+        return new WorkspaceStore(resolvedRoot, dependencies);
+    }
+    async installDirectory(temporaryPath, absolutePath, normalized) {
+        for (let attempt = 0;; attempt += 1) {
+            try {
+                await this.renameDirectory(temporaryPath, absolutePath);
+                return;
+            }
+            catch (error) {
+                const code = error.code;
+                const destinationExists = await lstat(absolutePath).then(() => true, (statError) => {
+                    if (statError.code === 'ENOENT')
+                        return false;
+                    throw statError;
+                });
+                if (destinationExists) {
+                    throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
+                }
+                const delay = DIRECTORY_RENAME_RETRY_DELAYS_MS[attempt];
+                if (!code || !TRANSIENT_DIRECTORY_RENAME_ERRORS.has(code) || delay === undefined) {
+                    throw error;
+                }
+                await this.wait(delay);
+            }
+        }
     }
     resolveAllowed(relativePath) {
         const portablePath = relativePath.replaceAll('\\', '/');
@@ -148,16 +179,7 @@ export class WorkspaceStore {
                     await handle.close();
                 }
             }
-            try {
-                await rename(temporaryPath, absolutePath);
-            }
-            catch (error) {
-                const code = error.code;
-                if (code === 'EEXIST' || code === 'ENOTEMPTY' || code === 'EPERM') {
-                    throw new HarnessError('ARTIFACT_EXISTS', `artifact directory already exists: ${normalized}`);
-                }
-                throw error;
-            }
+            await this.installDirectory(temporaryPath, absolutePath, normalized);
         }
         finally {
             await rm(temporaryPath, { recursive: true, force: true });

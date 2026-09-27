@@ -7,6 +7,8 @@ export default defineConfig({
     testTimeout: 15_000,
     maxWorkers: 4,
     exclude: [
+      // Only the memory launcher uses Node's runner; Article .mjs tests use Vitest.
+      'tests/skills/memory-routing.test.mjs',
       '**/dist/**',
       '**/node_modules/**',
       '**/.worktrees/**',

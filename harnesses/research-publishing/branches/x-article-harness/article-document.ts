@@ -38,4 +38,5 @@ export interface XArticleCompilerVisual {
 export interface CompileXArticleDocumentInput {
   readonly markdown: string;
   readonly visuals: readonly XArticleCompilerVisual[];
+  readonly sections?: readonly { readonly section_id?: string; readonly heading: string }[];
 }

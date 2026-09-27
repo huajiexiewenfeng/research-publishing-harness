@@ -50,6 +50,94 @@ describe('compileXArticleDocument', () => {
       .toThrowError(expect.objectContaining({ code: 'ARTICLE_FORMAT_UNSUPPORTED' }));
   });
 
+  const headingVisual = {
+    ...architecture,
+    placement: { kind: 'after_heading' as const, heading_id: 'runtime', heading_text: 'Runtime' }
+  };
+  const sections = [{ section_id: 'runtime', heading: 'Runtime' }];
+
+  it('accepts an explicitly bound image immediately after its heading', () => {
+    const document = compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)\n\nBody.',
+      sections,
+      visuals: [headingVisual]
+    });
+    expect(document.blocks.map((block) => block.kind)).toEqual(['heading', 'image', 'paragraph']);
+  });
+
+  it('rejects a heading-bound image placed at the end of its section', () => {
+    expect(() => compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\nBody.\n\n![Runtime architecture](assets/runtime.png)',
+      sections,
+      visuals: [headingVisual]
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it.each([
+    ['missing heading', '# T\n\n![Runtime architecture](assets/runtime.png)'],
+    ['changed heading text', '# T\n\n## Other\n\n![Runtime architecture](assets/runtime.png)'],
+    ['undeclared duplicate heading', '# T\n\n## Runtime\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)']
+  ])('rejects %s instead of guessing placement', (_name, markdown) => {
+    expect(() => compileXArticleDocument({ markdown, sections, visuals: [headingVisual] }))
+      .toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('rejects an unknown heading ID even when its text exists', () => {
+    expect(() => compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)',
+      sections: [{ section_id: 'other', heading: 'Runtime' }],
+      visuals: [headingVisual]
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('resolves duplicate heading texts using explicit source section IDs', () => {
+    const document = compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\nFirst.\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)\n\nSecond.',
+      sections: [{ section_id: 'first', heading: 'Runtime' }, ...sections],
+      visuals: [headingVisual]
+    });
+    expect(document.blocks[3]).toMatchObject({ kind: 'image', asset_id: architecture.asset.asset_id });
+    expect(() => compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)\n\nFirst.\n\n## Runtime\n\nSecond.',
+      sections: [{ section_id: 'first', heading: 'Runtime' }, ...sections],
+      visuals: [headingVisual]
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('rejects duplicate source section IDs', () => {
+    expect(() => compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)',
+      sections: [...sections, ...sections], visuals: [headingVisual]
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('accepts a declared image group and rejects its reversed order', () => {
+    const second = { ...headingVisual, asset: { ...architecture.asset, asset_id: 'second', relative_path: 'assets/second.png', alt_text: 'Second diagram' } };
+    const firstImage = '![Runtime architecture](assets/runtime.png)';
+    const secondImage = '![Second diagram](assets/second.png)';
+    const compile = (images: string) => compileXArticleDocument({
+      markdown: `# T\n\n## Runtime\n\n${images}\n\nBody.`, sections, visuals: [headingVisual, second]
+    });
+    expect(compile(`${firstImage}\n\n${secondImage}`).blocks.map((block) => block.kind))
+      .toEqual(['heading', 'image', 'image', 'paragraph']);
+    expect(() => compile(`${secondImage}\n\n${firstImage}`))
+      .toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('requires source heading identities for the new placement', () => {
+    expect(() => compileXArticleDocument({
+      markdown: '# T\n\n## Runtime\n\n![Runtime architecture](assets/runtime.png)', visuals: [headingVisual]
+    })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
+  });
+
+  it('supports Chinese heading text without slug guessing', () => {
+    expect(compileXArticleDocument({
+      markdown: '# 项目知识\n\n## 运行时边界\n\n![Runtime architecture](assets/runtime.png)\n\n正文。',
+      sections: [{ section_id: 'runtime', heading: '运行时边界' }],
+      visuals: [{ ...architecture, placement: { kind: 'after_heading', heading_id: 'runtime', heading_text: '运行时边界' } }]
+    }).blocks.map((block) => block.kind)).toEqual(['heading', 'image', 'paragraph']);
+  });
+
   it('compiles the supported canonical Markdown subset into a stable document', () => {
     expect(compileXArticleDocument({
       markdown: [

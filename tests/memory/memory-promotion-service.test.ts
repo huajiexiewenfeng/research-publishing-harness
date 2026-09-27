@@ -7,6 +7,12 @@ import { MemoryPromotionService } from '../../harnesses/research-publishing/core
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
 import { createPromotionFixture, FakePromotionRuntime, promotionAssets } from './memory-promotion-fixture.js';
 
+function withoutDigest<T extends object, K extends keyof T>(value: T, key: K): Omit<T, K> {
+  const copy = { ...value };
+  Reflect.deleteProperty(copy, key);
+  return copy;
+}
+
 async function setup() {
   const store = await WorkspaceStore.open(await mkdtemp(join(tmpdir(), 'rph-promotion-service-')));
   const fixture = await createPromotionFixture(store);
@@ -60,9 +66,9 @@ describe('Promotion target preflight', () => {
     const broken = structuredClone(delta);
     const target = broken.proposed_operations[0]!.target_content as {variables: Record<string,string>};
     delete target.variables.claim_id;
-    const { delta_digest: _oldDigest, ...unsignedDelta } = broken;
+    const unsignedDelta = withoutDigest(broken, 'delta_digest');
     const nextDelta = {...unsignedDelta, delta_digest:sha256(unsignedDelta)};
-    const { review_digest: _oldReview, ...unsignedReview } = review;
+    const unsignedReview = withoutDigest(review, 'review_digest');
     const nextReview = {...unsignedReview, delta_digest: nextDelta.delta_digest};
     await store.replaceAtomic(`memory/deltas/${delta.delta_id}/delta.json`, nextDelta);
     await store.replaceAtomic(`memory/reviews/${review.review_id}/review.json`, {...nextReview,review_digest:sha256(nextReview)});
@@ -90,10 +96,10 @@ it('stores document manifests without presenting them as additional mainline kno
   const {sha256}=await import('../../harnesses/research-publishing/core/digest.js');
   const target={frontmatter:{document_id:'doc_example'},variables:{research_track:'enterprise-agent-runtime',document_id:'doc_example'},refs:{},body:'# Manifest\n{}\n',index_entry:{...(delta.proposed_operations[0]!.target_content as {index_entry:object}).index_entry,ref:'document:doc_example',record_path:'domains/research-publishing/tracks/enterprise-agent-runtime/documents/doc_example/manifest.md'}};
   const document={...delta.proposed_operations[0]!,operation_id:'op_doc',target_id:'doc_example',record_type:'canonical_document_manifest',target_content:target,target_content_digest:sha256(target)};
-  const {delta_digest:_d,...d}=delta;
+  const d = withoutDigest(delta, 'delta_digest');
   const body={...d,proposed_operations:[...d.proposed_operations,document]};
   const next={...body,delta_digest:sha256(body)};
-  const {review_digest:_r,...r}=review;
+  const r = withoutDigest(review, 'review_digest');
   const rb={...r,delta_digest:next.delta_digest,accepted_operation_ids:[...r.accepted_operation_ids,'op_doc']};
   await store.replaceAtomic(`memory/deltas/${delta.delta_id}/delta.json`,next);
   await store.replaceAtomic(`memory/reviews/${review.review_id}/review.json`,{...rb,review_digest:sha256(rb)});

@@ -12,6 +12,7 @@
     "origin": { "const": "https://x.com" },
     "canonical_url": { "type": "string", "format": "uri", "pattern": "^https://x\\.com/" },
     "page_revision": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "page_state_revision": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "observed_at": { "type": "string", "format": "date-time" },
     "account_handle": { "type": ["string", "null"] },
     "page_kind": { "enum": ["articles_index", "article_editor", "article_preview", "publish_review", "public_article", "login_required", "security_challenge"] },

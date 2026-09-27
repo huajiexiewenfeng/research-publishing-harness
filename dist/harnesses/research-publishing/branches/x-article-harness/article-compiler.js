@@ -98,6 +98,43 @@ function rejectUnsupportedLine(line) {
         unsupported(`unsupported Markdown: ${line}`);
     }
 }
+function assertHeadingPlacements(input, blocks) {
+    const anchored = input.visuals.filter((visual) => visual.placement.kind === 'after_heading');
+    if (anchored.length === 0)
+        return;
+    const sections = input.sections ?? [];
+    const visibleText = (value) => inline(value).map((run) => run.text).join('');
+    const headings = blocks.flatMap((block, index) => block.kind === 'heading'
+        ? [{ index, text: block.runs.map((run) => run.text).join('') }] : []);
+    for (const visual of anchored) {
+        const placement = visual.placement;
+        if (placement.kind !== 'after_heading')
+            continue;
+        const sources = sections.filter((section) => section.section_id === placement.heading_id);
+        if (sources.length !== 1 || visibleText(sources[0].heading) !== visibleText(placement.heading_text)) {
+            throw new HarnessError('ARTICLE_ASSET_MISMATCH', `Visual ${visual.asset.asset_id} has an invalid heading identity`);
+        }
+        const text = visibleText(placement.heading_text);
+        const sameTextSources = sections.filter((section) => visibleText(section.heading) === text);
+        const matches = headings.filter((heading) => heading.text === text);
+        if (matches.length !== sameTextSources.length) {
+            throw new HarnessError('ARTICLE_ASSET_MISMATCH', `Visual ${visual.asset.asset_id} has a missing or ambiguous heading`);
+        }
+        const occurrence = sameTextSources.findIndex((section) => section.section_id === placement.heading_id);
+        const headingIndex = matches[occurrence].index;
+        const actual = [];
+        for (let index = headingIndex + 1; blocks[index]?.kind === 'image'; index += 1) {
+            const image = blocks[index];
+            if (image.kind === 'image')
+                actual.push(image.asset_id);
+        }
+        const expected = anchored.filter((candidate) => candidate.placement.kind === 'after_heading'
+            && candidate.placement.heading_id === placement.heading_id).map((candidate) => candidate.asset.asset_id);
+        if (actual.length !== expected.length || actual.some((assetId, index) => assetId !== expected[index])) {
+            throw new HarnessError('ARTICLE_ASSET_MISMATCH', `Visuals must appear immediately after heading ${placement.heading_id} in declared order`);
+        }
+    }
+}
 export function compileXArticleDocument(input) {
     const markdown = input.markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n').normalize('NFC');
     const lines = markdown.split('\n');
@@ -199,6 +236,7 @@ export function compileXArticleDocument(input) {
     if (seenAssets.size !== input.visuals.length) {
         throw new HarnessError('ARTICLE_ASSET_MISMATCH', 'finalized visual manifest contains an unused asset');
     }
+    assertHeadingPlacements(input, blocks);
     return validateContract('x-article-document', {
         schema_version: '1.0',
         title: titleLine.slice(2).normalize('NFC'),

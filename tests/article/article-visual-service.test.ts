@@ -5,13 +5,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { ArticleService } from '../../harnesses/research-publishing/branches/article-harness/article-service.js';
+import { XArticleService } from '../../harnesses/research-publishing/branches/x-article-harness/x-article-service.js';
 import { WorkspaceStore } from '../../harnesses/research-publishing/core/workspace-store.js';
+import type { VisualSlot } from '../../harnesses/research-publishing/core/types.js';
 import { researchPackage } from '../fixtures/research-package.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const frozenPackage = { ...researchPackage, status: 'frozen', version: 3 } as const;
 
-async function setup(required = true) {
+async function setup(required = true, placement: VisualSlot['placement'] = { kind: 'cover' }) {
   const root = await mkdtemp(join(tmpdir(), 'rph-article-visual-'));
   const source = join(root, 'cover.png');
   await writeFile(source, PNG);
@@ -28,7 +30,7 @@ async function setup(required = true) {
     schema_version: '1.0', run_id: run.run_id, title: 'Visual runtime boundary',
     summary: 'The boundary remains evidence-backed.', language: 'en',
     sections: [{ section_id: 'boundary', heading: 'Boundary', markdown: 'The synthetic runtime validates context packages.', claim_refs: ['claim_verified'], source_refs: ['source_test'] }],
-    visual_slots: [{ slot_id: 'cover', placement: { kind: 'cover' }, purpose: 'cover', required, brief: 'Show one runtime boundary.', claim_refs: ['claim_verified'] }],
+    visual_slots: [{ slot_id: 'cover', placement, purpose: placement.kind === 'cover' ? 'cover' : 'architecture', required, brief: 'Show one runtime boundary.', claim_refs: ['claim_verified'] }],
     open_questions: []
   });
   await article.reviewArticle(run.run_id);
@@ -36,6 +38,34 @@ async function setup(required = true) {
 }
 
 describe('Article visual lifecycle', () => {
+  it('renders a heading-bound visual before the section body', async () => {
+    const { article, store, runId, source } = await setup(true, {
+      kind: 'after_heading', heading_id: 'boundary', heading_text: 'Boundary'
+    });
+    const candidate = await article.attachVisual(runId, {
+      candidateId: 'candidate_heading', assetId: 'asset_heading', slotId: 'cover', sourcePath: source,
+      altText: 'Runtime boundary.', claimRefs: ['claim_verified'],
+      provenance: { method: 'generated', tool: 'synthetic-test' }
+    });
+    await article.reviewVisual(runId, {
+      selectedCandidates: { cover: candidate.candidate_id }, reviewedBy: 'human:test',
+      claimAlignment: true, boundaryAlignment: true, mobileLegibility: true,
+      singleMessage: true, privacyReview: true
+    });
+    const ref = await article.finalizeArticle(runId);
+    const markdown = await store.readText(`${ref.root}/article.md`);
+    expect(markdown).toContain('## Boundary\n\n![Runtime boundary.](assets/asset_heading.png)\n\nThe synthetic runtime');
+    const plan = await new XArticleService(store).plan(ref, '@Glen56121');
+    expect(plan.intent.document.blocks.map((block) => block.kind)).toEqual(['paragraph', 'heading', 'image', 'paragraph']);
+  });
+
+  it.each([
+    { kind: 'after_heading' as const, heading_id: 'missing', heading_text: 'Boundary' },
+    { kind: 'after_heading' as const, heading_id: 'boundary', heading_text: 'Other' }
+  ])('rejects an invalid heading binding during draft acceptance: %j', async (placement) => {
+    await expect(setup(true, placement)).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
   it('blocks finalization until a required slot is selected and reviewed', async () => {
     const { article, runId } = await setup();
     await expect(article.finalizeArticle(runId)).rejects.toMatchObject({ code: 'VISUAL_SLOT_UNRESOLVED' });

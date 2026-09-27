@@ -1,0 +1,166 @@
+{
+  "canonical_url": "https://x.com/compose/articles/edit/2093554993261654016",
+  "account_handle": "@Glen56121",
+  "title_controls": [
+    {
+      "tag": "TEXTAREA",
+      "placeholder": "Add a title",
+      "value": "From Skill Memory to Shared Agent Knowledge"
+    }
+  ],
+  "composers": [
+    {
+      "test_id": "composer",
+      "role": "textbox",
+      "contenteditable": "true",
+      "blocks": [
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "Opening.",
+              "bold": false,
+              "italic": true,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "H2",
+          "parent_class": "longform-header-two",
+          "runs": [
+            {
+              "text": "Boundary",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "LI",
+          "parent_class": "longform-unordered-list-item public-DraftStyleDefault-unorderedListItem public-DraftStyleDefault-reset public-DraftStyleDefault-depth0 public-DraftStyleDefault-listLTR",
+          "runs": [
+            {
+              "text": "First item",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "LI",
+          "parent_class": "longform-unordered-list-item public-DraftStyleDefault-unorderedListItem public-DraftStyleDefault-depth0 public-DraftStyleDefault-listLTR",
+          "runs": [
+            {
+              "text": "Second item",
+              "bold": true,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "BLOCKQUOTE",
+          "parent_class": "longform-blockquote",
+          "runs": [
+            {
+              "text": "Runtime boundary.",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "RPH_VISUAL_ANCHOR:asset-architecture-runtime-boundary:5",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "Repository",
+              "bold": false,
+              "italic": false,
+              "link": "https://github.com/example/runtime"
+            }
+          ]
+        },
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "RPH_VISUAL_ANCHOR:asset-process-consumer-agent-connection:7",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "Closing.",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        },
+        {
+          "parent_tag": "DIV",
+          "parent_class": "longform-unstyled",
+          "runs": [
+            {
+              "text": "RPH_VISUAL_ANCHOR:asset-comparison-knowledge-vs-context:9",
+              "bold": false,
+              "italic": false,
+              "link": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "file_inputs": [
+    {
+      "test_id": "fileInput",
+      "accept": "image/jpeg,image/png,image/webp",
+      "multiple": false,
+      "visible": true,
+      "enabled": true,
+      "region_text": "We recommend an image with a 5:2 aspect ratio for best results."
+    }
+  ],
+  "controls": [
+    {
+      "role": "button",
+      "name": "Add Media",
+      "test_id": null,
+      "disabled": false
+    },
+    {
+      "role": "button",
+      "name": "Publish",
+      "test_id": null,
+      "disabled": false
+    }
+  ],
+  "media": [],
+  "autosave_text": "Last saved 1 minute ago"
+}

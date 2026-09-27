@@ -1643,11 +1643,18 @@ export class XArticleBrowserAdapter {
             : payload.kind === 'upload_article_cover'
                 ? payload.asset.asset_id
                 : null;
-        const observedEffect = input.status === 'success'
-            ? input.observation === null ? 'unknown' : 'complete'
-            : input.status === 'uncertain'
+        const observedEffect = input.host_reason === 'x_media_still_processing'
+            ? 'partial'
+            : input.host_reason === 'observation_unavailable_after_selection'
                 ? 'unknown'
-                : 'none';
+                : input.host_reason === 'file_transfer_missing'
+                    || input.host_reason === 'x_media_effect_absent'
+                    ? 'none'
+                    : input.status === 'success'
+                        ? input.observation === null ? 'unknown' : 'complete'
+                        : input.status === 'uncertain'
+                            ? 'unknown'
+                            : 'none';
         const waitingFor = observedEffect === 'unknown' || input.status === 'transient_failure'
             ? 'browser_effect_reconciliation'
             : null;

@@ -3,7 +3,7 @@
 ## Summary
 
 - title: X Article Fast Path emits media commands but has no reusable executable Chrome transaction
-- status: implemented; live primitive verified; installed end-to-end deferred to the next article
+- status: Thin Host Adapter offline verification done; page evidence replaces transient file-input binding, verified short-path staging is implemented, and one fresh Draft-only verification remains
 - flow_id: `x-article-browser-host-executor-gap-2026-08-29`
 - severity: high
 - owner: Research Publishing Harness
@@ -16,7 +16,7 @@
 - secondary_bridges: brainstorming, test-driven-development, verification-before-completion
 - confidence: high
 - reason: current source and live execution evidence agree that the Harness persists commands while Codex performs media actions ad hoc
-- next_gate: separately approved Draft-only smoke on an allowed HTTPS page
+- next_gate: digest-bound action-time confirmation for one 15-minute Draft-only smoke
 - routed_at: 2026-08-29
 
 ## Source
@@ -40,33 +40,42 @@ One approved Draft-only execution should run a reusable, deterministic cover-upl
 - Live execution reports contain `upload_article_cover: uncertain` followed by `upload_article_cover: transient_failure`, with zero observed visuals.
 - Fast Path status exceeded 900 seconds while remaining non-terminal.
 - The installed and repository Skill digests match; active Skill deployment drift is not the demonstrated cause.
-- On 2026-08-30 the same planned PNG uploaded successfully through Chrome's native picker, while Browser `filechooser.setFiles()` either produced no visual effect or remained at `Uploading media...` until cancelled.
-- Chrome profile evidence confirms the ChatGPT extension has `newAllowFileAccess: true`; the documented file-URL permission is not the current blocker.
-- Packaged V3.8 removed the V3.5 post-selection `input.files[0]` byte-length and MIME binding check, even though the Host protocol still requires selected-input verification.
-- Current X inline media uses `Add Media -> Media -> Insert` and a scoped `input[type=file]` with `multiple=true`; the packaged Inline Host still treats the `Media` menu item as the chooser trigger and rejects a multiple-capable chooser.
-- Planned image paths are 306-315 characters; the direct recovery attempt bypassed short-path staging and used the 310-character source path.
-- The exact 04 PNG was staged from a 308-character planned path to `C:\Users\admin\Documents\New project 2\.tmp-upload-test\x-article-04.png` (72 characters, 221636 bytes, SHA-256 `43da063797255010783991b06b5a2c57dbb6c85895f1b9650c9b2519713bec38`). Selecting that file through the visible `Insert` dialog's actual scoped input succeeded within seconds.
-- The successful 04 transaction increased the article image count from two to three, persisted the approved Alt text exactly, removed only the 04 marker, and reached `Last saved just now`; Preview and Publish were not touched.
+- A fresh V3.4 execution, `x_article_execution_105d34cd-44ce-478c-bc58-a2630a16c74b`, verified the exact account, Draft ID, title, 76 canonical body blocks, three ordered unresolved anchors, zero media, and saved autosave state from the live Chrome page.
+- The approved cover is a valid 1600x900, 8-bit RGBA PNG whose SHA-256 exactly matches the claimed command.
+- The chooser opened and `setFiles` returned, but a fresh page read showed zero cover and zero inline images.
+- The turn-specific Observation callback failed because its execution environment does not expose `process`; the Cover Host therefore returned `uncertain` even though a later fresh Observation proved zero effect.
+- The hard deadline stopped the execution at 905.985 seconds with zero duplicate media writes and zero Preview/Publish actions.
+- The merged TypeScript source exposed V3.4 while the committed `dist` CLI initially rejected `x-article fast-path audit` as an unknown operation; a local build made it available, proving packaged-output drift.
+- V3.5 now packages the bounded Editor Extractor, deterministic dual-Revision Observation Builder, runtime observer, reasoned cover and inline transactions, and the Draft-only Host Bridge dispatcher.
+- The pre-build parity gate first rejected the old CLI because `x-article-host-bridge/v3.5` was absent. A selective rebuild then exposed a second real failure: the new Adapter imported `createXArticleFastPathResult` from an old packaged dependency. Commit `802d14c` includes the minimal executable CLI dependency closure and the gate now passes before any build-capable test.
+- Live retry `x_article_execution_021cdc3b-2d86-47b3-8e02-9a23b5611ca7` proved that the scoped cover `input[type=file]` is only about `0.09 x 0.09` pixels and has no label; its same-parent visible button is the actual chooser trigger (`aria-label="Add photos or video"`).
+- The Cover Host incorrectly used the hidden binding input as `causalTrigger`. The chooser therefore never opened and the Host correctly reported `file_transfer_missing` with no possible selection and no X effect.
+- The first Cover Host correction used the unique visible/enabled sibling button to open the chooser but still kept the scoped file input as a post-selection binding gate. Live evidence showed that this gate was not a reliable page contract.
+- Fresh execution `x_article_execution_ac58f8ca-8350-4fed-a427-dcb545cdd7c6` reached the exact Draft and saved editor state, then both forward-slash and canonical Windows forms of the same 304-character cover path returned `file_transfer_missing`; fresh observations proved zero cover, zero inline images, and no Preview/Publish effect.
+- Node and the visual verifier read the approved PNG successfully, so missing/corrupt source bytes are excluded. A local transport check now stages that exact 304-character source to a 63-character temporary path, preserves digest `sha256:0e68a95438ece1a67a0285d24dd3ae870ddfa5e66fbec0c59f4e16a9416f5306` byte-for-byte, and removes the temporary copy after the transaction.
+- Cover RED proved that empty `input.files` forced `file_transfer_missing` even when the Editor Observation contained the uploaded cover; commit `411c663` makes the stable page visual and autosave state authoritative.
+- Inline RED reproduced the same failure despite complete visual, anchor, Alt, and autosave evidence; commit `a2d11e9` removes the binding gate from the inline transaction.
+- The legacy binding helper is removed. `deliverOneFile` performs one chooser delivery, while Cover and Inline independently verify the real Editor result. Commit `4484ab0` also keeps the verified short-path copy alive for the whole transaction and cleans it after success or exceptions.
 
 ## Reproduction
 
 - status: reproduced
-- command_or_steps: prepare an existing-Draft Fast Path with one cover and three inline images; claim and attempt the first `upload_article_cover` command twice
-- observed: `Cover 0/1`, `Inline images 0/3`, no page media effect, non-terminal state after the time budget
+- command_or_steps: prepare an existing-Draft Fast Path with one cover and three inline images; claim the first cover command; attempt the approved 304-character asset path once in each supported path spelling; reconcile after each attempt
+- observed: both path spellings returned `file_transfer_missing`; `Cover 0/1`, `Inline images 0/3`, saved autosave, and fresh live page evidence proved no media effect before terminal `materialization_blocked`
 - expected: one verified cover or a terminal bounded failure
-- limitation: the combined failure was reproduced and isolated, but the newly deployed helper was not rerun against the already-complete article because that would create a duplicate image
+- limitation: path length is the only demonstrated boundary difference and is now handled defensively, but browser policy prevented an isolated long-vs-short local-page experiment; only a fresh digest-bound Draft execution can prove the external transport hypothesis
 
 ## Scope
 
-- active: `x-article-host-common.mjs`, `x-article-inline-image-host.mjs`, focused Host tests, and one approved Draft-only 04 upload A/B using the exact planned asset
-- read_only: current V3.8 cover helper, existing V3.2/V3.3 command and observation schemas, Chrome upload documentation, preserved execution reports
-- candidate: cover helper alignment only if the common transport fix proves it is required
-- excluded: Article text/title, visual bytes, Preview, Publish, Draft cleanup, approval/digest models, Subagents, broad Fast Path redesign
-- escalation_history: 2026-08-30 user continued the fix after live 03 manual success; inline file delivery and one 04 Draft-only A/B moved from candidate/read-only into active scope
+- active: thin Cover and Inline Host transactions under `x-publishing-copilot`, page-result verification, media attempt budget, and Fast Path hard deadline
+- read_only: preserved live Draft, existing V3.2/V3.3 command and observation schemas, Codex Chrome runtime documentation
+- candidate: one fresh cover-plus-three-inline Draft-only live verification after deployment
+- excluded: Article content, visual bytes, Preview, Publish, Draft cleanup, standalone browser profile, new approval or digest models, Subagents
+- escalation_history: none
 
 ## Diagnosis
 
-V3.4 implemented a stronger control plane without packaging the media mutation as executable Host code. The Skill therefore leaves the highest-risk step to turn-specific agent code. Failure reports trigger reconciliation, but the next-command path can emit another cover command whenever the cover is still absent. The 900-second value is currently projected as status data rather than enforced as a terminal deadline.
+The original failure had three independent layers: no packaged live Editor Observer, no deterministic Host-to-Harness Observation bridge, and no pre-build check for stale executable output. V3.5 closes those repository-owned gaps. The first live retry exposed a fourth mismatch: X separates the visible chooser button from the tiny file input. The next live run exposed a fifth boundary risk: the approved package path is 304 characters long. The attempted optimization also introduced a sixth design error: transient `input.files` state was promoted to a success contract even though X can clear or replace that input during ingestion. The Thin Host Adapter now verifies approved bytes, delivers one file through a short path when required, and decides success only from stable cover/inline visual, anchor, Alt, and autosave evidence.
 
 The live failure was localized to three interacting Browser file-delivery assumptions: the direct recovery bypassed existing long-path staging, the Inline Host treated the `Media` menu item as the chooser trigger instead of opening `Insert` and targeting its actual input, and the common Host rejected X's valid `multiple=true` input even though the transaction submits exactly one file. The successful A/B used the existing short-path strategy and the actual scoped input. The input may detach immediately after selection, so `input.files` cannot be a universal hard gate; the durable success evidence remains the bounded X page observation, image count/anchor replacement, exact Alt readback, and autosave state.
 
@@ -76,13 +85,37 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Fix Plan
 
-1. Add a reusable JavaScript Host helper shipped with `x-publishing-copilot` for the exact cover transaction.
-2. Accept the selected tab/session and immutable command inputs; do not discover profiles, cookies, or credentials.
-3. Use the exact visible cover control, arm the chooser with `{timeoutMs}`, call `setFiles([absolutePath])`, and classify the observed effect.
-4. Add a deterministic local upload-transport fixture test before any live Draft smoke.
-5. Persist and enforce one initial attempt plus at most one adapter-authorized retry per media asset.
-6. Turn the Audit deadline into a hard terminal stop in command issuance and status/recovery paths.
-7. Keep inline-image execution as a separate follow-on slice.
+1. [done] Package a bounded Chrome Editor Extractor.
+2. [done] Build deterministic dual-Revision Observations with legacy `page_revision` compatibility and semantic `page_state_revision`.
+3. [done] Add file-binding evidence, bounded stability waits, and stable cover outcome reasons.
+4. [done] Add single-anchor inline replacement with exact Alt write/readback and ordinal verification.
+5. [done] Route navigate, observe, cover, and inline commands through one Draft-only Host Bridge.
+6. [done] Preserve the attempt budget and shared hard deadline; Host code never retries locally.
+7. [done] Run packaged CLI parity before any build can mask stale `dist` artifacts.
+8. [done] Run the first 15-minute Draft-only live smoke and prove the cover chooser trigger mismatch without producing any media effect.
+9. [done] Separate the visible cover chooser trigger from the scoped binding input and add RED/GREEN regression coverage.
+10. [done] Run one fresh bounded Draft-only execution and prove that both spellings of the 304-character approved cover path fail before file binding with zero X effect.
+11. [done] Add digest-preserving short-path transport staging at the Host Bridge boundary, with transaction-lifetime cleanup and RED/GREEN coverage.
+12. [done] Remove `input.files` from the media state machine; use one-file delivery plus page-result authority for Cover and Inline.
+13. [done] Pass packaged CLI, lint, typecheck, 1291-test aggregate verification, and all 0/1/3/10/disconnect Fast Path acceptance cases.
+14. [pending deployment and external confirmation] Deploy the four changed Skill scripts, generate a new Audit, and run one fresh bounded Draft-only execution; never reuse the terminal command.
+
+## RED / GREEN Ledger
+
+| Task | RED evidence | GREEN checkpoint |
+|---|---|---|
+| 1 | Editor extractor module and bounded snapshot contract absent | `bbd1d43` |
+| 2 | Deterministic Observation Builder and stable semantic Revision absent; legacy-only observations needed compatibility | `497c3fa` |
+| 3 | Packaged runtime observer absent | `98f3c0a` |
+| 4 | Cover transaction could not distinguish file binding from no X effect | `9432f10` |
+| 5 | Adapter did not persist stable Host outcome reasons | `008a547` |
+| 6 | Single-anchor inline replacement and Alt readback dispatcher absent | `b47da97` |
+| 7 | No complete Draft-only dispatcher; acceptance lacked complete Host dispatch evidence | `5ac8623` |
+| 8 | parity tool absent; old `dist` lacked V3.5, then selective output failed on a stale runtime export | `802d14c` |
+| 9 | Skill fallback/authority language and generated manifest were stale | this `chore: package complete X Article Host Bridge` packaging commit |
+| 10 | Live X DOM placed the cover input and causal button beside each other; the Host clicked the binding input | focused RED showed input click, GREEN uses the visible `Add photos or video` button; 17/17 cover tests and 49/49 Host tests pass |
+| 11 | Bridge passed the approved 304-character package path directly to Chrome; RED proved no alternate transport path existed | Bridge stages identical verified bytes only when the path exceeds 240 characters; focused Common + Bridge tests pass 20/20 and the real asset stages 304 → 63 characters with exact digest and cleanup |
+| 12 | Cover and Inline RED cases returned `file_transfer_missing` despite complete page evidence when `input.files` was empty | `79118c6`, `411c663`, `a2d11e9`, and `4484ab0`; five focused Host files pass 52/52 and runtime source has no binding helper |
 
 2026-08-30 minimal continuation:
 
@@ -93,41 +126,47 @@ None. The Codex Chrome host is an environment boundary, not another project cont
 
 ## Verification
 
-- status: implementation-pass; live primitive-pass
-- commands_or_checks: RED/GREEN for multiple-capable one-file delivery and current `Add Media -> Media -> Insert -> input[type=file]` interaction; focused Host regression; focused ESLint; `git diff --check`; source/installed SHA-256 parity; exact 04 Draft-only live A/B
-- result_summary: the new tests first failed on both obsolete assumptions, then passed after the minimal code change; 2 focused files passed 21/21 tests and the complete X Article Host set passed 63/63 tests across 6 files; focused ESLint and `git diff --check` passed; installed `x-article-host-common.mjs` matches source at `7BE0D4FB0DCC216089B0422F8695B528C459AB768BBEE1822EC04F032EBD45B1`, and installed `x-article-inline-image-host.mjs` matches source at `647C337973F0F66EEA232188F0B536D44C8998445E5D8915AA314FAAE574B578`; the exact 04 live transaction completed with three images, exact Alt, marker removal, and autosave
-- limitation: the unrelated full Vitest suite produced no verifiable progress for about 90 seconds and was intentionally interrupted; the newly installed helper was not invoked again on the complete Draft to avoid duplicate mutation
-- residual_risk: the next article should provide the first installed-helper end-to-end confirmation; if X changes the accessible name of the `Insert` dialog, the scoped locator will fail closed rather than improvising
+- status: offline_done_live_verification_pending
+- commands_or_checks: pre-build `pnpm check:packaged-cli`; full lint and typecheck; 16-file focused V3.5 suite; `pnpm acceptance:x-article-fast-path`; complete `pnpm check`; final `git diff --check`
+- result_summary: packaged CLI parity passed against `x-article-host-bridge/v3.5`; lint, typecheck, and build passed; the latest complete Vitest run passed 184 files with 1291 tests passed, 1 file and 1 test skipped, and 0 failed; the focused Host suite passed 52/52; Fast Path acceptance passed all five 0/1/3/10/disconnect-recovery scenarios with network unused
+- draft_only_command_set: `navigate`, `observe_article_page`, `upload_article_cover`, `replace_article_visual_anchor`; Host Bridge rejects Preview and Publish before dispatch
+- fast_path_acceptance: 0, 1, 3, 10 inline-image cases plus one disconnect recovery all reached `draft_reconciled`; duplicate Draft/upload/write counts were zero; Preview and Publish command counts were zero; exact inline Alt verification was complete
+- limitation: the short-path transport adaptation is verified offline but has not yet completed a fresh live X transaction
+- residual_risk: one fresh digest-bound Draft-only execution remains necessary; the terminal execution produced no X media effect and issued no Preview or Publish command
 
 ## Flow Record
 
 | Step | Status | Evidence | Updated |
 |---|---|---|---|
 | source | done | preserved execution reports and source inspection | 2026-08-29 |
-| design | done | `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md` | 2026-08-29 |
-| plan | done | Inline Execution selected; no Subagent used | 2026-08-29 |
-| development | done | prior Host bridge plus minimal current-X delivery repair committed as `96a067ec13b015e04f3d3f4bb5d9ddc109296cdb`; installed source hashes match | 2026-08-30 |
-| testing | done | current 04 live A/B succeeded; focused 21/21 and complete Host 63/63 tests passed; ESLint and diff checks passed | 2026-08-30 |
+| design | done | Thin Host Adapter confirmed in `docs/superpowers/specs/2026-08-30-x-article-thin-host-adapter-design.zh-CN.md` | 2026-08-30 |
+| plan | done | Five-Task Inline plan in `docs/superpowers/plans/2026-08-30-x-article-thin-host-adapter.md` | 2026-08-30 |
+| development | done | one-file delivery, page-authoritative Cover/Inline, and verified long-path staging implemented | 2026-08-30 |
+| testing | offline_done_live_verification_pending | focused Host 52/52; aggregate 1291 passed and 1 skipped; all five Fast Path cases passed; real cover stages 304 → 63 characters with exact bytes and cleanup | 2026-08-30 |
 | archive | pending |  |  |
 
 ## Artifacts
 
 - `docs/superpowers/specs/2026-08-29-x-article-browser-host-executor-repair-design.zh-CN.md`
+- `docs/superpowers/specs/2026-08-29-x-article-complete-host-bridge-design.zh-CN.md`
+- `docs/superpowers/specs/2026-08-30-x-article-thin-host-adapter-design.zh-CN.md`
+- `docs/superpowers/plans/2026-08-30-x-article-thin-host-adapter.md`
 - `docs/superpowers/plans/2026-08-29-x-article-browser-host-executor-repair.md`
 - `skills/x-publishing-copilot/scripts/x-article-cover-host.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-editor-extractor.mjs`
+- `skills/x-publishing-copilot/scripts/x-article-host-runtime.mjs`
 - `skills/x-publishing-copilot/scripts/x-article-host-common.mjs`
 - `skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs`
-- `tests/skills/x-article-host-common.test.mjs`
-- `tests/skills/x-article-inline-image-host.test.mjs`
-- rollback backup: `C:\Users\admin\Documents\New project 2\.skill-backups\x-publishing-copilot-20260830-2039`
+- `skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs`
+- `tools/check-packaged-x-article-cli.ts`
 - `tests/fixtures/x-article/file-upload-probe.html`
 - `harnesses/research-publishing/adapters/x/article-browser/article-media-attempt-policy.ts`
 - `harnesses/research-publishing/core/x-article-fast-path-deadline.ts`
 
 ## Open Questions
 
-None blocking. The next article is the appropriate non-duplicate installed-helper end-to-end check.
+Will the thin visible-button transaction deliver the exact cover through the verified 63-character transport path and produce stable X media evidence in one fresh bounded execution?
 
 ## Residual Risk
 
-The Codex Chrome runtime and X's accessible UI names remain environment dependencies. The repair now matches the interaction proven on the current Draft and fails closed if that UI changes, but it does not turn the public npm CLI into a standalone browser automation product.
+The Thin Host transaction and short-path staging are verified offline, but live X acceptance remains external until one fresh bounded execution reaches `draft_reconciled`.

@@ -5,6 +5,19 @@ import { HarnessError } from './errors.js';
 type JsonScalar = null | boolean | number | string;
 type JsonValue = JsonScalar | JsonValue[] | { [key: string]: JsonValue };
 
+function isPlainJsonObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  if (prototype === null || prototype === Object.prototype) return true;
+
+  const parent = Object.getPrototypeOf(prototype) as object | null;
+  const constructor = Object.prototype.hasOwnProperty.call(prototype, 'constructor')
+    ? Reflect.get(prototype, 'constructor')
+    : null;
+  return parent === null
+    && typeof constructor === 'function'
+    && constructor.name === 'Object';
+}
+
 function normalize(value: unknown, ancestors: Set<object>): JsonValue {
   if (
     value === null ||
@@ -38,8 +51,7 @@ function normalize(value: unknown, ancestors: Set<object>): JsonValue {
       return value.map((item) => normalize(item, ancestors));
     }
 
-    const prototype = Object.getPrototypeOf(value) as object | null;
-    if (prototype !== Object.prototype && prototype !== null) {
+    if (!isPlainJsonObject(value)) {
       throw new HarnessError(
         'CONTRACT_INVALID',
         'canonical JSON accepts plain objects only'

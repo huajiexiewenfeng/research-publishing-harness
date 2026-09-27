@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { runCoverUpload } from '../../skills/x-publishing-copilot/scripts/x-article-cover-host.mjs';
 
@@ -11,9 +11,17 @@ const pngBytes = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.from('cover-host-fixture')
 ]);
+const temporaryRoots = [];
+
+afterEach(async () => {
+  await Promise.all(temporaryRoots.splice(0).map((root) =>
+    rm(root, { recursive: true, force: true })
+  ));
+});
 
 async function coverFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'x-article-cover-host-'));
+  temporaryRoots.push(directory);
   const absoluteAssetPath = join(directory, 'cover.png');
   await writeFile(absoluteAssetPath, pngBytes);
   const digest = `sha256:${createHash('sha256').update(pngBytes).digest('hex')}`;
@@ -61,15 +69,16 @@ function claim(overrides = {}) {
   };
 }
 
-function uploadedObservation() {
+function coverObservation(status = 'uploaded', autosaveState = 'saved') {
   return {
     editor: {
       visuals: [{
         kind: 'cover',
         asset_id: 'asset-cover-shared-agent-knowledge',
-        status: 'uploaded'
+        block_ordinal: null,
+        status
       }],
-      autosave_state: 'saved'
+      autosave_state: autosaveState
     }
   };
 }
@@ -78,31 +87,110 @@ function emptySavedObservation() {
   return { editor: { visuals: [], autosave_state: 'saved' } };
 }
 
-function fakeTab({ count = 1, visible = true, chooserError = null, setFilesError = null } = {}) {
+function fakeTab({
+  count = 1,
+  visible = true,
+  enabled = true,
+  triggerCount = 1,
+  triggerVisible = true,
+  triggerEnabled = true,
+  regionValid = true,
+  chooserError = null,
+  setFilesError = null,
+  multiple = false,
+  bindingFiles = [{ byte_length: pngBytes.length, mime_type: 'image/png' }],
+  mediaEditorInitiallyOpen = false,
+  mediaEditorAfterSelection = false
+} = {}) {
   const calls = [];
+  let mediaEditorVisible = mediaEditorInitiallyOpen;
+  let evaluateCount = 0;
+  const trigger = {
+    async count() { calls.push(['trigger.count']); return triggerCount; },
+    async isVisible() { calls.push(['trigger.isVisible']); return triggerVisible; },
+    async isEnabled() { calls.push(['trigger.isEnabled']); return triggerEnabled; },
+    async click() { calls.push(['trigger.click']); }
+  };
+  const input = {
+    async count() { calls.push(['input.count']); return count; },
+    async isVisible() { calls.push(['input.isVisible']); return visible; },
+    async isEnabled() { calls.push(['input.isEnabled']); return enabled; },
+    async evaluate() {
+      evaluateCount += 1;
+      if (evaluateCount === 1) {
+        calls.push(['input.region']);
+        return regionValid;
+      }
+      calls.push(['input.binding']);
+      return bindingFiles;
+    },
+    locator(selector) {
+      calls.push(['input.locator', selector]);
+      return {
+        getByRole(role, options) {
+          calls.push(['parent.getByRole', role, options]);
+          return trigger;
+        }
+      };
+    },
+    async click() { calls.push(['input.click']); }
+  };
   const chooser = {
-    async setFiles(files) {
-      calls.push(['setFiles', files]);
+    async isMultiple() {
+      calls.push(['chooser.isMultiple']);
+      return multiple;
+    },
+    async setFiles(files, options) {
+      calls.push(['setFiles', files, options]);
       if (setFilesError !== null) throw setFilesError;
+      if (mediaEditorAfterSelection) mediaEditorVisible = true;
     }
   };
-  const trigger = {
-    async count() { return count; },
-    async isVisible() { return visible; },
-    async click() { calls.push(['click']); }
+  const loading = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async waitFor(options) { calls.push(['loading.waitFor', options]); }
+  };
+  const apply = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async isEnabled() { return mediaEditorVisible; },
+    async click(options) {
+      calls.push(['apply.click', options]);
+      mediaEditorVisible = false;
+    }
+  };
+  const mediaEditor = {
+    async count() { return mediaEditorVisible ? 1 : 0; },
+    async isVisible() { return mediaEditorVisible; },
+    async waitFor(options) {
+      if (!mediaEditorInitiallyOpen && !mediaEditorAfterSelection) {
+        throw new Error('media editor not present');
+      }
+      calls.push(['mediaEditor.waitFor', options]);
+    },
+    getByRole(role, options) {
+      if (role === 'progressbar' && options.name === 'Loading image') return loading;
+      if (role === 'button' && options.name === 'Apply') return apply;
+      throw new Error(`unexpected media editor role: ${role}/${options.name}`);
+    }
   };
   return {
     calls,
     tab: {
       playwright: {
-        getByRole(role, options) {
-          expect(role).toBe('button');
-          expect(options).toEqual({ name: 'Choose File', exact: true });
-          return trigger;
+        getByTestId(testId) {
+          calls.push(['getByTestId', testId]);
+          return input;
         },
         waitForEvent(name, options) {
           calls.push(['waitForEvent', name, options]);
-          return chooserError === null ? Promise.resolve(chooser) : Promise.reject(chooserError);
+          return chooserError === null
+            ? Promise.resolve(chooser)
+            : Promise.reject(chooserError);
+        },
+        getByRole(role, options) {
+          if (role === 'dialog' && options.name === 'Edit media') return mediaEditor;
+          throw new Error(`unexpected role: ${role}/${options.name}`);
         }
       }
     }
@@ -117,109 +205,195 @@ async function validInput(overrides = {}) {
     command: command(fixture.digest),
     claim: claim(),
     absoluteAssetPath: fixture.absoluteAssetPath,
-    observe: async () => uploadedObservation(),
+    observe: async () => coverObservation(),
     timeoutMs: 10_000,
+    stabilityTimeoutMs: 20,
+    pollMs: 1,
+    deadlineExceeded: () => false,
     browser,
     ...overrides
   };
 }
 
-describe('X Article executable cover Host', () => {
-  it('arms the chooser before the exact cover click and selects one absolute file', async () => {
-    const input = await validInput();
+describe('X Article causal cover Host', () => {
+  it('applies X media editing before accepting uploaded cover evidence', async () => {
+    const browser = fakeTab({ mediaEditorAfterSelection: true });
+    const input = await validInput({ tab: browser.tab, browser });
 
-    const result = await runCoverUpload(input);
-
-    expect(input.browser.calls).toEqual([
-      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
-      ['click'],
-      ['setFiles', [input.absoluteAssetPath]]
-    ]);
-    expect(result).toMatchObject({
-      status: 'success', effect: 'complete',
-      observation: uploadedObservation(), retry_authorized: false
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
     });
+    expect(browser.calls).toEqual(expect.arrayContaining([
+      ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }],
+      ['loading.waitFor', { state: 'hidden', timeoutMs: 10_000 }],
+      ['apply.click', { timeoutMs: 10_000 }],
+      ['mediaEditor.waitFor', { state: 'hidden', timeoutMs: 10_000 }]
+    ]));
   });
 
-  it('rejects a claim that does not identify the exact command', async () => {
-    const input = await validInput({ claim: claim({ command_id: 'foreign_command' }) });
+  it('completes an already-open media editor without selecting the cover twice', async () => {
+    const browser = fakeTab({ mediaEditorInitiallyOpen: true });
+    const input = await validInput({ tab: browser.tab, browser });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
+    });
+    expect(browser.calls).toContainEqual(['apply.click', { timeoutMs: 10_000 }]);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
+  });
+
+  it('selects one verified cover and succeeds only after uploaded/saved evidence', async () => {
+    const input = await validInput();
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success',
+      effect: 'complete',
+      reason: 'cover_uploaded',
+      observation: coverObservation(),
+      retry_authorized: false
+    });
+    expect(input.browser.calls).toEqual([
+      ['getByTestId', 'fileInput'],
+      ['input.count'],
+      ['input.isEnabled'],
+      ['input.region'],
+      ['input.locator', '..'],
+      ['parent.getByRole', 'button', { name: 'Add photos or video', exact: true }],
+      ['trigger.count'],
+      ['trigger.isVisible'],
+      ['trigger.isEnabled'],
+      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
+      ['trigger.click'],
+      ['chooser.isMultiple'],
+      ['setFiles', [input.absoluteAssetPath], { timeoutMs: 10_000 }]
+    ]);
+  });
+
+  it('uses the visible cover button as the chooser trigger', async () => {
+    const input = await validInput();
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete', reason: 'cover_uploaded'
+    });
+    expect(input.browser.calls).toContainEqual(['trigger.click']);
+    expect(input.browser.calls).not.toContainEqual(['input.click']);
+  });
+
+  it('accepts uploaded page evidence even when X clears the file input', async () => {
+    const browser = fakeTab({ bindingFiles: [] });
+    const input = await validInput({ tab: browser.tab, browser });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success',
+      effect: 'complete',
+      reason: 'cover_uploaded'
+    });
+    expect(browser.calls).not.toContainEqual(['input.binding']);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+  });
+
+  it.each([
+    ['foreign claim', async () => ({ claim: claim({ command_id: 'foreign_command' }) })],
+    ['relative asset path', async () => ({ absoluteAssetPath: 'assets/cover.png' })],
+    ['changed digest', async (input) => {
+      input.command.payload.asset.digest = `sha256:${'0'.repeat(64)}`;
+      return {};
+    }],
+    ['changed MIME', async (input) => {
+      input.command.payload.asset.mime_type = 'image/jpeg';
+      return {};
+    }]
+  ])('rejects %s before touching Chrome', async (_name, patchInput) => {
+    const input = await validInput();
+    Object.assign(input, await patchInput(input));
 
     await expect(runCoverUpload(input)).resolves.toEqual({
-      status: 'rejected', effect: 'none', observation: null, retry_authorized: false
+      status: 'rejected',
+      effect: 'none',
+      reason: 'command_or_asset_invalid',
+      observation: null,
+      retry_authorized: false
     });
-    expect(input.browser.calls).toEqual([]);
-  });
-
-  it('rejects a relative asset path before touching Chrome', async () => {
-    const input = await validInput({ absoluteAssetPath: 'assets/cover.png' });
-
-    await expect(runCoverUpload(input)).resolves.toMatchObject({ status: 'rejected', effect: 'none' });
-    expect(input.browser.calls).toEqual([]);
-  });
-
-  it('rejects file bytes that do not match the locked digest', async () => {
-    const input = await validInput();
-    input.command.payload.asset.digest = `sha256:${'0'.repeat(64)}`;
-
-    await expect(runCoverUpload(input)).resolves.toMatchObject({ status: 'rejected', effect: 'none' });
-    expect(input.browser.calls).toEqual([]);
-  });
-
-  it('rejects file signatures that do not match the locked MIME type', async () => {
-    const input = await validInput();
-    input.command.payload.asset.mime_type = 'image/jpeg';
-
-    await expect(runCoverUpload(input)).resolves.toMatchObject({ status: 'rejected', effect: 'none' });
     expect(input.browser.calls).toEqual([]);
   });
 
   it.each([
-    ['duplicate', { count: 2, visible: true }],
-    ['hidden', { count: 1, visible: false }]
-  ])('rejects a %s cover control', async (_name, control) => {
-    const browser = fakeTab(control);
+    ['duplicate', { count: 2 }],
+    ['hidden trigger', { triggerVisible: false }],
+    ['disabled', { enabled: false }],
+    ['disabled trigger', { triggerEnabled: false }],
+    ['outside the 5:2 region', { regionValid: false }]
+  ])('rejects a %s cover input as ambiguous', async (_name, browserOptions) => {
+    const browser = fakeTab(browserOptions);
     const input = await validInput({ tab: browser.tab, browser });
 
-    await expect(runCoverUpload(input)).resolves.toMatchObject({ status: 'rejected', effect: 'none' });
-    expect(browser.calls).toEqual([]);
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'rejected', effect: 'none', reason: 'cover_control_ambiguous'
+    });
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
   });
 
-  it('reports no effect when the causal chooser does not open', async () => {
+  it.each([
+    [
+      'bound but no X effect',
+      {},
+      async () => emptySavedObservation(),
+      'transient_failure',
+      'none',
+      'x_media_effect_absent'
+    ],
+    [
+      'X still processing',
+      {},
+      async () => coverObservation('processing'),
+      'transient_failure',
+      'partial',
+      'x_media_still_processing'
+    ],
+    [
+      'observer unavailable',
+      {},
+      async () => { throw new Error('observer unavailable'); },
+      'uncertain',
+      'unknown',
+      'observation_unavailable_after_selection'
+    ]
+  ])('%s has one stable classification', async (
+    _name,
+    browserOptions,
+    observe,
+    status,
+    effect,
+    reason
+  ) => {
+    const browser = fakeTab(browserOptions);
+    const input = await validInput({ tab: browser.tab, browser, observe });
+
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status, effect, reason, retry_authorized: false
+    });
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+  });
+
+  it('does not retry when the chooser fails before binding', async () => {
     const browser = fakeTab({ chooserError: new Error('chooser timeout') });
     const input = await validInput({ tab: browser.tab, browser });
 
-    await expect(runCoverUpload(input)).resolves.toEqual({
-      status: 'transient_failure', effect: 'none', observation: null, retry_authorized: false
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'transient_failure', effect: 'none', reason: 'file_transfer_missing',
+      retry_authorized: false
     });
-    expect(browser.calls).toEqual([
-      ['waitForEvent', 'filechooser', { timeoutMs: 10_000 }],
-      ['click']
-    ]);
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(0);
   });
 
-  it('reports an unknown effect when file selection throws', async () => {
+  it('uses page evidence when setFiles transport is uncertain', async () => {
     const browser = fakeTab({ setFilesError: new Error('transport failed') });
     const input = await validInput({ tab: browser.tab, browser });
 
-    await expect(runCoverUpload(input)).resolves.toEqual({
-      status: 'uncertain', effect: 'unknown', observation: null, retry_authorized: false
+    await expect(runCoverUpload(input)).resolves.toMatchObject({
+      status: 'success', effect: 'complete',
+      reason: 'cover_uploaded', retry_authorized: false
     });
-  });
-
-  it('reports no effect when a fresh saved observation still has no cover', async () => {
-    const input = await validInput({ observe: async () => emptySavedObservation() });
-
-    await expect(runCoverUpload(input)).resolves.toEqual({
-      status: 'transient_failure', effect: 'none',
-      observation: emptySavedObservation(), retry_authorized: false
-    });
-  });
-
-  it('reports an unknown effect when the fresh observation cannot be obtained', async () => {
-    const input = await validInput({ observe: async () => { throw new Error('observation failed'); } });
-
-    await expect(runCoverUpload(input)).resolves.toEqual({
-      status: 'uncertain', effect: 'unknown', observation: null, retry_authorized: false
-    });
+    expect(browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
   });
 });

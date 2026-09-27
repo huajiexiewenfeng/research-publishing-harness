@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { XArticleBrowserAdapter } from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
+import {
+  XArticleBrowserAdapter,
+  type XArticleBrowserReportInput
+} from '../harnesses/research-publishing/adapters/x/article-browser/article-browser-adapter.js';
 import {
   computeXArticlePageRevision,
   type XArticleBrowserObservation
@@ -27,6 +30,7 @@ import {
 import { WorkspaceStore } from '../harnesses/research-publishing/core/workspace-store.js';
 
 const protocol = 'x-article-materialization/v3.4' as const;
+const hostProtocol = 'x-article-host-bridge/v3.5' as const;
 const releaseSet: XArticleFastPathReleaseSetV1 = {
   harness_protocol: protocol,
   registry_protocol: protocol,
@@ -55,7 +59,11 @@ export interface XArticleFastPathAcceptanceScenario {
   readonly human_browser_operation_count: 0;
   readonly terminal_state: 'draft_reconciled';
   readonly elapsed_seconds: number;
-  readonly cover: { readonly expected: 1; readonly completed: number };
+  readonly cover: {
+    readonly expected: 1;
+    readonly completed: number;
+    readonly alt: 'unobservable';
+  };
   readonly inline_images: { readonly expected: number; readonly completed: number };
   readonly alt: { readonly expected: number; readonly completed: number };
   readonly removed_editorial_metadata_absent: boolean;
@@ -66,13 +74,34 @@ export interface XArticleFastPathAcceptanceScenario {
   readonly duplicate_write_count: number;
   readonly preview_command_count: number;
   readonly publish_command_count: number;
+  readonly issued_command_kinds: readonly string[];
+  readonly host_dispatch_count: number;
 }
 
 export interface XArticleFastPathAcceptanceMatrix {
   readonly ok: boolean;
   readonly protocol: typeof protocol;
+  readonly host_protocol: typeof hostProtocol;
   readonly network: 'unused';
   readonly scenarios: readonly XArticleFastPathAcceptanceScenario[];
+}
+
+type HostBridgeRunner = (input: Record<string, unknown>) => Promise<{
+  readonly report: XArticleBrowserReportInput;
+}>;
+
+let hostBridgeRunner: Promise<HostBridgeRunner> | null = null;
+
+async function loadHostBridge(): Promise<HostBridgeRunner> {
+  hostBridgeRunner ??= import(pathToFileURL(resolve(
+    'skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs'
+  )).href).then((loaded) => {
+    if (typeof loaded.runXArticleHostBridge !== 'function') {
+      throw new Error('X Article Host Bridge acceptance runtime is incompatible');
+    }
+    return loaded.runXArticleHostBridge as HostBridgeRunner;
+  });
+  return hostBridgeRunner;
 }
 
 function asset(id: string, suffix: string) {
@@ -225,6 +254,26 @@ class FakeDraftPage {
   }
 }
 
+function fakeHostDependencies(page: FakeDraftPage) {
+  const transaction = async (input: { readonly command: XArticleBrowserCommandV1 }) => ({
+    status: 'success' as const,
+    effect: 'complete' as const,
+    reason: input.command.kind === 'upload_article_cover'
+      ? 'cover_uploaded' as const
+      : input.command.kind === 'replace_article_visual_anchor'
+        ? 'inline_image_uploaded' as const
+        : 'observation_captured' as const,
+    observation: page.execute(input.command),
+    retry_authorized: false as const
+  });
+  return {
+    runNavigate: transaction,
+    runObserve: transaction,
+    runCoverUpload: transaction,
+    runInlineImageUpload: transaction
+  };
+}
+
 async function runScenario(
   name: XArticleFastPathAcceptanceScenario['name'],
   inlineCount: number,
@@ -262,6 +311,9 @@ async function runScenario(
       audit, confirmation, capabilities, release_set: releaseSet, source_observation: source
     });
     const commandKinds: string[] = [];
+    const runHostBridge = await loadHostBridge();
+    const hostDependencies = fakeHostDependencies(page);
+    let hostDispatchCount = 0;
     let disconnected = false;
     let recoveryCount: 0 | 1 = 0;
     let terminalState = '';
@@ -275,23 +327,50 @@ async function runScenario(
       }
       const command = next.command;
       commandKinds.push(command.kind);
-      await adapter.claim(command);
-      const observed = page.execute(command);
+      const claim = await adapter.claim(command);
+      const hostOutcome = await runHostBridge({
+        tab: {},
+        command,
+        claim,
+        context: { publication_plan: plan, materialization_plan: {} },
+        previousObservation: source,
+        beforeObservation: source,
+        observationId: `host_observation_${command.command_id}`,
+        observedAt: '2026-08-29T00:01:00.000Z',
+        absoluteAssetPath: null,
+        deadline: { exceeded: () => false },
+        dependencies: hostDependencies
+      });
+      hostDispatchCount += 1;
       if (disconnect && !disconnected && command.kind === 'replace_article_visual_anchor') {
         disconnected = true;
-        await adapter.report({ command, status: 'uncertain', observation: null });
+        await adapter.report({
+          command,
+          status: 'uncertain',
+          host_reason: 'observation_unavailable_after_selection',
+          observation: null
+        });
         const recovery = await adapter.recoverFastPath(execution.execution_id);
         recoveryCount = 1;
         commandKinds.push(recovery.command.kind);
-        await adapter.claim(recovery.command);
-        const recoveredSnapshot = await adapter.report({
+        const recoveryClaim = await adapter.claim(recovery.command);
+        const recoveryOutcome = await runHostBridge({
+          tab: {},
           command: recovery.command,
-          status: 'success',
-          observation: page.execute(recovery.command)
+          claim: recoveryClaim,
+          context: { publication_plan: plan, materialization_plan: {} },
+          previousObservation: source,
+          observationId: `host_observation_${recovery.command.command_id}`,
+          observedAt: '2026-08-29T00:01:00.000Z',
+          absoluteAssetPath: null,
+          deadline: { exceeded: () => false },
+          dependencies: hostDependencies
         });
+        hostDispatchCount += 1;
+        const recoveredSnapshot = await adapter.report(recoveryOutcome.report);
         trace.push({ command: recovery.command.kind, state: recoveredSnapshot.state });
       } else {
-        const reported = await adapter.report({ command, status: 'success', observation: observed });
+        const reported = await adapter.report(hostOutcome.report);
         trace.push({ command: command.kind, state: reported.state });
       }
     }
@@ -333,6 +412,11 @@ async function runScenario(
       execution.execution_id, 'final', plan.intent.document,
       page.resolvedInline, page.coverCompleted
     ).editor!;
+    const forbiddenKinds = new Set([
+      'open_article_preview',
+      'open_publish_review',
+      'publish_article_once'
+    ]);
     const scenario = {
       name,
       ok: result.state === 'draft_reconciled'
@@ -342,12 +426,14 @@ async function runScenario(
         && result.preview_command_count === 0
         && result.publish_command_count === 0
         && duplicateUploads === 0
+        && hostDispatchCount === commandKinds.length
+        && commandKinds.every((kind) => !forbiddenKinds.has(kind))
         && elapsedSeconds < 600,
       confirmation_count: 1 as const,
       human_browser_operation_count: 0 as const,
       terminal_state: result.state,
       elapsed_seconds: elapsedSeconds,
-      cover: result.cover,
+      cover: { ...result.cover, alt: 'unobservable' as const },
       inline_images: result.inline_images,
       alt: { expected: inlineCount, completed: result.alt.verified },
       removed_editorial_metadata_absent: !JSON.stringify(current.blocks).includes(editorialMetadata),
@@ -357,7 +443,9 @@ async function runScenario(
       duplicate_upload_count: duplicateUploads,
       duplicate_write_count: duplicateUploads,
       preview_command_count: result.preview_command_count,
-      publish_command_count: result.publish_command_count
+      publish_command_count: result.publish_command_count,
+      issued_command_kinds: commandKinds,
+      host_dispatch_count: hostDispatchCount
     } satisfies XArticleFastPathAcceptanceScenario;
     return { ...scenario, ok: scenario.ok && scenario.removed_editorial_metadata_absent
       && scenario.visual_anchors_absent };
@@ -379,6 +467,7 @@ export async function runXArticleFastPathAcceptanceMatrix(): Promise<XArticleFas
   return {
     ok: scenarios.every((scenario) => scenario.ok),
     protocol,
+    host_protocol: hostProtocol,
     network: 'unused',
     scenarios
   };

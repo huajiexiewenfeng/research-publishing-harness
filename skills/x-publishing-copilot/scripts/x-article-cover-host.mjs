@@ -1,60 +1,72 @@
-import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import {
+  completeMediaEditor,
+  deliverOneFile,
+  hostSelectionMayHaveOccurred,
+  verifyHostMediaInput,
+  waitForStableHostObservation
+} from './x-article-host-common.mjs';
 
-function outcome(status, effect, observation) {
-  return { status, effect, observation, retry_authorized: false };
+function outcome(status, effect, reason, observation) {
+  return { status, effect, reason, observation, retry_authorized: false };
 }
 
-function startsWith(bytes, prefix, offset = 0) {
-  if (bytes.length < offset + prefix.length) return false;
-  return prefix.every((value, index) => bytes[offset + index] === value);
-}
-
-function matchesMime(bytes, mimeType) {
-  if (mimeType === 'image/png') {
-    return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  }
-  if (mimeType === 'image/jpeg') return startsWith(bytes, [0xff, 0xd8, 0xff]);
-  if (mimeType === 'image/gif') {
-    return startsWith(bytes, [...Buffer.from('GIF87a')])
-      || startsWith(bytes, [...Buffer.from('GIF89a')]);
-  }
-  if (mimeType === 'image/webp') {
-    return startsWith(bytes, [...Buffer.from('RIFF')])
-      && startsWith(bytes, [...Buffer.from('WEBP')], 8);
-  }
-  return false;
-}
-
-async function verifyCoverInput({ command, claim, absoluteAssetPath, tab, observe }) {
+function classifyCover({ observation, command }) {
+  const visuals = observation?.editor?.visuals ?? [];
+  const matches = visuals.filter((visual) =>
+    visual.kind === 'cover'
+    && visual.asset_id === command.payload.asset.asset_id
+    && visual.block_ordinal === null
+  );
   if (
-    command?.kind !== 'upload_article_cover'
-    || command?.payload?.kind !== 'upload_article_cover'
-    || command?.side_effect !== 'write'
-    || command?.allowed_origin !== 'https://x.com'
-    || claim?.claimed !== true
-    || claim?.execution_id !== command.execution_id
-    || claim?.command_id !== command.command_id
-    || !isAbsolute(absoluteAssetPath)
-    || typeof observe !== 'function'
-    || typeof tab?.playwright?.getByRole !== 'function'
-    || typeof tab?.playwright?.waitForEvent !== 'function'
-  ) return false;
-
-  let file;
-  let bytes;
-  try {
-    file = await stat(absoluteAssetPath);
-    bytes = await readFile(absoluteAssetPath);
-  } catch {
-    return false;
+    matches.length === 1
+    && matches[0].status === 'uploaded'
+    && observation?.editor?.autosave_state === 'saved'
+  ) {
+    return outcome('success', 'complete', 'cover_uploaded', observation);
   }
-  if (!file.isFile()) return false;
+  if (
+    matches.some((visual) => visual.status === 'processing')
+    || observation?.editor?.autosave_state === 'saving'
+  ) {
+    return outcome(
+      'transient_failure',
+      'partial',
+      'x_media_still_processing',
+      observation ?? null
+    );
+  }
+  if (matches.length === 0 && observation?.editor?.autosave_state === 'saved') {
+    return outcome('transient_failure', 'none', 'x_media_effect_absent', observation);
+  }
+  return outcome(
+    'uncertain',
+    'unknown',
+    'observation_unavailable_after_selection',
+    observation ?? null
+  );
+}
 
-  const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-  return digest === command.payload.asset?.digest
-    && matchesMime(bytes, command.payload.asset?.mime_type);
+async function resolveCoverControls(tab) {
+  const input = tab.playwright.getByTestId('fileInput');
+  if (
+    await input.count() !== 1
+    || !await input.isEnabled()
+    || !await input.evaluate((element) =>
+      (element.parentElement?.parentElement?.textContent || '').includes('5:2 aspect ratio')
+    )
+  ) return null;
+
+  const trigger = input.locator('..').getByRole('button', {
+    name: 'Add photos or video',
+    exact: true
+  });
+  if (
+    await trigger.count() !== 1
+    || !await trigger.isVisible()
+    || !await trigger.isEnabled()
+  ) return null;
+
+  return { input, trigger };
 }
 
 export async function runCoverUpload({
@@ -63,57 +75,93 @@ export async function runCoverUpload({
   claim,
   absoluteAssetPath,
   observe,
-  timeoutMs = 10_000
+  timeoutMs = 10_000,
+  stabilityTimeoutMs = 20_000,
+  pollMs = 500,
+  deadlineExceeded = () => false
 }) {
-  if (!await verifyCoverInput({ command, claim, absoluteAssetPath, tab, observe })) {
-    return outcome('rejected', 'none', null);
+  const verifiedAsset = await verifyHostMediaInput({
+    command,
+    claim,
+    absoluteAssetPath
+  });
+  if (
+    verifiedAsset === null
+    || typeof observe !== 'function'
+    || typeof tab?.playwright?.getByTestId !== 'function'
+    || typeof tab?.playwright?.waitForEvent !== 'function'
+  ) {
+    return outcome('rejected', 'none', 'command_or_asset_invalid', null);
   }
 
-  let trigger;
+  let mediaEditor;
   try {
-    trigger = tab.playwright.getByRole('button', { name: 'Choose File', exact: true });
-    if (await trigger.count() !== 1 || !await trigger.isVisible()) {
-      return outcome('rejected', 'none', null);
+    mediaEditor = await completeMediaEditor({
+      tab,
+      timeoutMs,
+      appearanceTimeoutMs: 0
+    });
+  } catch {
+    return outcome(
+      'uncertain',
+      'unknown',
+      'observation_unavailable_after_selection',
+      null
+    );
+  }
+
+  if (mediaEditor.kind === 'not_present') {
+    let controls;
+    try {
+      controls = await resolveCoverControls(tab);
+    } catch {
+      controls = null;
     }
-  } catch {
-    return outcome('rejected', 'none', null);
-  }
+    if (controls === null) {
+      return outcome('rejected', 'none', 'cover_control_ambiguous', null);
+    }
 
-  let chooserPromise;
-  let chooser;
-  try {
-    chooserPromise = tab.playwright.waitForEvent('filechooser', { timeoutMs });
-    await trigger.click();
-    chooser = await chooserPromise;
-  } catch {
-    if (chooserPromise !== undefined) void chooserPromise.catch(() => undefined);
-    return outcome('transient_failure', 'none', null);
-  }
+    try {
+      await deliverOneFile({
+        tab,
+        causalTrigger: controls.trigger,
+        absoluteAssetPath,
+        timeoutMs
+      });
+    } catch (error) {
+      if (!hostSelectionMayHaveOccurred(error)) {
+        return outcome('transient_failure', 'none', 'file_transfer_missing', null);
+      }
+    }
 
-  try {
-    await chooser.setFiles([absoluteAssetPath]);
-  } catch {
-    return outcome('uncertain', 'unknown', null);
+    try {
+      await completeMediaEditor({ tab, timeoutMs, appearanceTimeoutMs: timeoutMs });
+    } catch {
+      return outcome(
+        'uncertain',
+        'unknown',
+        'observation_unavailable_after_selection',
+        null
+      );
+    }
   }
 
   let observation;
   try {
-    observation = await observe();
+    observation = await waitForStableHostObservation({
+      observe,
+      timeoutMs: stabilityTimeoutMs,
+      pollMs,
+      deadlineExceeded,
+      isStable: (candidate) => candidate?.editor?.autosave_state !== 'saving'
+    });
   } catch {
-    return outcome('uncertain', 'unknown', null);
+    return outcome(
+      'uncertain',
+      'unknown',
+      'observation_unavailable_after_selection',
+      null
+    );
   }
-
-  const visuals = observation?.editor?.visuals ?? [];
-  const matches = visuals.filter((visual) =>
-    visual.kind === 'cover'
-    && visual.asset_id === command.payload.asset.asset_id
-    && visual.status === 'uploaded'
-  );
-  if (matches.length === 1 && observation?.editor?.autosave_state === 'saved') {
-    return outcome('success', 'complete', observation);
-  }
-  if (matches.length === 0 && observation?.editor?.autosave_state === 'saved') {
-    return outcome('transient_failure', 'none', observation);
-  }
-  return outcome('uncertain', 'unknown', observation ?? null);
+  return classifyCover({ observation, command });
 }
