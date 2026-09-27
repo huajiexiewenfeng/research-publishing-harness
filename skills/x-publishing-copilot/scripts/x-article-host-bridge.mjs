@@ -115,7 +115,7 @@ async function dispatchWithBrowserTransport(input) {
   const maxPathLength = input.dependencies?.maxBrowserUploadPathLength ?? 240;
   const clipboardInline = input.command.kind === 'replace_article_visual_anchor'
     && input.command.payload?.asset?.mime_type === 'image/png'
-    && input.transport !== 'file_chooser';
+    && input.transport === 'clipboard';
   if (
     clipboardInline || !MEDIA.has(input.command.kind)
     || typeof input.absoluteAssetPath !== 'string'

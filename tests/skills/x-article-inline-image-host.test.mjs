@@ -197,7 +197,7 @@ function fakeBrowser({
   editThrowsOnce = false,
   editThrowsAfterOpen = false,
   altStaysOpen = false,
-  emptyAnchorAtCursor = liveX
+  emptyAnchorAtCursor = false
 } = {}) {
   const calls = [];
   let mediaEditorVisible = mediaEditorInitiallyOpen;
@@ -315,7 +315,7 @@ function fakeBrowser({
   const missingInsertDialog = {
     async count() { return 0; },
     async isVisible() { return false; },
-    async waitFor() { throw new Error('named Insert dialog is unavailable'); },
+    async waitFor() { calls.push(['missingInsertDialog.waitFor']); throw new Error('named Insert dialog is unavailable'); },
     locator() { return fileInput; }
   };
   const chooser = {
@@ -339,10 +339,10 @@ function fakeBrowser({
     async count() { return mediaEditorVisible ? 1 : 0; },
     async isVisible() { return mediaEditorVisible; },
     async waitFor(options) {
+      calls.push(['mediaEditor.waitFor', options]);
       if (!mediaEditorInitiallyOpen && !mediaEditorAfterSelection) {
         throw new Error('media editor not present');
       }
-      calls.push(['mediaEditor.waitFor', options]);
     },
     getByRole(role, options) {
       if (role === 'progressbar' && options.name === 'Loading image') return loading;
@@ -410,6 +410,7 @@ function fakeBrowser({
         },
         async waitForTimeout(timeoutMs) { calls.push(['waitForTimeout', timeoutMs]); },
         async evaluate(fn, arg) {
+          if (arg?.readAnchorKey === true) return 'fixture-anchor';
           if (arg?.checkEmptyAnchor === true) return emptyAnchorAtCursor;
           if (arg?.checkAnchorFocus === true) return focusMatches;
           if (arg?.readAltText === true) return altReadback;
@@ -442,16 +443,90 @@ async function validInput(options = {}) {
     pollMs: 1,
     deadlineExceeded: () => false,
     browser,
-    // Keep legacy chooser regression cases explicit. Production defaults to PNG paste.
+    // Tests that exercise paste must explicitly opt in.
     transport: 'file_chooser',
     ...options.input
   };
 }
 
+function savedAlt(input) {
+  return input.browser.calls.some(([name]) => name === 'save.click' || name === 'done.click')
+    ? input.command.payload.asset.alt_text : '';
+}
+
 describe('one exact X Article inline image transaction', () => {
-  it('defaults to one verified PNG paste without opening Insert or a file chooser', async () => {
+  it.each([
+    ['safe empty block', 'fixture-anchor', '', false, true, 2],
+    ['moved caret', 'other-block', '', false, true, 1],
+    ['text remains', 'fixture-anchor', 'Keep me', false, true, 1],
+    ['previous media', 'fixture-anchor', '', true, true, 1],
+    ['no adjacent image', 'fixture-anchor', '', false, false, 1]
+  ])('checks real cleanup predicate: %s', async (_label, key, text, previousMedia, nextImage, deletes) => {
+    const input = await validInput();
+    const evaluate = input.tab.playwright.evaluate;
+    input.tab.playwright.evaluate = async (fn, arg) => {
+      if (!arg?.checkEmptyAnchor) return evaluate(fn, arg);
+      const row = { getAttribute: () => key, textContent: text, querySelector: () => null,
+        previousElementSibling: { matches: () => true, querySelector: () => previousMedia ? {} : null },
+        nextElementSibling: { querySelector: () => nextImage ? {} : null } };
+      vi.stubGlobal('window', { getSelection: () => ({ isCollapsed: true,
+        anchorNode: { parentElement: { closest: () => row } } }) });
+      try { return fn(arg); } finally { vi.unstubAllGlobals(); }
+    };
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
+    expect(input.browser.calls.filter(([name, keys]) => name === 'cua.keypress' && keys.includes('BACKSPACE'))).toHaveLength(deletes);
+  });
+  it('preserves the marker when Save closes without persisting Alt', async () => {
     const input = await validInput({ browser: { liveX: true } });
+    input.probeInline = async () => input.browser.calls.some(([name]) => name === 'setFiles')
+      ? { status: 'uploaded', anchor_present: true, media_dom_index: 2, alt_text: '' }
+      : null;
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'uncertain', reason: 'inline_alt_unverified' });
+    expect(input.browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+    expect(input.browser.calls.some(([name, keys]) => name === 'cua.keypress' && keys.includes('BACKSPACE'))).toBe(false);
+  });
+  it('defaults PNG to standard upload without requiring a clipboard', async () => {
+    const input = await validInput();
     delete input.transport;
+    delete input.tab.clipboard;
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
+    expect(input.browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
+    expect(input.browser.calls.some(([name]) => name === 'clipboard.write')).toBe(false);
+  });
+
+  it('does not upload a second file beside an image already present at the marker', async () => {
+    const input = await validInput();
+    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true, media_dom_index: 2 });
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'uncertain', retry_authorized: false });
+    expect(input.browser.calls.some(([name]) => name === 'setFiles')).toBe(false);
+  });
+
+  it('does not wait for a nonexistent crop modal when the local image is already uploaded', async () => {
+    const input = await validInput();
+    input.probeInline = async () => input.browser.calls.some(([name]) => name === 'setFiles')
+      ? { status: 'uploaded', anchor_present: true, media_dom_index: 2,
+          alt_text: input.command.payload.asset.alt_text }
+      : null;
+    input.observe = vi.fn(async () => mediaObservation(input.command));
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
+    expect(input.browser.calls.some(([name]) => name === 'mediaEditor.waitFor')).toBe(false);
+    expect(input.observe).toHaveBeenCalledOnce();
+  });
+
+  it('removes the verified empty marker block after deleting its exact text', async () => {
+    const input = await validInput({ browser: { liveX: true, emptyAnchorAtCursor: true } });
+    input.probeInline = async () => input.browser.calls.some(([name]) => name === 'setFiles')
+      ? { status: 'uploaded', anchor_present: true, media_after_anchor: true,
+          anchor_dom_index: 1, media_dom_index: 2, alt_text: input.command.payload.asset.alt_text }
+      : null;
+    input.observe = async () => mediaObservation(input.command);
+    expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
+    expect(input.browser.calls.filter(([name, keys]) => name === 'cua.keypress' && keys.join('+') === 'BACKSPACE')).toHaveLength(2);
+  });
+
+  it('uses one verified PNG paste when explicitly selected', async () => {
+    const input = await validInput({ browser: { liveX: true } });
+    input.transport = 'clipboard';
     delete input.tab.playwright.waitForEvent;
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
     expect(input.browser.calls.filter(([name]) => name === 'clipboard.write')).toEqual([
@@ -465,7 +540,7 @@ describe('one exact X Article inline image transaction', () => {
 
   it('never retries a paste whose browser response was lost', async () => {
     const input = await validInput();
-    delete input.transport;
+    input.transport = 'clipboard';
     input.tab.cua.keypress = async ({ keys }) => {
       input.browser.calls.push(['cua.keypress', keys]);
       if (keys.join('+') === 'Control+V') throw new Error('paste response lost');
@@ -478,7 +553,7 @@ describe('one exact X Article inline image transaction', () => {
 
   it('rejects missing clipboard capabilities before page mutation instead of silently falling back', async () => {
     const input = await validInput();
-    delete input.transport;
+    input.transport = 'clipboard';
     delete input.tab.clipboard;
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'rejected', effect: 'none' });
     expect(input.browser.calls.some(([name]) => name.endsWith('.click') || name === 'setFiles')).toBe(false);
@@ -486,7 +561,7 @@ describe('one exact X Article inline image transaction', () => {
 
   it('rejects a changed PNG before clipboard write', async () => {
     const input = await validInput();
-    delete input.transport;
+    input.transport = 'clipboard';
     input.command.payload.asset.digest = `sha256:${'0'.repeat(64)}`;
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'rejected', effect: 'none' });
     expect(input.browser.calls.some(([name]) => name === 'clipboard.write')).toBe(false);
@@ -494,7 +569,7 @@ describe('one exact X Article inline image transaction', () => {
 
   it('preserves focus for deletion even when locator.press would redirect it', async () => {
     const input = await validInput();
-    delete input.transport;
+    input.transport = 'clipboard';
     input.tab.playwright.getByTestId('composer').press = async () => { throw new Error('locator refocused composer'); };
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
     expect(input.browser.calls).toContainEqual(['cua.keypress', ['SHIFT', 'END']]);
@@ -503,33 +578,33 @@ describe('one exact X Article inline image transaction', () => {
 
   it('waits through missing and processing image probes and recovers Edit only, never paste', async () => {
     const input = await validInput({ browser: { liveX: true, editThrowsOnce: true } });
-    delete input.transport;
+    input.transport = 'clipboard';
     let probes = 0;
     input.probeInline = async () => {
       probes += 1;
       if (probes <= 2) return null;
       return { status: probes === 3 ? 'processing' : 'uploaded', anchor_present: true,
-        media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: '' };
+        media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: savedAlt(input) };
     };
     input.observe = async () => mediaObservation(input.command);
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success', recovery_count: 1 });
     expect(probes).toBeGreaterThanOrEqual(5);
-    expect(input.browser.calls.filter(([name, keys]) => name === 'cua.keypress' && keys.join('+') === 'BACKSPACE')).toHaveLength(2);
+    expect(input.browser.calls.filter(([name, keys]) => name === 'cua.keypress' && keys.join('+') === 'BACKSPACE')).toHaveLength(1);
     expect(input.browser.calls.filter(([name]) => name === 'clipboard.write')).toHaveLength(1);
     expect(input.browser.calls.filter(([name, keys]) => name === 'cua.keypress' && keys.join('+') === 'Control+V')).toHaveLength(1);
   });
 
   it('does not paste over an existing marker-adjacent image after interruption', async () => {
     const input = await validInput();
-    delete input.transport;
+    input.transport = 'clipboard';
     input.probeInline = async () => ({ status: 'uploaded', anchor_present: true, media_dom_index: 2 });
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'uncertain', retry_authorized: false });
     expect(input.browser.calls.some(([name]) => name === 'clipboard.write' || name === 'setFiles')).toBe(false);
   });
   it('continues an Edit click that timed out after opening the dialog without clicking behind it', async () => {
     const input = await validInput({ browser: { liveX: true, editThrowsAfterOpen: true } });
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
-      media_dom_index: 2, alt_text: '' });
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
+      media_dom_index: 2, alt_text: savedAlt(input) });
     input.observe = async () => mediaObservation(input.command);
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success', recovery_count: 1 });
     expect(input.browser.calls.filter(([name]) => name === 'editMedia.click')).toHaveLength(1);
@@ -543,8 +618,8 @@ describe('one exact X Article inline image transaction', () => {
   });
   it('resumes Alt after an edit failure without redelivering the file or re-observing partial document', async () => {
     const input = await validInput({ browser: { liveX: true, editThrowsOnce: true } });
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
-      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: '' });
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
+      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: savedAlt(input) });
     input.observe = vi.fn(async () => mediaObservation(input.command));
     const result = await runInlineImageUpload(input);
     expect(result.status).toBe('success');
@@ -562,7 +637,7 @@ describe('one exact X Article inline image transaction', () => {
       if (arg?.checkAnchorFocus) return ++focusReads !== 2 && focusReads !== 3;
       return evaluate(fn, arg);
     };
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
       media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true,
       alt_text: input.browser.calls.some(([name]) => name === 'save.click') ? input.command.payload.asset.alt_text : '' });
     input.observe = async () => mediaObservation(input.command);
@@ -613,8 +688,8 @@ describe('one exact X Article inline image transaction', () => {
   });
   it('waits for the saved Alt readback without reuploading or resubmitting Save', async () => {
     const input = await validInput({ browser: { liveX: true, addDescriptionCount: 0 } });
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
-      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true });
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
+      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: savedAlt(input) });
     let reads = 0;
     input.observe = async () => mediaObservation(input.command, { altText: reads++ === 0 ? '' : input.command.payload.asset.alt_text });
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
@@ -624,15 +699,15 @@ describe('one exact X Article inline image transaction', () => {
   });
   it('leaves a harmless spacer instead of merging an empty paragraph into adjacent media', async () => {
     const input = await validInput({ browser: { liveX: true, addDescriptionCount: 0, emptyAnchorAtCursor: false } });
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
-      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true });
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
+      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: savedAlt(input) });
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
     expect(input.browser.calls.filter(([name, key]) => name === 'cua.keypress' && key.join('+') === 'BACKSPACE')).toHaveLength(1);
   });
-  it('uses the observed Insert modal, Edit media ALT and removes the empty marker block', async () => {
+  it('uses the observed Insert modal, Edit media ALT and clears marker text', async () => {
     const input = await validInput({ browser: { liveX: true, addDescriptionCount: 0, unnamedInsertDialog: true } });
-    input.probeInline = async () => ({ status: 'uploaded', anchor_present: true,
-      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true });
+    input.probeInline = async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({ status: 'uploaded', anchor_present: true,
+      media_dom_index: 2, anchor_dom_index: 1, media_after_anchor: true, alt_text: savedAlt(input) });
     input.observe = async () => mediaObservation(input.command);
     expect(await runInlineImageUpload(input)).toMatchObject({ status: 'success' });
     expect(input.browser.calls).toEqual(expect.arrayContaining([
@@ -641,6 +716,7 @@ describe('one exact X Article inline image transaction', () => {
     ]));
     expect(input.browser.calls.filter(([name]) => name === 'setFiles')).toHaveLength(1);
     expect(input.browser.calls.some(([name]) => name === 'uploadButton.click')).toBe(false);
+    expect(input.browser.calls.some(([name]) => name === 'missingInsertDialog.waitFor')).toBe(false);
   });
   it('does not click Apply or edit Alt after the file transfer crosses a pause fence', async () => {
     const input = await validInput({ browser: { mediaEditorAfterSelection: true } });
@@ -657,11 +733,11 @@ describe('one exact X Article inline image transaction', () => {
   it('uses a current-image probe and only one full post-upload observation', async () => {
     const input = await validInput();
     input.observe = vi.fn(async () => mediaObservation(input.command));
-    input.probeInline = vi.fn(async () => ({
-      status: 'uploaded', anchor_present: true, media_dom_index: 1
+    input.probeInline = vi.fn(async () => !input.browser.calls.some(([name]) => name === 'setFiles') ? null : ({
+      status: 'uploaded', anchor_present: true, media_dom_index: 1, alt_text: savedAlt(input)
     }));
     await expect(runInlineImageUpload(input)).resolves.toMatchObject({ status: 'success' });
-    expect(input.probeInline).toHaveBeenCalledOnce();
+    expect(input.probeInline).toHaveBeenCalledTimes(4);
     expect(input.observe).toHaveBeenCalledOnce();
   });
   it('does not accept an already-uploaded image under the wrong heading', async () => {
