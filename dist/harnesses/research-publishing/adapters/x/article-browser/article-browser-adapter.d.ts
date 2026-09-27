@@ -3,6 +3,8 @@ import { type XArticleExecutionSnapshotV1 } from '../../../core/x-article-execut
 import { type XArticleApprovalV1 } from '../../../core/x-article-approval.js';
 import { type XArticlePublishConfirmationV1 } from '../../../core/x-article-publish-confirmation.js';
 import { type XArticlePublicationPlanV1 } from '../../../core/x-article-publication-plan.js';
+import { type XArticleFastPathAuditV1, type XArticleFastPathConfirmationV1 } from '../../../core/x-article-fast-path.js';
+import { type XArticleFastPathReleaseSetV1 } from '../../../core/x-article-fast-path-release.js';
 import type { WorkspaceStore } from '../../../core/workspace-store.js';
 import { type XArticleBrowserObservation } from './article-browser-protocol.js';
 import { type XArticleBrowserCommandKind, type XArticleBrowserCommandV1, type XArticleCommandClaimV1 } from './article-command-broker.js';
@@ -19,6 +21,23 @@ export interface XArticleBrowserReportInput {
     readonly status: 'success' | 'transient_failure' | 'uncertain' | 'rejected';
     readonly observation: XArticleBrowserObservation | null;
 }
+export interface PrepareXArticleFastPathInput {
+    readonly audit: XArticleFastPathAuditV1;
+    readonly confirmation: XArticleFastPathConfirmationV1;
+    readonly capabilities: XArticleBrowserCapabilityManifestV1;
+    readonly release_set: XArticleFastPathReleaseSetV1;
+    readonly source_observation?: XArticleBrowserObservation;
+}
+export interface XArticleFastPathStatusProjectionV1 {
+    readonly stage: 'Draft ready' | 'Cover' | 'Inline images' | 'Final check' | 'Timed out';
+    readonly timed_out: boolean;
+    readonly cover: `${number}/${number}`;
+    readonly inline_images: `${number}/${number}`;
+    readonly result_path: string | null;
+}
+export type XArticleBrowserStatusV1 = XArticleExecutionSnapshotV1 & {
+    readonly fast_path_status?: XArticleFastPathStatusProjectionV1;
+};
 interface XArticleBrowserAdapterOptions {
     readonly executionId?: () => string;
     readonly eventId?: () => string;
@@ -43,6 +62,7 @@ export declare class XArticleBrowserAdapter {
     constructor(store: WorkspaceStore, contract: XArticlePageContract, options?: XArticleBrowserAdapterOptions);
     prepare(plan: XArticlePublicationPlanV1, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
     prepareExistingDraftMedia(plan: XArticlePublicationPlanV1, sourceObservation: XArticleBrowserObservation, capabilities: XArticleBrowserCapabilityManifestV1): Promise<XArticleExecutionSnapshotV1>;
+    prepareFastPath(input: PrepareXArticleFastPathInput): Promise<XArticleExecutionSnapshotV1>;
     private prepareLocked;
     private resolveMaterializationStart;
     private writeNewMaterializationStart;
@@ -58,7 +78,11 @@ export declare class XArticleBrowserAdapter {
     private assertPendingClaimIdentity;
     report(input: XArticleBrowserReportInput): Promise<XArticleExecutionSnapshotV1>;
     private reportLocked;
-    status(executionId: string): Promise<XArticleExecutionSnapshotV1>;
+    status(executionId: string): Promise<XArticleBrowserStatusV1>;
+    recoverFastPath(executionId: string): Promise<{
+        readonly snapshot: XArticleExecutionSnapshotV1;
+        readonly command: XArticleBrowserCommandV1;
+    }>;
     confirmPublish(executionId: string, confirmation: XArticlePublishConfirmationV1): Promise<XArticleExecutionSnapshotV1>;
     private confirmPublishLocked;
     resumeVerification(executionId: string): Promise<XArticleExecutionSnapshotV1>;
@@ -127,16 +151,20 @@ export declare class XArticleBrowserAdapter {
     private initialSnapshot;
     private requireApproval;
     private requireObservation;
+    private ensureFastPathResult;
+    private ensureFastPathCompletionProgress;
     private readContext;
     private writeContext;
     private prefix;
     private publishConfirmationPath;
     private previewMaterializationReceiptPath;
     private materializationStartPath;
+    private fastPathResultPath;
     private publicMaterializationReceiptPath;
     private publishConfirmationConsumptionPath;
     private ensureExactArtifact;
     private withExecutionLock;
+    private fastPathDeadline;
     private commandPath;
     private v3_3CommandIssueBindingPath;
     private reportProjectionPath;

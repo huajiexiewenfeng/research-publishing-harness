@@ -33,3 +33,6 @@
 | research-program-v2-4-phase-1-runtime | implementation | `harnesses/research-publishing/` | project | research-program-orchestration-v2-4 | implemented-local | 2026-08-23 | Contracts, Roadmap, Backlog, Monthly Review, Program Status and CLI; commits `923d914`–`39b8269` |
 | research-program-v2-4-phase-1-verification | verification | `.llm-wiki/verification/research-program-orchestration-v2-4-phase-1.md` | project | research-program-orchestration-v2-4 | passed-agent-local | 2026-08-23 | Focused 101/101; repository 500 passed, 1 skipped; lint/typecheck passed |
 | research-program-v2-4-phase-1-handoff | handoff | `.llm-wiki/handoff/research-program-orchestration-v2-4-phase-1.md` | project | research-program-orchestration-v2-4 | active | 2026-08-23 | Phase 1 archive and Phase 2 continuation boundary |
+| x-long-single-brief | requirement | `.llm-wiki/requirements/x-long-single.md` | project | x-long-single | implemented-local | 2026-09-03 | Single 取消本地 280 限制，Thread/Reply 与发布 Gate 保留 |
+| x-long-single-verification | verification | `.llm-wiki/verification/x-long-single.md` | project | x-long-single | passed-agent-local | 2026-09-03 | 最终 560 项回归通过，原始 JSON 报告关联 |
+| x-long-single-handoff | handoff | `.llm-wiki/handoff/x-long-single-handoff.md` | project | x-long-single | active | 2026-09-03 | 本地运行版已同步，未发帖或提交 Git |

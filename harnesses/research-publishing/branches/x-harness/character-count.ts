@@ -1,18 +1,27 @@
-import twitterText from 'twitter-text';
+import twitterText, { type ParseTweetOptions } from 'twitter-text';
+
+// twitter-text exports its defaults at runtime, but @types/twitter-text omits configs.
+const defaultOptions = (twitterText as typeof twitterText & {
+  configs: { defaults: ParseTweetOptions };
+}).configs.defaults;
 
 export interface PostTextResult {
   readonly valid: boolean;
   readonly weightedLength: number;
-  readonly maxWeightedLength: number;
-  readonly permillage: number;
+  readonly maxWeightedLength: number | null;
+  readonly permillage: number | null;
 }
 
-export function validatePostText(text: string, maxWeightedLength = 280): PostTextResult {
-  const parsed = twitterText.parseTweet(text);
+/** null removes the local length cap; platform/account restrictions still apply. */
+export function validatePostText(text: string, maxWeightedLength: number | null = 280): PostTextResult {
+  const parsed = twitterText.parseTweet(text, {
+    ...defaultOptions,
+    maxWeightedTweetLength: maxWeightedLength ?? Number.POSITIVE_INFINITY
+  });
   return {
-    valid: parsed.valid && parsed.weightedLength <= maxWeightedLength,
+    valid: text.trim().length > 0 && parsed.valid,
     weightedLength: parsed.weightedLength,
     maxWeightedLength,
-    permillage: Math.floor((parsed.weightedLength / maxWeightedLength) * 1000)
+    permillage: maxWeightedLength === null ? null : parsed.permillage
   };
 }

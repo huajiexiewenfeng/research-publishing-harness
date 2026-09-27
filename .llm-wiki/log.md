@@ -110,3 +110,9 @@
 - Manifest 含 236 个文件、3 个 Skills，Runtime 仍固定为 `0.2.0`；离线 acceptance 返回 `network: unused`。
 - Phase 4 handoff 已归档；验证级别 `passed-agent-local`，未执行真实 Browser/X/GitHub/Runtime/Wiki 写入，未创建或执行 Memory Promotion。
 - 生产实现保持当前任务 inline；`writing-skills` 的新 Skill 前向验证使用了一个只读、无副作用评估子代理，该代理未修改仓库，也不构成独立代码复核。
+
+## 2026-09-03：长 Single 本地限制移除
+
+- 用户明确授权取消 Single 280 字符限制。字符校验、审核、Article URL 注入及生成提示已同步，Thread/Reply 保持标准限制，证据和发布授权不变。
+- 全仓回归 1231 passed / 1 skipped；最后格式提示修正后的 X/X Article/Bundle 回归 560 passed。类型、lint、构建、摘要清单和 diff 检查通过；只读代码复核未发现必须修复项。
+- 验证级别 `passed-agent-local`，原始报告与测试完整性记录见 [verification](verification/x-long-single.md)，后续入口见 [handoff](handoff/x-long-single-handoff.md)。没有真实发帖、Git commit/push 或发布 Approval。

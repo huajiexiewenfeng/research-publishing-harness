@@ -36,7 +36,7 @@
         "selected_context_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
         "query_status": { "enum": ["loaded", "empty", "runtime_unavailable", "index_unavailable", "index_rebuild_required", "context_budget_exceeded", "failed"] },
         "application_status": { "enum": ["applied", "reviewed_not_applied"] },
-        "runtime_version": { "anyOf": [{ "const": "0.2.0" }, { "type": "null" }] }
+        "runtime_version": { "anyOf": [{ "enum": ["0.2.0", "0.3.0"] }, { "type": "null" }] }
       }
     }
   }

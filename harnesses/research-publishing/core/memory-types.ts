@@ -62,7 +62,7 @@ export interface MemoryQueryPlanInput {
   readonly scp_digest: Digest;
   readonly runtime_requirement: Readonly<{
     name: 'llm-wiki-runtime';
-    version: '0.2.0';
+    version: '0.2.0' | '0.3.0';
   }>;
 }
 
@@ -86,7 +86,7 @@ export interface RuntimeContextItem {
 
 export interface RuntimeContextResult {
   readonly status: 'loaded' | 'empty' | 'unavailable' | 'failed';
-  readonly runtime_version: '0.2.0' | null;
+  readonly runtime_version: '0.2.0' | '0.3.0' | null;
   readonly items: readonly RuntimeContextItem[];
   readonly excluded_count: number;
   readonly truncated_count: number;
@@ -108,7 +108,7 @@ export interface ContextSnapshotV1 {
   readonly schema_version: 'context-snapshot/v1';
   readonly snapshot_id: string;
   readonly query_plan_digest: Digest;
-  readonly runtime_version: '0.2.0' | null;
+  readonly runtime_version: '0.2.0' | '0.3.0' | null;
   readonly status: RuntimeContextResult['status'];
   readonly items: readonly ContextSnapshotItemV1[];
   readonly excluded_count: number;
@@ -180,7 +180,7 @@ export interface MemoryIngestPlanV1 {
   readonly target_domain: 'research-publishing';
   readonly target_profile: 'research-publishing';
   readonly workspace_identity_digest: Digest;
-  readonly runtime_version: '0.2.0';
+  readonly runtime_version: '0.2.0' | '0.3.0';
   readonly record_operations: ReadonlyArray<{
     readonly operation_id: string;
     readonly record_type: 'publication_evidence' | 'feedback_snapshot' | 'candidate_insight';
@@ -230,7 +230,7 @@ export interface MemoryIngestReceiptV1 {
   readonly receipt_id: string;
   readonly ingest_plan_digest: Digest;
   readonly approval_digest: Digest;
-  readonly runtime_version: '0.2.0';
+  readonly runtime_version: '0.2.0' | '0.3.0';
   readonly status: 'succeeded' | 'already_exists' | 'partial' | 'failed';
   readonly steps: ReadonlyArray<{
     readonly name: MemoryIngestStepName;

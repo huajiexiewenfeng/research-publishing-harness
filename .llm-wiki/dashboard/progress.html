@@ -13,6 +13,13 @@
 </head>
 <body>
   <h1>Research Publishing Harness</h1>
+  <section id="x-long-single" data-flow-id="x-long-single">
+    <h2>2026-09-03 · 长 Single</h2>
+    <p>Single 无本地 280 字符上限；Thread/Reply、文本有效性、证据与发布授权检查保留。尚未真实发布。</p>
+    <p>状态：本地实现并构建；最终相关回归 560 passed；验证信任级别 agent-local，独立代码复核。</p>
+    <p><a href="../requirements/x-long-single.md">需求与 Flow Record</a> · <a href="../verification/x-long-single.md">验证证据</a> · <a href="../handoff/x-long-single-handoff.md">交接</a></p>
+    <ul><li>source: done</li><li>design: done</li><li>plan: done</li><li>development: done</li><li>testing: done (passed-agent-local)</li><li>archive: done (未发帖、未提交)</li></ul>
+  </section>
   <!-- LLM_SUMMARY_START -->
   <section>
     <h2>Project Cockpit</h2>
@@ -36,6 +43,9 @@
   <section><h2>Skills Maintenance Convention</h2><p>Project Develop Copilot → Writing Plans → TDD → Verification</p></section>
   <script>
     window.dashboardData={flowRecords:[{id:"research-publishing-harness-v1",development:"done",testing:"passed-agent-local",archive:"done"},{id:"visual-publishing-v2-1",development:"done",testing:"passed-agent-local",archive:"done"},{id:"x-article-browser-publishing-v3",development:"done",testing:"passed-agent-local",archive:"done"},{id:"llm-wiki-memory-adapter-v2-2",development:"done",testing:"passed-agent-local",archive:"done"},{id:"research-data-flywheel-v2-3",development:"done",testing:"passed-agent-local",archive:"done"},{id:"research-program-orchestration-v2-4",development:"active-phase-1-done",testing:"phase-1-passed-agent-local",archive:"phase-1-handoff"}]};
+  </script>
+  <script>
+    window.dashboardData.flowRecords.push(...["source","design","plan","development","testing","archive"].map(step => ({flowId:"x-long-single",title:"长 Single",step,status:"done",trustLevel:"agent-local",source:"../requirements/x-long-single.md",evidence:step === "testing" ? "../verification/x-long-single.md" : step === "archive" ? "../handoff/x-long-single-handoff.md" : "../requirements/x-long-single.md",updated:"2026-09-03"})));
   </script>
 </body>
 </html>

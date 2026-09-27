@@ -262,3 +262,23 @@ describe('LLMWikiRuntimeAdapter', () => {
     })).rejects.toThrowError(/context_budget_exceeded/);
   });
 });
+
+
+describe('Runtime 0.3 compatibility', () => {
+  it('accepts an explicitly selected 0.3 runtime and reports its real version', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({ status: 'ok', version: '0.3.0' }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'python-module', expected_version: '0.3.0', ...paths(), runner
+    });
+    await expect(adapter.version()).resolves.toBe('0.3.0');
+  });
+  it('does not treat 0.3 as the version bound by an old 0.2 plan', async () => {
+    const runner = new FakeRuntimeProcessRunner();
+    runner.enqueue(envelope({ status: 'ok', version: '0.3.0' }));
+    const adapter = createLLMWikiRuntimeAdapter({
+      launcher: 'python-module', expected_version: '0.2.0', ...paths(), runner
+    });
+    await expect(adapter.version()).rejects.toMatchObject({code:'MEMORY_RUNTIME_INCOMPATIBLE'});
+  });
+});

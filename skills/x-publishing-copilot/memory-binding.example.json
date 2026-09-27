@@ -1,0 +1,11 @@
+{
+  "schema_version": "research-memory-binding/v1",
+  "workspace": "/absolute/research-workspace",
+  "workspace_aliases": [],
+  "track_id": "enterprise-agent-runtime",
+  "runtime": {
+    "executable": "/absolute/python",
+    "launcher": "python-module",
+    "version": "0.3.0"
+  }
+}

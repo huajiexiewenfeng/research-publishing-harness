@@ -156,6 +156,10 @@ export class ResearchFlywheelService {
         };
     }
     lifecycleTarget(trackId, lifecycle, occurredAt, verificationStrength) {
+        const match = INCREMENT_REF.exec(lifecycle.increment_ref);
+        if (match === null || match[1] !== trackId)
+            throw new HarnessError('CONTRACT_INVALID', 'lifecycle Increment ref is invalid');
+        const incrementId = match[2];
         return {
             semantic_record: lifecycle,
             publication_verification_strength: verificationStrength,
@@ -168,14 +172,14 @@ export class ResearchFlywheelService {
                 verification_level: verificationStrength
             },
             body: `# Lifecycle Event ${lifecycle.event_id}\n\n${JSON.stringify(lifecycle, null, 2)}\n`,
-            variables: { research_track: trackId, event_id: lifecycle.event_id },
+            variables: { research_track: trackId, increment_id: incrementId, event_id: lifecycle.event_id },
             refs: {
                 increment_ref: lifecycle.increment_ref,
                 publication_receipt_ref: lifecycle.receipt_ref
             },
             index_entry: {
                 ref: `lifecycle:${lifecycle.event_id}@${lifecycle.event_digest}`,
-                record_path: `domains/research-publishing/tracks/${trackId}/lifecycle/${lifecycle.event_id}.md`,
+                record_path: `domains/research-publishing/tracks/${trackId}/increments/${incrementId}/lifecycle/${lifecycle.event_id}.md`,
                 record_digest: lifecycle.event_digest,
                 title: `Lifecycle: ${lifecycle.event_type}`,
                 summary: `Increment publication lifecycle changed to ${lifecycle.resulting_state}.`,

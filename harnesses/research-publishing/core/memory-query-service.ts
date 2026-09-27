@@ -16,6 +16,7 @@ import type { ResearchContentPackageV1_1 } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 
 export interface MemoryQueryRuntime {
+  version?(): Promise<'0.2.0' | '0.3.0'>;
   query(input: Readonly<{
     allowed_paths: readonly string[];
     excluded_paths: readonly string[];
@@ -114,7 +115,7 @@ export class MemoryQueryService {
       ordering_policy: 'path_asc',
       profile_digest: input.profile_digest,
       scp_digest: input.scp_digest,
-      runtime_requirement: { name: 'llm-wiki-runtime', version: '0.2.0' }
+      runtime_requirement: { name: 'llm-wiki-runtime', version: await this.runtime.version?.() ?? '0.2.0' }
     }, {
       ...(this.ids.queryId === undefined ? {} : { queryId: this.ids.queryId }),
       ...(this.ids.runId === undefined ? {} : { runId: this.ids.runId }),

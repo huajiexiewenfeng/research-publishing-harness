@@ -35,7 +35,7 @@ export class FakePromotionRuntime implements MemoryPromotionRuntime {
     }
   }
 
-  async version() { this.fail('version'); return '0.2.0' as const; }
+  async version(): Promise<'0.2.0' | '0.3.0'> { this.fail('version'); return '0.2.0' as const; }
   async validateMapping() { this.fail('validate_mapping'); return { status: 'ok' } as RuntimeEnvelope; }
   async findCatalog() {
     this.fail('find_catalog');

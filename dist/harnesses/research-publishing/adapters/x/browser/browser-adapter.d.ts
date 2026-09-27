@@ -17,6 +17,7 @@ export interface BrowserAdapterApi {
     report(executionId: string, result: BrowserActionResultInput): Promise<BrowserExecutionSnapshot>;
     status(executionId: string): Promise<BrowserExecutionStatus>;
     resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot>;
+    resumePreSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
     cancelBeforeSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
 }
 export interface StartBrowserExecutionInput {
@@ -48,6 +49,7 @@ export declare class BrowserAdapter implements BrowserAdapterApi {
     claim(executionId: string, commandId: string): Promise<BrowserCommandClaim>;
     report(executionId: string, resultInput: BrowserActionResultInput): Promise<BrowserExecutionSnapshot>;
     status(executionId: string): Promise<BrowserExecutionStatus>;
+    resumePreSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
     resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot>;
     cancelBeforeSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
     private crossSubmitBarrier;

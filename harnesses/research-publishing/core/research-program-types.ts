@@ -221,7 +221,7 @@ export interface WeeklyContextBindingV1 {
   readonly selected_context_refs: readonly string[];
   readonly query_status: ResearchQueryStatusV2;
   readonly application_status: 'applied' | 'reviewed_not_applied';
-  readonly runtime_version: '0.2.0' | null;
+  readonly runtime_version: '0.2.0' | '0.3.0' | null;
 }
 
 export interface WeeklyCandidateBriefV1 {

@@ -11,3 +11,9 @@ At every terminal Plan, Receipt, selected-feedback, or Candidate-Insight transit
 Every long-term write requires the exact preview and one exact Promotion confirmation for the unchanged Plan. A changed Receipt, Feedback Snapshot, Proposal, Workspace, Profile, SCP, Mapping, Runtime version, staging file, or Plan invalidates approval. Never perform automatic semantic promotion.
 
 Only `llm-wiki-runtime` may access `.llm-wiki`. The Skill and Harness never fall back to direct `.llm-wiki` reads or writes. Partial failure uses the immutable Receipt and resumable Harness state; it never silently claims that the research loop completed.
+
+## Persistent memory workspace binding
+
+Before a new Query Plan, read `memory-binding.json` beside SKILL.md when present (or the explicit `RESEARCH_PUBLISHING_MEMORY_BINDING` path). Use its canonical workspace and track_id. This is a memory binding; publishing assets stay in their publication workspace. Registered workspace aliases are resolved only for doctor and read Query operations. Other memory operations must name the canonical workspace and contain their source artifacts there. Never rewrite an existing Plan, Approval, Receipt or digest to switch workspaces or tracks.
+
+The launcher supplies the configured Runtime executable, launcher and exact version unless the caller explicitly supplies them. A supported 0.3.0 runtime is separate from an approval bound to 0.2.0. Use Catalog-first V2 Query and `include_working=false` for the accepted mainline. Use the working view with explicit `include_working=true` for writing in progress. A binding or query error must be reported visibly; ordinary writing can continue with memory_unavailable.

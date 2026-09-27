@@ -85,12 +85,32 @@ export class ArticleService {
             }
         }
         const sectionIds = new Set(draft.sections.flatMap((section) => section.section_id === undefined ? [] : [section.section_id]));
+        // The source marker carries position; slot order is only asset metadata.
+        const sourceMarkers = new Map();
+        for (const markdown of [draft.summary, ...draft.sections.map((section) => section.markdown)]) {
+            for (const paragraph of markdown.split(/\r?\n[ \t]*\r?\n/)) {
+                if (!paragraph.includes('rph-visual:'))
+                    continue;
+                const match = paragraph.trim().match(/^<!-- rph-visual:([A-Za-z0-9_-]+) -->$/);
+                if (match === null)
+                    throw new HarnessError('CONTRACT_INVALID', 'source visual markers must be standalone Markdown blocks');
+                const id = match[1];
+                const slot = draft.visual_slots?.find((candidate) => candidate.slot_id === id);
+                if (slot?.placement.kind !== 'in_place') {
+                    throw new HarnessError('CONTRACT_INVALID', `source visual marker ${id} has no in_place Slot`);
+                }
+                sourceMarkers.set(id, (sourceMarkers.get(id) ?? 0) + 1);
+            }
+        }
         const slotIds = new Set();
         for (const slot of draft.visual_slots ?? []) {
             if (slotIds.has(slot.slot_id)) {
                 throw new HarnessError('CONTRACT_INVALID', `duplicate Visual Slot ${slot.slot_id}`);
             }
             slotIds.add(slot.slot_id);
+            if (slot.placement.kind === 'in_place' && sourceMarkers.get(slot.slot_id) !== 1) {
+                throw new HarnessError('CONTRACT_INVALID', `Visual Slot ${slot.slot_id} must have exactly one source marker`);
+            }
             if (slot.claim_refs.some((claimId) => !claimIds.has(claimId))) {
                 throw new HarnessError('VISUAL_CLAIM_REF_INVALID', `Visual Slot ${slot.slot_id} references a Claim outside the frozen package`);
             }
@@ -407,6 +427,7 @@ export class ArticleService {
     }
     renderArticle(draft, selected = new Map()) {
         const slots = draft.visual_slots ?? [];
+        const renderInPlace = (markdown) => markdown.replace(/^[ \t]*<!-- rph-visual:([A-Za-z0-9_-]+) -->[ \t]*\r?$/gm, (_marker, id) => selected.has(id) ? this.renderVisual(selected.get(id)) : '');
         const cover = slots.find((slot) => slot.placement.kind === 'cover');
         const coverMarkdown = cover === undefined || !selected.has(cover.slot_id)
             ? ''
@@ -416,13 +437,13 @@ export class ArticleService {
             const sectionVisuals = slots.filter((slot) => slot.placement.kind === 'after_section' && slot.placement.section_id === section.section_id)
                 .flatMap((slot) => selected.has(slot.slot_id) ? [`\n\n${this.renderVisual(selected.get(slot.slot_id))}`] : [])
                 .join('');
-            return `## ${section.heading}\n\n${section.markdown}${sectionVisuals}`;
+            return `## ${section.heading}\n\n${renderInPlace(section.markdown)}${sectionVisuals}`;
         })
             .join('\n\n');
         const questions = draft.open_questions.length === 0
             ? ''
             : `\n\n## Open questions\n\n${draft.open_questions.map((question) => `- ${question}`).join('\n')}`;
-        return `# ${draft.title}\n\n${draft.summary}${coverMarkdown}\n\n${sections}${questions}\n`;
+        return `# ${draft.title}\n\n${renderInPlace(draft.summary)}${coverMarkdown}\n\n${sections}${questions}\n`;
     }
     renderVisual(asset) {
         return `![${asset.alt_text.replaceAll('[', '\\[').replaceAll(']', '\\]')}](${asset.relative_path})`;

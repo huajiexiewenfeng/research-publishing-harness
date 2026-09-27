@@ -22,6 +22,8 @@ No Subagent is created for the Host loop. Keep page ownership, command state, an
 
 ## Scoped Chrome transactions
 
+The author's Markdown is the position source of truth. Preserve each inline image at its actual source location: after a heading, between paragraphs, or at a section end. During Article Draft preparation, replace each image at that location with a standalone `<!-- rph-visual:SLOT_ID -->` block and declare its Visual Slot as `{kind:"in_place"}`. Keep surrounding prose, captions and image order; import the image as a reviewed canonical asset. Finalization replaces the marker in place, and X compilation derives the existing block ordinal from the resulting document. Do not relocate images to satisfy a heading or section-end convention. Preserve legacy `after_section` packages; changing an approved image position requires a new content-bound Audit. Covers remain separate from inline images.
+
 - For an inline image, start at the current editor insertion point and use `Insert -> Media`; upload only the claimed digest-matching asset, restore its locked ordinal, set and read back Alt text, then wait for the bounded autosave observation.
 - For a cover, resolve and operate only controls inside the cover region. Never reuse an inline-image control or an element inferred from screen coordinates.
 - Execute only the claimed transaction. Never combine cover upload, another image, navigation, Preview, or Publish in the same claim.

@@ -120,8 +120,22 @@ describe('X Article Publication Preflight', () => {
     })).toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
   });
 
-  it('rejects more than ten inline images', () => {
-    expect(() => createXArticlePublicationPreflight(fixture(11)))
+  it.each([0, 1, 10, 11, 25])('preserves all %i source-positioned inline images', (count) => {
+    const result = createXArticlePublicationPreflight(fixture(count));
+    expect(result.inline_assets).toHaveLength(count);
+    expect(result.inline_assets.map((entry) => entry.asset_id))
+      .toEqual(Array.from({ length: count }, (_, index) => `inline_${index + 1}`));
+    expect(result.inline_assets.map((entry) => entry.block_ordinal))
+      .toEqual(Array.from({ length: count }, (_, index) => index + 2));
+  });
+
+  it('still validates identity and Alt beyond the tenth inline image', () => {
+    const input = fixture(11);
+    const valid = createXArticlePublicationPreflight(input);
+    expect(valid.inline_assets[10]!.alt_text).toBe('Alt for inline_11');
+    const visuals = [...structuredClone(input.visuals)];
+    visuals[11] = { ...visuals[11]!, asset: { ...visuals[11]!.asset, alt_text: 'Wrong Alt' } };
+    expect(() => createXArticlePublicationPreflight({ ...input, visuals }))
       .toThrowError(expect.objectContaining({ code: 'ARTICLE_ASSET_MISMATCH' }));
   });
 

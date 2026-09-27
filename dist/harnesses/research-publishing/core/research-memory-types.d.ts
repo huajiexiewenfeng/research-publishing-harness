@@ -283,7 +283,7 @@ export interface MemoryPromotionPlanV2 {
     readonly workspace_identity_digest: Digest;
     readonly runtime_requirement: Readonly<{
         name: 'llm-wiki-runtime';
-        version: '0.2.0';
+        version: '0.2.0' | '0.3.0';
     }>;
     readonly profile_digest: Digest;
     readonly mapping_digest: Digest;
@@ -337,7 +337,7 @@ export interface MemoryPromotionReceiptV2 {
     readonly plan_id: StableId;
     readonly plan_digest: Digest;
     readonly approval_digest: Digest;
-    readonly runtime_version: '0.2.0';
+    readonly runtime_version: '0.2.0' | '0.3.0';
     readonly status: 'complete' | 'partial' | 'failed' | 'reconciliation_required';
     readonly steps: ReadonlyArray<{
         readonly name: ResearchPromotionAction;

@@ -56,7 +56,8 @@ function inline(text: string): XArticleInlineRunV1[] {
     const bold = value.indexOf('**', cursor);
     const italic = value.indexOf('*', cursor);
     const link = value.indexOf('[', cursor);
-    const candidates = [bold, italic, link].filter((index) => index >= 0);
+    const code = value.indexOf('`', cursor);
+    const candidates = [bold, italic, link, code].filter((index) => index >= 0);
     const next = candidates.length === 0 ? -1 : Math.min(...candidates);
     if (next < 0) {
       runs.push({ text: value.slice(cursor), marks: [], link: null });
@@ -65,6 +66,15 @@ function inline(text: string): XArticleInlineRunV1[] {
     if (next > cursor) {
       runs.push({ text: value.slice(cursor, next), marks: [], link: null });
       cursor = next;
+      continue;
+    }
+    if (value.startsWith('`', cursor)) {
+      const end = value.indexOf('`', cursor + 1);
+      if (end <= cursor + 1) unsupported('unclosed or empty inline code span');
+      // The portable document supports bold/italic, not a code mark. Keep the
+      // literal delimiters and contents; never interpret markup inside code.
+      runs.push({ text: value.slice(cursor, end + 1), marks: [], link: null });
+      cursor = end + 1;
       continue;
     }
     if (value.startsWith('**', cursor)) {
@@ -90,13 +100,13 @@ function inline(text: string): XArticleInlineRunV1[] {
 }
 
 function rejectUnsupportedLine(line: string): void {
+  const outsideCode = line.replace(/`[^`\r\n]+`/g, 'CODE');
   if (
     /^\s+[-*+] /.test(line) ||
     /^```/.test(line) ||
     /^\|.*\|$/.test(line) ||
-    /<\/?[A-Za-z][^>]*>/.test(line) ||
-    /`/.test(line) ||
-    /~~/.test(line) ||
+    /<\/?[A-Za-z][^>]*>/.test(outsideCode) ||
+    /~~/.test(outsideCode) ||
     /^#{4,} /.test(line)
   ) {
     unsupported(`unsupported Markdown: ${line}`);

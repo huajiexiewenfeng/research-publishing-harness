@@ -316,7 +316,7 @@ export class ResearchSynthesisService {
             review.snapshot_digest !== snapshot.snapshot_digest ||
             review.review_digest !== input.review_digest ||
             review.review_digest !== sha256(omit(review, ['review_digest'])) ||
-            !['0.2.0', null].includes(snapshot.runtime_version)) {
+            !['0.2.0', '0.3.0', null].includes(snapshot.runtime_version)) {
             fail('APPROVAL_STALE', 'Reviewed Runtime Query chain is stale');
         }
         const available = new Map(snapshot.context_items.map((item) => [item.context_ref, item]));

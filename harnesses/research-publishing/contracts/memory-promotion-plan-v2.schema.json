@@ -9,7 +9,7 @@
     "kind": { "const": "research_increment_promotion" },
     "plan_id": { "$ref": "#/$defs/id" }, "track_id": { "$ref": "#/$defs/id" },
     "workspace_identity_digest": { "$ref": "#/$defs/digest" },
-    "runtime_requirement": { "type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "const": "0.2.0" } } },
+    "runtime_requirement": { "type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": { "name": { "const": "llm-wiki-runtime" }, "version": { "enum": ["0.2.0", "0.3.0"] } } },
     "profile_digest": { "$ref": "#/$defs/digest" }, "mapping_digest": { "$ref": "#/$defs/digest" },
     "scp_digests": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } },
     "evidence_snapshots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/digestRef" } },

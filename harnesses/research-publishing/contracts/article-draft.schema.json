@@ -38,6 +38,7 @@
           "placement": {
             "oneOf": [
               { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "cover" } } },
+              { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "in_place" } } },
               { "type": "object", "additionalProperties": false, "required": ["kind", "section_id"], "properties": { "kind": { "const": "after_section" }, "section_id": { "type": "string", "minLength": 1 } } }
             ]
           },

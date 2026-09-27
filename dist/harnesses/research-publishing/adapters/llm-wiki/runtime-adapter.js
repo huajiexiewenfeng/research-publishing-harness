@@ -6,7 +6,7 @@ import { NodeRuntimeProcessRunner } from './runtime-process.js';
 const TIMEOUT_MS = 15_000;
 const OUTPUT_LIMIT = 1_048_576;
 const DOMAIN = 'research-publishing';
-const RUNTIME_VERSION = '0.2.0';
+const SUPPORTED_RUNTIME_VERSIONS = ['0.2.0', '0.3.0'];
 const SAFE_TRACK_PATH = /^domains\/research-publishing\/tracks\/[a-z0-9][a-z0-9_-]{0,127}\/\*\*$/;
 const SAFE_SLUG = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const SAFE_LOOKUP_VALUE = /^[a-z0-9][a-z0-9_:-]{0,255}$/;
@@ -115,7 +115,7 @@ export class LLMWikiRuntimeAdapter {
         for (const path of [config.profile_path, config.mapping_path, ...config.scp_paths]) {
             requireAbsolute(path, 'Domain asset path');
         }
-        if (config.expected_version !== RUNTIME_VERSION) {
+        if (!SUPPORTED_RUNTIME_VERSIONS.includes(config.expected_version)) {
             throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', 'unsupported expected runtime version');
         }
         if (config.scp_paths.length === 0) {
@@ -144,9 +144,9 @@ export class LLMWikiRuntimeAdapter {
     async version() {
         const result = await this.invoke('version');
         if (result.status !== 'ok' || result.version !== this.config.expected_version) {
-            throw new HarnessError('MEMORY_RUNTIME_INCOMPATIBLE', 'llm-wiki-runtime version is not compatible with V2.2');
+            throw new HarnessError('MEMORY_RUNTIME_INCOMPATIBLE', 'llm-wiki-runtime version differs from the explicitly selected supported version');
         }
-        return RUNTIME_VERSION;
+        return this.config.expected_version;
     }
     async doctor() {
         const runtimeVersion = await this.version();
@@ -209,7 +209,7 @@ export class LLMWikiRuntimeAdapter {
             const items = contextItems(result);
             return {
                 status: items.length > 0 ? 'loaded' : 'empty',
-                runtime_version: RUNTIME_VERSION,
+                runtime_version: this.config.expected_version,
                 items,
                 excluded_count: typeof result.excluded_count === 'number' ? result.excluded_count : 0,
                 truncated_count: 0
@@ -293,7 +293,7 @@ export class LLMWikiRuntimeAdapter {
             return item === undefined ? [] : [item];
         });
         return {
-            status: ordered.length > 0 ? 'loaded' : 'empty', runtime_version: RUNTIME_VERSION,
+            status: ordered.length > 0 ? 'loaded' : 'empty', runtime_version: this.config.expected_version,
             items: ordered,
             excluded_count: typeof result.excluded_count === 'number' ? result.excluded_count : 0,
             truncated_count: 0

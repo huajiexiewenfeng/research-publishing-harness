@@ -324,6 +324,7 @@ export interface VisualSlot {
   readonly slot_id: string;
   readonly placement:
     | { readonly kind: 'cover' }
+    | { readonly kind: 'in_place' }
     | { readonly kind: 'after_section'; readonly section_id: string };
   readonly purpose: 'cover' | 'explanation' | 'architecture' | 'evidence';
   readonly required: boolean;

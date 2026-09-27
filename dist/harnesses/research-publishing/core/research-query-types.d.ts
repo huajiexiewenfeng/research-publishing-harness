@@ -89,7 +89,7 @@ export interface ResearchContextSnapshotInputV2 {
     readonly budgets: ResearchQueryBudgetsV2;
     readonly selection_rationale: string;
     readonly query_status: ResearchQueryStatusV2;
-    readonly runtime_version: '0.2.0' | null;
+    readonly runtime_version: '0.2.0' | '0.3.0' | null;
     readonly created_at: string;
 }
 export interface ResearchContextSnapshotV2 extends ResearchContextSnapshotInputV2 {

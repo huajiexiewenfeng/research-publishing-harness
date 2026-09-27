@@ -2,6 +2,7 @@ import type { ContextSnapshotV1, Digest, MemoryContextV1, MemoryQueryPlanV1, Mem
 import type { ResearchContentPackageV1_1 } from './types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 export interface MemoryQueryRuntime {
+    version?(): Promise<'0.2.0' | '0.3.0'>;
     query(input: Readonly<{
         allowed_paths: readonly string[];
         excluded_paths: readonly string[];

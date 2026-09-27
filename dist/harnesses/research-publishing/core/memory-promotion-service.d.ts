@@ -11,7 +11,7 @@ export interface RuntimeCatalogLookupFound {
 }
 export type RuntimeCatalogLookup = RuntimeCatalogLookupNotFound | RuntimeCatalogLookupFound;
 export interface MemoryPromotionRuntime {
-    version(): Promise<'0.2.0'>;
+    version(): Promise<'0.2.0' | '0.3.0'>;
     validateMapping(): Promise<RuntimeEnvelope>;
     findCatalog(trackId: string): Promise<RuntimeCatalogLookup>;
     copySource(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;

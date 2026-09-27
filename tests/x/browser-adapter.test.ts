@@ -29,6 +29,35 @@ const manifest: BrowserCapabilityManifest = {
   observed_at: '2026-08-19T07:00:00.000Z'
 };
 
+describe('pre-submit observation recovery', () => {
+  it('requires a fresh read and keeps owned text after an observation mismatch', async () => {
+    const { adapter } = await fixture();
+    const plan = singlePublication();
+    await adapter.start({ execution_id: 'recover_text', plan,
+      approval: approvePublicationV2(plan, 'human', 600_000, new Date('2026-08-19T07:00:00.000Z')),
+      capability_manifest: manifest });
+    let command = (await adapter.next('recover_text'))!;
+    await claimAndReport(adapter, command, page(command, 'https://x.com/home', singleNodes('')));
+    command = (await adapter.next('recover_text'))!;
+    expect(command.kind).toBe('set_text');
+    await claimAndReport(adapter, command, page(command, 'https://x.com/home', singleNodes('Only locked item\n')));
+    await expect(adapter.next('recover_text')).rejects.toMatchObject({code:'COMPOSER_CONTENT_MISMATCH'});
+    await adapter.resumePreSubmit('recover_text');
+    command = (await adapter.next('recover_text'))!;
+    expect(command).toMatchObject({kind:'observe_page',side_effect:'read'});
+    await claimAndReport(adapter, command, page(command, 'https://x.com/home', singleNodes('Only locked item')));
+    command = (await adapter.next('recover_text'))!;
+    expect(command).toMatchObject({kind:'observe_page',purpose:'submit_barrier_observation'});
+    expect((await adapter.status('recover_text')).snapshot.submit_command_count).toBe(0);
+  });
+  it('refuses recovery when a command is pending or execution is not failed', async () => {
+    const {adapter}=await fixture(); const plan=singlePublication();
+    await adapter.start({execution_id:'not_failed',plan,
+      approval:approvePublicationV2(plan,'human',600_000,new Date('2026-08-19T07:00:00.000Z')),capability_manifest:manifest});
+    await expect(adapter.resumePreSubmit('not_failed')).rejects.toMatchObject({code:'STATE_TRANSITION_INVALID'});
+  });
+});
+
 function publication(media: readonly { kind: 'image'; digest: string }[] = []) {
   return createPublicationPlanV2({
     planId: 'plan_adapter', runId: 'run_adapter', targetAccount: '@runtime_ai',

@@ -37,7 +37,9 @@ export class XService {
             mode: `${brief.contentType}:${brief.format}`,
             language: brief.language
         }, packageValue, [
-            'Keep every post within the versioned weighted character limit.',
+            brief.format === 'single'
+                ? 'Write one complete Single post; no local character cap applies. Platform/account restrictions still apply.'
+                : 'Keep every post within the 280-weighted-character limit.',
             'Preserve Claim status and make planned work explicit.',
             'Return one complete draft candidate; do not publish.'
         ]);
@@ -112,12 +114,16 @@ export class XService {
         const draft = await this.store.readJson(`${prefix}/draft-candidate.json`);
         const findings = [...runPrivacyGate(draft).findings];
         for (const [index, item] of draft.items.entries()) {
-            const characters = validatePostText(item.text);
+            const characters = validatePostText(item.text, draft.format === 'single' ? null : 280);
             if (!characters.valid) {
+                const overLimit = characters.maxWeightedLength !== null &&
+                    characters.weightedLength > characters.maxWeightedLength;
                 findings.push({
-                    code: 'CHARACTER_LIMIT_EXCEEDED',
+                    code: overLimit ? 'CHARACTER_LIMIT_EXCEEDED' : 'INVALID_POST_TEXT',
                     severity: 'error',
-                    message: `item ${item.ordinal} has weighted length ${characters.weightedLength}/${characters.maxWeightedLength}`,
+                    message: overLimit
+                        ? `item ${item.ordinal} has weighted length ${characters.weightedLength}/${characters.maxWeightedLength}`
+                        : `item ${item.ordinal} is empty or contains invalid text`,
                     path: `/items/${index}/text`
                 });
             }

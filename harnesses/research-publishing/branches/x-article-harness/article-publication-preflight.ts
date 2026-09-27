@@ -115,13 +115,6 @@ function validateInlineBindings(
       ? [{ block, original_ordinal: index + 1 }]
       : []
   );
-  if (documentImages.length > 10) {
-    throw new HarnessError(
-      'ARTICLE_ASSET_MISMATCH',
-      'X Article Fast Path supports at most ten inline images'
-    );
-  }
-
   const inlineBindings = visuals.filter((binding) => binding.placement.kind === 'block');
   if (inlineBindings.length !== documentImages.length) {
     throw new HarnessError(

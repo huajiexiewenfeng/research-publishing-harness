@@ -27,6 +27,29 @@ const architecture = {
 } as const;
 
 describe('compileXArticleDocument', () => {
+  it('preserves inline code and its delimiters as literal text without parsing its markup', () => {
+    const code = '`submitted * [literal](https://example.com) <tag> ~~`';
+    const document = compileXArticleDocument({ markdown: `# Code\n\nState: ${code}. **Review** next.\n\n- Call \`submit\`.`, visuals: [] });
+    expect(document.blocks).toEqual([
+      { kind: 'paragraph', runs: [
+        { text: `State: ${code}. `, marks: [], link: null },
+        { text: 'Review', marks: ['bold'], link: null },
+        { text: ' next.', marks: [], link: null }
+      ] },
+      { kind: 'bullet_list', items: [[{ text: 'Call `submit`.', marks: [], link: null }]] }
+    ]);
+  });
+
+  it('keeps inline code literal inside bold text', () => {
+    const document = compileXArticleDocument({ markdown: '# Code\n\n**State `submitted`**', visuals: [] });
+    expect(document.blocks).toEqual([{ kind: 'paragraph', runs: [{ text: 'State `submitted`', marks: ['bold'], link: null }] }]);
+  });
+
+  it.each(['Unclosed `submitted', 'Empty `` span'])('rejects malformed inline code: %s', text => {
+    expect(() => compileXArticleDocument({ markdown: `# Code\n\n${text}`, visuals: [] }))
+      .toThrowError(expect.objectContaining({ code: 'ARTICLE_FORMAT_UNSUPPORTED' }));
+  });
+
   it('compiles the supported canonical Markdown subset into a stable document', () => {
     expect(compileXArticleDocument({
       markdown: [

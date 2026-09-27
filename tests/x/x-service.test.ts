@@ -21,6 +21,17 @@ async function service(runId = 'x_run_1'): Promise<XService> {
 }
 
 describe('XService', () => {
+  it.each(['single', 'thread', 'reply'] as const)('generates format-aware length guidance for %s', async (format) => {
+    const x = await service(`x_guidance_${format}`);
+    const run = await x.prepareX(frozenPackage, {
+      contentType: format === 'reply' ? 'reply' : 'research_note', format,
+      language: 'en', targetAccount: '@runtime_ai'
+    });
+    expect(run.generation_task.constraints).toContain(format === 'single'
+      ? 'Write one complete Single post; no local character cap applies. Platform/account restrictions still apply.'
+      : 'Keep every post within the 280-weighted-character limit.');
+  });
+
   it('requires a frozen package and creates one primary generation task', async () => {
     const x = await service();
     await expect(
@@ -81,6 +92,61 @@ describe('XService', () => {
         items: [{ ordinal: 1, text: 'A reply without a snapshot.', claim_refs: [] }]
       })
     ).rejects.toMatchObject({ code: 'CONTRACT_INVALID' });
+  });
+
+  it('reviews a long Single and locks its full text in a browser plan', async () => {
+    const x = await service('x_long_single');
+    const run = await x.prepareX(frozenPackage, {
+      contentType: 'research_note', format: 'single', language: 'en', targetAccount: '@runtime_ai'
+    });
+    const text = 'Persistent knowledge has an independent lifecycle. '.repeat(80);
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0', run_id: run.run_id, content_type: 'research_note',
+      format: 'single', language: 'en',
+      items: [{ ordinal: 1, text, claim_refs: ['claim_verified'] }]
+    });
+    expect((await x.reviewX(run.run_id)).passed).toBe(true);
+    const plan = await x.planXBrowser(run.run_id);
+    expect(plan.intent.mode).toBe('single');
+    expect(plan.intent.action).toBe('publish_once');
+    expect(plan.items).toHaveLength(1);
+    expect(plan.items[0]!.text).toBe(text);
+    expect(plan.plan_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it.each([' \n\t ', `${'a'.repeat(500)}\uFFFE`])('rejects invalid Single text: %j', async (text) => {
+    const x = await service('x_invalid_single');
+    const run = await x.prepareX(frozenPackage, {
+      contentType: 'research_note', format: 'single', language: 'en', targetAccount: '@runtime_ai'
+    });
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0', run_id: run.run_id, content_type: 'research_note',
+      format: 'single', language: 'en', items: [{ ordinal: 1, text, claim_refs: ['claim_verified'] }]
+    });
+    expect(await x.reviewX(run.run_id)).toMatchObject({
+      passed: false,
+      findings: expect.arrayContaining([expect.objectContaining({ code: 'INVALID_POST_TEXT' })])
+    });
+    await expect(x.planXBrowser(run.run_id)).rejects.toMatchObject({ code: 'EVIDENCE_GATE_BLOCKED' });
+  });
+
+  it('keeps the Reply length limit', async () => {
+    const x = await service('x_long_reply');
+    const run = await x.prepareX(frozenPackage, {
+      contentType: 'reply', format: 'reply', language: 'en', targetAccount: '@runtime_ai'
+    });
+    await x.acceptXDraft(run.run_id, {
+      schema_version: '1.0', run_id: run.run_id, content_type: 'reply', format: 'reply', language: 'en',
+      target_post: {
+        id: '123', url: 'https://x.com/example/status/123', author: '@example',
+        snapshot_digest: `sha256:${'a'.repeat(64)}`
+      },
+      items: [{ ordinal: 1, text: 'a'.repeat(281), claim_refs: ['claim_verified'] }]
+    });
+    expect(await x.reviewX(run.run_id)).toMatchObject({
+      passed: false,
+      findings: expect.arrayContaining([expect.objectContaining({ code: 'CHARACTER_LIMIT_EXCEEDED' })])
+    });
   });
 
   it('blocks an over-limit Thread item independently', async () => {

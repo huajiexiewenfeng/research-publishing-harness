@@ -2,7 +2,7 @@ import type { RuntimeEnvelope } from '../adapters/llm-wiki/runtime-protocol.js';
 import type { Digest, MemoryIngestApprovalV1, MemoryIngestPlanV1, MemoryIngestReceiptV1, MemoryIngestState, MemoryIngestStepName } from './memory-types.js';
 import type { WorkspaceStore } from './workspace-store.js';
 export interface MemoryIngestRuntime {
-    version(): Promise<'0.2.0'>;
+    version(): Promise<'0.2.0' | '0.3.0'>;
     validateMapping(): Promise<RuntimeEnvelope>;
     copySource(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;
     writeRecord(input: Readonly<Record<string, unknown>>): Promise<RuntimeEnvelope>;

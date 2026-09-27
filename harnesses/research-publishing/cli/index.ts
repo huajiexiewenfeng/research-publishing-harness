@@ -145,12 +145,13 @@ interface CliOptions {
   readonly adapter?: 'manual' | 'browser';
   readonly runtimeExecutable?: string;
   readonly runtimeLauncher?: 'console-script' | 'python-module';
+  readonly runtimeVersion?: '0.2.0' | '0.3.0';
   readonly output: string;
 }
 
 const KNOWN_OPTIONS = new Set([
   'workspace', 'input', 'run-id', 'execution-id', 'command-id', 'adapter',
-  'runtime-executable', 'runtime-launcher', 'output', 'plan', 'capabilities',
+  'runtime-executable', 'runtime-launcher', 'runtime-version', 'output', 'plan', 'capabilities',
   'observation', 'execution', 'confirmation'
   , 'audit', 'release-set'
 ]);
@@ -222,6 +223,10 @@ function parseArguments(argv: readonly string[]): {
     throw new HarnessError('CONTRACT_INVALID', '--adapter must be manual or browser');
   }
   const runtimeLauncher = values['runtime-launcher'];
+  const runtimeVersion = values['runtime-version'];
+  if (runtimeVersion !== undefined && !['0.2.0', '0.3.0'].includes(runtimeVersion)) {
+    throw new HarnessError('MEMORY_RUNTIME_INVALID_CONFIG', 'unsupported --runtime-version');
+  }
   if (
     runtimeLauncher !== undefined &&
     runtimeLauncher !== 'console-script' && runtimeLauncher !== 'python-module'
@@ -259,6 +264,7 @@ function parseArguments(argv: readonly string[]): {
         ? {}
         : { runtimeExecutable: values['runtime-executable'] }),
       ...(runtimeLauncher === undefined ? {} : { runtimeLauncher }),
+      ...(runtimeVersion === undefined ? {} : { runtimeVersion: runtimeVersion as '0.2.0' | '0.3.0' }),
       output: values['output'] ?? 'json'
     },
     providedOptions: new Set(Object.keys(values))
@@ -731,7 +737,7 @@ async function configuredMemoryRuntime(
   return createLLMWikiRuntimeAdapter({
     launcher: options.runtimeLauncher,
     executable: options.runtimeExecutable,
-    expected_version: '0.2.0',
+    expected_version: options.runtimeVersion ?? '0.2.0',
     workspace: options.workspace,
     profile_path: assets.profilePath,
     mapping_path: assets.mappingPath,
@@ -1815,6 +1821,10 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     if (operation === 'x browser status') {
       const artifact = await browser.status(requiredExecutionId(options));
       return { ok: true, operation, artifact, state: artifact.snapshot.state };
+    }
+    if (operation === 'x browser resume-pre-submit') {
+      const artifact = await browser.resumePreSubmit(requiredExecutionId(options));
+      return { ok: true, operation, artifact, state: artifact.state };
     }
     if (operation === 'x browser resume-verification') {
       const artifact = await browser.resumeVerification(requiredExecutionId(options));

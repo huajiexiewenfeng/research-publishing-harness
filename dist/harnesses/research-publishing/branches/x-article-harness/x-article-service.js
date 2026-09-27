@@ -3,8 +3,10 @@ import { sha256 } from '../../core/digest.js';
 import { HarnessError } from '../../core/errors.js';
 import { validateContract } from '../../core/schema-validator.js';
 import { createXArticlePublicationPlan } from '../../core/x-article-publication-plan.js';
+import { createXArticleFastPathAudit } from '../../core/x-article-fast-path.js';
 import { verifyFinalizedArticlePackage } from '../article-harness/article-package-verifier.js';
 import { compileXArticleDocument } from './article-compiler.js';
+import { createXArticlePublicationPreflight } from './article-publication-preflight.js';
 export class XArticleService {
     store;
     runId;
@@ -17,6 +19,62 @@ export class XArticleService {
         this.now = options.now ?? (() => new Date());
     }
     async plan(packageRef, targetAccount) {
+        const compiled = await this.compilePackage(packageRef);
+        const runId = this.runId();
+        const plan = createXArticlePublicationPlan({
+            planId: this.planId(),
+            runId,
+            targetAccount,
+            articlePackage: { root: packageRef.root, digest: packageRef.digest },
+            document: compiled.document,
+            visuals: compiled.visuals,
+            plannedAt: this.now().toISOString(),
+            provenance: { article_run_id: compiled.manifest.article_run_id }
+        });
+        await this.store.writeNew(`runs/${runId}/x-article/publication-plan-v1.json`, plan);
+        return plan;
+    }
+    async planFastPath(packageRef, targetAccount, draftTarget) {
+        const compiled = await this.compilePackage(packageRef);
+        const preflight = createXArticlePublicationPreflight({
+            document: compiled.document,
+            visuals: compiled.visuals
+        });
+        const assets = new Map(compiled.visuals.map((binding) => [binding.asset.asset_id, binding.asset]));
+        const sanitizedVisuals = [{
+                asset: this.requireAsset(assets, preflight.cover.asset_id),
+                placement: { kind: 'cover' }
+            }];
+        for (const inline of preflight.inline_assets) {
+            sanitizedVisuals.push({
+                asset: this.requireAsset(assets, inline.asset_id),
+                placement: { kind: 'block', block_ordinal: inline.block_ordinal }
+            });
+        }
+        const runId = this.runId();
+        const plan = createXArticlePublicationPlan({
+            planId: this.planId(),
+            runId,
+            targetAccount,
+            articlePackage: { root: packageRef.root, digest: packageRef.digest },
+            document: preflight.sanitized_document,
+            visuals: sanitizedVisuals,
+            plannedAt: this.now().toISOString(),
+            provenance: { article_run_id: compiled.manifest.article_run_id }
+        });
+        const audit = createXArticleFastPathAudit({
+            preflight,
+            publication_plan: plan,
+            draft_target: draftTarget
+        });
+        await this.store.writeNewDirectory(`runs/${runId}/x-article`, {
+            'publication-preflight-v1.json': preflight,
+            'publication-plan-v1.json': plan,
+            'fast-path-audit-v1.json': audit
+        });
+        return audit;
+    }
+    async compilePackage(packageRef) {
         const storedRef = await this.store.readJson(`${packageRef.root}/package-ref.json`);
         if (sha256(storedRef) !== sha256(packageRef)) {
             throw new HarnessError('CONTRACT_INVALID', 'Article Package reference differs from its finalized artifact');
@@ -51,19 +109,7 @@ export class XArticleService {
                 });
             }
         });
-        const runId = this.runId();
-        const plan = createXArticlePublicationPlan({
-            planId: this.planId(),
-            runId,
-            targetAccount,
-            articlePackage: { root: packageRef.root, digest: packageRef.digest },
-            document,
-            visuals,
-            plannedAt: this.now().toISOString(),
-            provenance: { article_run_id: manifest.article_run_id }
-        });
-        await this.store.writeNew(`runs/${runId}/x-article/publication-plan-v1.json`, plan);
-        return plan;
+        return { manifest, document, visuals };
     }
     requireAsset(assets, assetId) {
         const asset = assets.get(assetId);

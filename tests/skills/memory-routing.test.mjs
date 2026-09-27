@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import { routeMemoryArgs } from '../../skills/x-publishing-copilot/scripts/memory-routing.mjs';
+const config={schema_version:'research-memory-binding/v1',workspace:'D:/workspaces/research-publishing',workspace_aliases:['C:/Users/admin/Documents/New project 2/research-publishing-workspace'],track_id:'enterprise-agent-runtime',runtime:{executable:'D:/tmp/github/llm-wiki-runtime/.venv/Scripts/python.exe',launcher:'python-module',version:'0.3.0'}};
+test('publishing arguments are untouched',()=>{const a=['x-article','browser','status','--workspace',config.workspace_aliases[0]];assert.deepEqual(routeMemoryArgs(a,config,{},null).args,a)});
+test('new read queries resolve configured alias and persist runtime choice',()=>{const r=routeMemoryArgs(['memory','query','plan','--workspace',config.workspace_aliases[0]],config,{}, {track_id:config.track_id});assert.equal(r.args[r.args.indexOf('--workspace')+1],config.workspace);assert.ok(r.args.includes('0.3.0'));assert.match(r.diagnostic,/research-publishing/)});
+test('missing memory workspace uses configured canonical workspace',()=>{assert.ok(routeMemoryArgs(['memory','doctor'],config,{},null).args.includes(config.workspace))});
+test('mutations never silently move workspaces',()=>{assert.throws(()=>routeMemoryArgs(['memory','promotion','execute','--workspace',config.workspace_aliases[0]],config,{},null),/canonical workspace/)});
+test('wrong track fails visibly instead of empty success',()=>{assert.throws(()=>routeMemoryArgs(['memory','query','plan'],config,{}, {research_track:'agent-runtime'}),/enterprise-agent-runtime/)});
+test('explicit old runtime selection is preserved',()=>{const a=['memory','doctor','--runtime-version','0.2.0'];const r=routeMemoryArgs(a,config,{},null);assert.equal(r.args[r.args.indexOf('--runtime-version')+1],'0.2.0')});

@@ -32,7 +32,7 @@ describe('MemoryIngestService execution', () => {
       'validate_mapping', 'copy_source', 'write_records', 'register_artifact', 'append_log'
     ]);
     expect(runtime.calls.map((call) => call.method)).toEqual([
-      'validateMapping', 'version', 'validateMapping', 'copySource',
+      'validateMapping', 'version', 'version', 'validateMapping', 'copySource',
       'writeRecord', 'registerArtifact', 'appendLog'
     ]);
     expect(await service.status(plan.ingest_id)).toMatchObject({ state: 'finalized' });

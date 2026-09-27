@@ -57,6 +57,7 @@ The optional Query supplies bounded, reviewable context before a new package is 
 
 - Produce canonical Markdown Article Packages with Claim maps, source lineage, Boundary notes, and relative asset references.
 - Prepare X Single, Thread, Reply, and new-publication X Article workflows with weighted character validation, exact ordered content, digest-bound Approval, and thin Skills that delegate enforcement to one CLI.
+- Single posts have no Harness-imposed length cap, including Singles materialized with an Article URL. Empty/invalid text is still rejected and weighted character counting is retained. Thread items and Replies keep the standard 280-weighted-character limit. Local acceptance does not establish long-post account eligibility or platform acceptance: composer, Submit, Approval, and public-verification checks still apply.
 - Article and X branches are independent optional outputs; an Article is never silently converted into a Thread.
 
 ### Visual publishing

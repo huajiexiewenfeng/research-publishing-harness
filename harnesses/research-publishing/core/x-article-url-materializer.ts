@@ -40,10 +40,10 @@ export function materializeXArticleUrl(
   }
   assertApprovedXArticleUrl(canonicalUrl, targetAccount);
   const text = template.replace('{{X_ARTICLE_URL}}', canonicalUrl);
-  if (!validatePostText(text).valid) {
+  if (!validatePostText(text, null).valid) {
     throw new HarnessError(
-      'CHARACTER_LIMIT_EXCEEDED',
-      'Materialized Single exceeds X weighted length'
+      'CONTRACT_INVALID',
+      'Materialized Single contains invalid text'
     );
   }
   return text;

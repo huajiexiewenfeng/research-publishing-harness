@@ -58,6 +58,7 @@ export interface BrowserAdapterApi {
   report(executionId: string, result: BrowserActionResultInput): Promise<BrowserExecutionSnapshot>;
   status(executionId: string): Promise<BrowserExecutionStatus>;
   resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot>;
+  resumePreSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
   cancelBeforeSubmit(executionId: string): Promise<BrowserExecutionSnapshot>;
 }
 
@@ -585,6 +586,32 @@ export class BrowserAdapter implements BrowserAdapterApi {
       resumable_verification:
         snapshot.state === 'outcome_unknown' || snapshot.state === 'published_unverified'
     };
+  }
+
+  async resumePreSubmit(executionId: string): Promise<BrowserExecutionSnapshot> {
+    const snapshot = await this.executions.read(executionId);
+    const context = await this.readContext(snapshot);
+    if (snapshot.state !== 'pre_submit_failed' || snapshot.submit_command_count !== 0 ||
+      snapshot.attempt_id !== null || context.submit_command_count !== 0 ||
+      context.attempt_id !== null || context.pending_command_id !== null ||
+      context.attachment_outcome_pending) {
+      throw new HarnessError('STATE_TRANSITION_INVALID', 'only idle failed executions with no Submit attempt may reobserve');
+    }
+    const plan = await this.store.readJson<BrowserPublicationPlan>(context.plan_path);
+    if (plan.schema_version === '2.0') {
+      verifyApprovalV2(plan, await this.store.readJson<ApprovalV2>(context.approval_path), this.now());
+    } else {
+      verifyApprovalV2_1(plan, await this.store.readJson<ApprovalV2_1>(context.approval_path), this.now());
+    }
+    // Keep ownership, upload flags, approval, and all previous observations intact.
+    await this.writeContext(snapshot.run_id, executionId, {
+      ...context, latest_observation_id: null, current_page_revision: null,
+      barrier_observation_fresh: false,
+      composer: { ...context.composer, last_page_revision: null }
+    });
+    return this.executions.transition(executionId, 'preflight', {
+      event_type: 'pre_submit_reobservation_requested'
+    });
   }
 
   async resumeVerification(executionId: string): Promise<BrowserExecutionSnapshot> {

@@ -44,7 +44,6 @@
     },
     "inline_assets": {
       "type": "array",
-      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
