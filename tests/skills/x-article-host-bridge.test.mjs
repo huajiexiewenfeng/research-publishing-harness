@@ -77,8 +77,9 @@ async function stagedCoverBridgeInput() {
 }
 
 describe('complete Draft-only X Article Host Bridge', () => {
-  it('passes a long PNG inline path directly without temporary chooser staging', async () => {
+  it('passes an explicitly selected clipboard PNG path without chooser staging', async () => {
     const input = bridgeInput('replace_article_visual_anchor');
+    input.transport = 'clipboard';
     input.command.payload.asset = { mime_type: 'image/png' };
     input.absoluteAssetPath = `C:/${'nested/'.repeat(50)}diagram.png`;
     input.dependencies.prepareBrowserUploadPath = vi.fn(() => { throw new Error('unexpected staging'); });

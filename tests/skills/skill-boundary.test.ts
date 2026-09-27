@@ -45,9 +45,10 @@ describe('article-publishing-copilot boundary', () => {
 });
 
 describe('x-publishing-copilot boundary', () => {
-  it('documents PNG clipboard transport without weakening source placement or publish authority', async () => {
+  it('documents chooser default and explicit clipboard without weakening source placement or publish authority', async () => {
     const reference = await readFile(resolve('skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md'), 'utf8');
-    expect(reference).toContain('PNG inline images default to clipboard');
+    expect(reference).toContain('including PNG, default to standard file-chooser');
+    expect(reference).toContain("explicitly selected with `transport: 'clipboard'`");
     expect(reference).toContain('actual source location');
     expect(reference).toContain('current-focus keyboard');
     expect(reference).toContain('never paste again');
@@ -132,7 +133,7 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/status[\s\S]*next[\s\S]*verify[\s\S]*claim[\s\S]*transaction[\s\S]*observation[\s\S]*report[\s\S]*continue/i);
     expect(reference).toContain('no per-image `continue`');
     expect(reference).toContain('No Subagent');
-    expect(reference).toContain('Insert -> Media');
+    expect(reference).toContain('Add Media → Media');
     expect(reference).toContain('cover region');
     expect(reference).toContain('scripts/x-article-host-bridge.mjs');
     expect(reference).toContain('runXArticleHostBridge');
@@ -143,10 +144,10 @@ describe('x-publishing-copilot boundary', () => {
     expect(reference).toMatch(/do not call.*Cover.*Inline Host.*directly/is);
     expect(reference).toMatch(/do not handwrite[\s\S]*filechooser[\s\S]*setFiles/is);
     expect(reference).toMatch(/do not locally retry/is);
-    expect(reference).toContain('visible scoped upload button');
+    expect(reference).toContain('already-visible dialog-scoped control');
     expect(reference).not.toContain('Verify the selected input binding');
     expect(reference).toMatch(/register.*chooser.*before.*causal click/is);
-    expect(reference).toMatch(/never.*locator\.setInputFiles/is);
+    expect(reference).toContain('not a direct `setInputFiles` API');
     expect(reference).toContain('stage progress');
     expect(reference).toContain('one recovery');
     expect(reference).toContain('draft_reconciled');

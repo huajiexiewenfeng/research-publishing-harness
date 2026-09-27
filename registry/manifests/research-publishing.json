@@ -1335,8 +1335,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/SKILL.md",
-      "sha256": "883cd3122d45a2f8508571c1a5653c830a904bd0d54cd57495caa46ba748dbcc",
-      "bytes": 7524
+      "sha256": "be50798e9e6cc5abc1875c3eee844506e3eff89008466fc4fa1df845a61e414f",
+      "bytes": 8202
     },
     {
       "path": "skills/x-publishing-copilot/agents/openai.yaml",
@@ -1375,8 +1375,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-fast-path-v3-4.md",
-      "sha256": "ee95a980b0f4f1b2b77014681b2cf152eba0f28a8c7c4e98b94c81d9cd119f95",
-      "bytes": 8297
+      "sha256": "61c1e26923665d996c20610723060834d84dbe5828dc7b1fda2b2828f18a5f8d",
+      "bytes": 10250
     },
     {
       "path": "skills/x-publishing-copilot/references/x-article-materialization-v3-2.md",
@@ -1410,8 +1410,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-bridge.mjs",
-      "sha256": "8b207b82e7a762a960bf64a69458c973ccee439cc3cc3a275faeb294266b87bc",
-      "bytes": 5291
+      "sha256": "c76d71ebc41ce5b3a41caf2fa2f09268a6bb070d524d43c1f4246679a44df931",
+      "bytes": 5288
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-host-common.mjs",
@@ -1425,8 +1425,8 @@
     },
     {
       "path": "skills/x-publishing-copilot/scripts/x-article-inline-image-host.mjs",
-      "sha256": "94536215f608208b563a3051972dfa0731f910a549fafaa5e4a48e28d82bb597",
-      "bytes": 27489
+      "sha256": "1028e80b6513efd76d9e4ae4e56ada1b55f7a21768d9fc4e6da2d60ba002b879",
+      "bytes": 29181
     },
     {
       "path": "tools/acceptance.ts",
