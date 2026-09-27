@@ -16,7 +16,7 @@ import { CommandBroker } from '../../harnesses/research-publishing/adapters/x/br
 import { XWeb202608Contract } from '../../harnesses/research-publishing/adapters/x/browser/contracts/x-web-2026-08.js';
 import { approvePublicationV2 } from '../../harnesses/research-publishing/core/approval-v2.js';
 import { approvePublicationV2_1 } from '../../harnesses/research-publishing/core/approval-v2-1.js';
-import { sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
+import { sha256, sha256Bytes } from '../../harnesses/research-publishing/core/digest.js';
 import { ExecutionStore } from '../../harnesses/research-publishing/core/execution-store.js';
 import { createPublicationPlanV2 } from '../../harnesses/research-publishing/core/publication-plan-v2.js';
 import { createPublicationPlanV2_1 } from '../../harnesses/research-publishing/core/publication-plan-v2-1.js';
@@ -28,6 +28,36 @@ const manifest: BrowserCapabilityManifest = {
   capabilities: ['observe_page', 'navigate', 'click', 'set_text', 'press_key', 'wait'],
   observed_at: '2026-08-19T07:00:00.000Z'
 };
+
+it('walks the Quote entry and checks its identity again at the submit barrier', async () => {
+  const { adapter } = await fixture();
+  const article = { post_id: '123', canonical_url: 'https://x.com/runtime_ai/status/123', author_handle: '@runtime_ai', text: 'Article', links: [], published_at: '2026-08-19T06:00:00.000Z', reply_to_id: null };
+  const base = singlePublication();
+  const intent = { ...base.intent, quote_post: { id: article.post_id, url: article.canonical_url, author: article.author_handle, snapshot_digest: sha256(article) } };
+  const plan = { ...base, intent, plan_digest: sha256(intent) };
+  await adapter.start({ execution_id: 'quote_flow', plan, approval: approvePublicationV2(plan, 'human', 600_000, new Date('2026-08-19T07:00:00.000Z')), capability_manifest: manifest });
+  let command = (await adapter.next('quote_flow'))!;
+  await claimAndReport(adapter, command, page(command, 'https://x.com/home', [accountNode()]));
+  command = (await adapter.next('quote_flow'))!;
+  expect(command.purpose).toBe('navigate_quote_target');
+  const repost = { ...accountNode(), ref: 'repost', name: '0 reposts. Repost', test_id: null, text: '' };
+  await claimAndReport(adapter, command, { ...page(command, article.canonical_url, [accountNode(), repost]), public_posts: [article], quote_controls: { repost_ref: 'repost', quote_ref: null } });
+  command = (await adapter.next('quote_flow'))!;
+  expect(command.purpose).toBe('open_quote_menu');
+  const quoteNode = { ...repost, ref: 'quote', role: 'menuitem', name: 'Quote' };
+  await claimAndReport(adapter, command, { ...page(command, article.canonical_url, [accountNode(), quoteNode]), public_posts: [article], quote_controls: { repost_ref: null, quote_ref: 'quote' } });
+  command = (await adapter.next('quote_flow'))!;
+  expect(command.purpose).toBe('open_quote_composer');
+  await claimAndReport(adapter, command, { ...page(command, 'https://x.com/compose/post', singleNodes('')), composer_quote_post_id: '123' });
+  command = (await adapter.next('quote_flow'))!;
+  expect(command.kind).toBe('set_text');
+  await claimAndReport(adapter, command, { ...page(command, 'https://x.com/compose/post', singleNodes('Only locked item')), composer_quote_post_id: '123' });
+  command = (await adapter.next('quote_flow'))!;
+  expect(command.purpose).toBe('submit_barrier_observation');
+  await claimAndReport(adapter, command, { ...page(command, 'https://x.com/compose/post', singleNodes('Only locked item')), composer_quote_post_id: '999' });
+  await expect(adapter.next('quote_flow')).rejects.toMatchObject({ code: 'COMPOSER_CONTENT_MISMATCH' });
+  expect((await adapter.status('quote_flow')).snapshot.submit_command_count).toBe(0);
+});
 
 describe('pre-submit observation recovery', () => {
   it('requires a fresh read and keeps owned text after an observation mismatch', async () => {

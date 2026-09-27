@@ -33,6 +33,7 @@ export interface BrowserPublicPostObservation {
     readonly links: readonly BrowserObservedLink[];
     readonly published_at: string;
     readonly reply_to_id: string | null;
+    readonly quoted_post_id?: string | null;
     readonly media?: readonly BrowserPublicMediaObservation[];
 }
 export interface BrowserComposerAttachmentObservation {
@@ -61,6 +62,11 @@ export interface BrowserObservation {
     readonly nodes: readonly BrowserNodeObservation[];
     readonly public_posts: readonly BrowserPublicPostObservation[];
     readonly composer_attachments?: readonly BrowserComposerAttachmentObservation[];
+    readonly composer_quote_post_id?: string | null;
+    readonly quote_controls?: {
+        readonly repost_ref: string | null;
+        readonly quote_ref: string | null;
+    };
 }
 export type BrowserCommandPayload = {
     readonly kind: 'observe_page';

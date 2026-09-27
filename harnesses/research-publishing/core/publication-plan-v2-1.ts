@@ -1,6 +1,6 @@
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
-import { normalizePublicationText, type PublicationTargetPostV2, type XPublicationMode } from './publication-plan-v2.js';
+import { assertQuoteTarget, normalizePublicationText, type PublicationTargetPostV2, type XPublicationMode } from './publication-plan-v2.js';
 import { validateContract } from './schema-validator.js';
 import type { VisualAssetRef } from './types.js';
 
@@ -19,6 +19,7 @@ export interface PublicationIntentV2_1 {
   readonly adapter: 'browser';
   readonly mode: XPublicationMode;
   readonly target_post: PublicationTargetPostV2 | null;
+  readonly quote_post?: PublicationTargetPostV2;
   readonly items: readonly PublicationItemV2_1[];
   readonly action: 'publish_once';
 }
@@ -41,6 +42,7 @@ export interface CreatePublicationPlanV2_1Input {
   readonly targetAccount: string;
   readonly mode: XPublicationMode;
   readonly targetPost: PublicationTargetPostV2 | null;
+  readonly quotePost?: PublicationTargetPostV2;
   readonly items: ReadonlyArray<{
     readonly ordinal: number;
     readonly text: string;
@@ -73,6 +75,7 @@ export function createPublicationPlanV2_1(input: CreatePublicationPlanV2_1Input)
   const intent: PublicationIntentV2_1 = {
     schema_version: '2.1', platform: 'x', target_account: input.targetAccount,
     adapter: 'browser', mode: input.mode, target_post: input.targetPost,
+    ...(input.quotePost === undefined ? {} : { quote_post: input.quotePost }),
     items, action: 'publish_once'
   };
   const plan: PublicationPlanV2_1 = {
@@ -86,6 +89,7 @@ export function createPublicationPlanV2_1(input: CreatePublicationPlanV2_1Input)
 
 export function assertPublicationPlanV2_1(plan: PublicationPlanV2_1): void {
   validateContract<PublicationPlanV2_1>('publication-plan-v2-1', plan);
+  assertQuoteTarget(plan.intent);
   if (!ACCOUNT.test(plan.intent.target_account) ||
     sha256({ intent: plan.intent, article_package: plan.article_package }) !== plan.plan_digest ||
     sha256(plan.items) !== sha256(plan.intent.items)) {

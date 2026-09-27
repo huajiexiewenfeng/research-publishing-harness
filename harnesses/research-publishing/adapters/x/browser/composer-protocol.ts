@@ -21,6 +21,7 @@ export interface ComposerContext {
   readonly attachment_command_issued?: boolean;
   readonly alt_text_command_issued?: boolean;
   readonly attachment_retry_count?: number;
+  readonly quote_entry_step?: number;
 }
 
 export type ComposerDecision =
@@ -50,6 +51,12 @@ export function nextComposerDecision(
       return blocked('X_ACCOUNT_MISMATCH', 'the active X account does not match the approved account');
     }
 
+    if (context.plan.intent.quote_post !== undefined) {
+      const quoteDecision = decideQuoteEntry(context, observation, contract);
+      if (quoteDecision !== null) return quoteDecision;
+    } else if (observation.composer_quote_post_id != null) {
+      return blocked('DRAFT_CONFLICT', 'an unplanned quote is present');
+    }
     if (context.plan.intent.mode === 'reply') {
       const replyDecision = decideReplyEntry(context, observation, contract);
       if (replyDecision !== null) return replyDecision;
@@ -111,6 +118,37 @@ export function nextComposerDecision(
     if (error instanceof HarnessError) return blocked(error.code, error.message);
     throw error;
   }
+}
+
+function decideQuoteEntry(context: ComposerContext, observation: BrowserObservation, contract: XPageContract): ComposerDecision | null {
+  const target = context.plan.intent.quote_post!;
+  if (observation.composer_quote_post_id !== undefined) {
+    return observation.composer_quote_post_id === target.id ? null
+      : blocked('COMPOSER_CONTENT_MISMATCH', 'composer quote does not match the locked article');
+  }
+  if (context.created_item_refs.length > 0 || observation.canonical_url.includes('/compose/')) {
+    return blocked('COMPOSER_CONTENT_MISMATCH', 'quoted article is not observable in the composer');
+  }
+  const step = context.quote_entry_step ?? 0;
+  if (step >= 3) return blocked('PAGE_CONTRACT_UNSUPPORTED', 'Quote entry did not produce a verifiable composer');
+  const next = { ...context, quote_entry_step: step + 1 };
+  if (observation.canonical_url !== target.url) {
+    return command(next, observation, 'navigate_quote_target', 'navigate', 'write', { kind: 'navigate', url: target.url });
+  }
+  const post = observation.public_posts.find((item) => item.post_id === target.id);
+  if (!post || post.canonical_url !== target.url || post.author_handle.toLowerCase() !== target.author.toLowerCase() || sha256(post) !== target.snapshot_digest) {
+    return blocked('REPLY_TARGET_STALE', 'quoted article no longer matches its approved snapshot');
+  }
+  // A target-page reply box is not the Quote composer. Only use target-scoped observed controls.
+  const ref = observation.quote_controls?.quote_ref ?? observation.quote_controls?.repost_ref;
+  const node = observation.nodes.find((item) => item.ref === ref);
+  if (!node || node.disabled || !((node.role === 'menuitem' && node.name === 'Quote') ||
+    (node.role === 'button' && /Repost$/.test(node.name)))) {
+    return blocked('PAGE_CONTRACT_UNSUPPORTED', 'target-scoped Repost/Quote control is unavailable');
+  }
+  contract.detectAccount(observation);
+  return command(next, observation, node.name === 'Quote' ? 'open_quote_composer' : 'open_quote_menu',
+    'click', 'write', { kind: 'click', target_ref: node.ref });
 }
 
 function decideAttachments(

@@ -15,7 +15,8 @@ export function verifyPublicThread(plan, observed) {
     let expectedParent = plan.intent.mode === 'reply' ? plan.intent.target_post?.id ?? null : null;
     for (const item of plan.items) {
         const children = observed.filter((post) => post.reply_to_id === expectedParent && !selected.includes(post));
-        const matches = children.filter((post) => postMatches(item.text, post));
+        const matches = children.filter((post) => postMatches(item.text, post) &&
+            (post.quoted_post_id ?? null) === (plan.intent.quote_post?.id ?? null));
         if (matches.length > 1) {
             return conflict('multiple public Posts match one planned ordinal', matches.map((post) => post.post_id));
         }

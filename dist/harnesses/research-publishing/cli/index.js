@@ -1361,6 +1361,11 @@ async function execute(argv) {
             const artifact = await new ManualAdapter(store).recordPublished(record.receipt, record.public_result);
             return { ok: true, operation, artifact, state: 'finalized' };
         }
+        if (operation === 'x record-observed') {
+            const record = input;
+            const artifact = await new ManualAdapter(store).recordObserved(record.plan, record.observation);
+            return { ok: true, operation, artifact, state: artifact.status };
+        }
         const runId = requiredRunId(options, input);
         if (operation === 'x review') {
             const artifact = await x.reviewX(runId);
@@ -1372,10 +1377,16 @@ async function execute(argv) {
         }
         if (operation === 'x plan') {
             const handoff = input?.article_handoff;
+            const visual = input?.single_visual;
+            if (visual !== undefined && options.adapter !== 'browser') {
+                throw new HarnessError('CONTRACT_INVALID', 'single_visual requires the browser Plan format');
+            }
             const artifact = options.adapter === 'browser'
-                ? handoff === undefined
-                    ? await x.planXBrowser(runId)
-                    : await x.planXBrowser(runId, handoff)
+                ? visual !== undefined
+                    ? await x.planXBrowser(runId, handoff, visual)
+                    : handoff === undefined
+                        ? await x.planXBrowser(runId)
+                        : await x.planXBrowser(runId, handoff)
                 : await x.planX(runId);
             return { ok: true, operation, artifact, state: 'approval_pending' };
         }

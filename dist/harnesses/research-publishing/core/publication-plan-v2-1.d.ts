@@ -14,6 +14,7 @@ export interface PublicationIntentV2_1 {
     readonly adapter: 'browser';
     readonly mode: XPublicationMode;
     readonly target_post: PublicationTargetPostV2 | null;
+    readonly quote_post?: PublicationTargetPostV2;
     readonly items: readonly PublicationItemV2_1[];
     readonly action: 'publish_once';
 }
@@ -37,6 +38,7 @@ export interface CreatePublicationPlanV2_1Input {
     readonly targetAccount: string;
     readonly mode: XPublicationMode;
     readonly targetPost: PublicationTargetPostV2 | null;
+    readonly quotePost?: PublicationTargetPostV2;
     readonly items: ReadonlyArray<{
         readonly ordinal: number;
         readonly text: string;

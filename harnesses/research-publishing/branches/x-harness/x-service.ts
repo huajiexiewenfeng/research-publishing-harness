@@ -6,7 +6,9 @@ import { HarnessError } from '../../core/errors.js';
 import { createGenerationTask, type GenerationTask } from '../../core/generation.js';
 import { runPrivacyGate } from '../../core/gates.js';
 import {
+  assertQuoteTarget,
   createPublicationPlanV2,
+  type PublicationTargetPostV2,
   type PublicationPlanV2
 } from '../../core/publication-plan-v2.js';
 import {
@@ -17,6 +19,7 @@ import type { XHandoff } from '../article-harness/article-service.js';
 import { validateContract } from '../../core/schema-validator.js';
 import type { Finding, ResearchContentPackage, ReviewReport } from '../../core/types.js';
 import type { WorkspaceStore } from '../../core/workspace-store.js';
+import { VisualAssetImporter } from '../../core/visual-assets.js';
 import { validatePostText } from './character-count.js';
 
 export interface XBrief {
@@ -27,6 +30,7 @@ export interface XBrief {
 }
 
 export interface XDraft {
+  readonly quote_post?: PublicationTargetPostV2;
   readonly schema_version: '1.0';
   readonly run_id: string;
   readonly content_type: 'anchor' | 'research_note' | 'reply';
@@ -76,6 +80,13 @@ interface XServiceOptions {
   readonly runId?: () => string;
   readonly planId?: () => string;
   readonly now?: () => Date;
+}
+
+export interface SingleVisualInput {
+  readonly source_path: string;
+  readonly asset_id: string;
+  readonly alt_text: string;
+  readonly claim_refs: readonly string[];
 }
 
 interface XRunMetadata {
@@ -155,6 +166,7 @@ export class XService {
     const packageValue = await this.store.readJson<ResearchContentPackage>(`${prefix}/package.json`);
     const task = await this.store.readJson<GenerationTask>(`${prefix}/generation-task.json`);
     const draft = validateContract<XDraft>('x-draft', candidate);
+    assertQuoteTarget({ mode: draft.format, ...(draft.quote_post === undefined ? {} : { quote_post: draft.quote_post }) });
     if (
       draft.run_id !== runId ||
       draft.content_type !== brief.contentType ||
@@ -244,6 +256,9 @@ export class XService {
     const prefix = this.runPrefix(runId);
     const metadata = await this.store.readJson<XRunMetadata>(`${prefix}/run.json`);
     const draft = await this.store.readJson<XDraft>(`${prefix}/draft-candidate.json`);
+    if (draft.quote_post !== undefined) {
+      throw new HarnessError('CONTRACT_INVALID', 'Quote requires a V2 browser Plan; legacy manual handoff cannot represent it');
+    }
     const report = await this.store.readJson<ReviewReport>(`${prefix}/review-report.json`);
     if (!report.passed) {
       const characterFailure = report.findings.some(
@@ -283,7 +298,8 @@ export class XService {
 
   async planXBrowser(runId: string): Promise<PublicationPlanV2>;
   async planXBrowser(runId: string, handoff: XHandoff): Promise<PublicationPlanV2 | PublicationPlanV2_1>;
-  async planXBrowser(runId: string, handoff?: XHandoff): Promise<PublicationPlanV2 | PublicationPlanV2_1> {
+  async planXBrowser(runId: string, handoff: XHandoff | undefined, visual: SingleVisualInput): Promise<PublicationPlanV2_1>;
+  async planXBrowser(runId: string, handoff?: XHandoff, visual?: SingleVisualInput): Promise<PublicationPlanV2 | PublicationPlanV2_1> {
     const prefix = this.runPrefix(runId);
     const metadata = await this.store.readJson<XRunMetadata>(`${prefix}/run.json`);
     const draft = await this.store.readJson<XDraft>(`${prefix}/draft-candidate.json`);
@@ -305,6 +321,34 @@ export class XService {
       text: item.text,
       ...(item.reply_to === undefined ? {} : { reply_to: item.reply_to })
     }));
+    if (visual !== undefined) {
+      if (handoff !== undefined || draft.format !== 'single' || visual.alt_text.length > 1000) {
+        throw new HarnessError('CONTRACT_INVALID', 'single_visual requires a Single, no Article Handoff, and Alt Text within 1000 characters');
+      }
+      const source = await this.store.readJson<ResearchContentPackage>(`${prefix}/package.json`);
+      const claims = new Set(source.claims.map((claim) => claim.claim_id));
+      if (visual.claim_refs.some((id) => !claims.has(id))) {
+        throw new HarnessError('CONTRACT_INVALID', 'Single visual references a Claim outside its research package');
+      }
+      const candidate = await new VisualAssetImporter(this.store).attach({
+        runId, candidateId: 'single', assetId: visual.asset_id, slotId: 'single',
+        sourcePath: visual.source_path, altText: visual.alt_text, claimRefs: visual.claim_refs,
+        provenance: { method: 'manual', tool: null }
+      });
+      // Reuse the V2.1 contained-asset envelope; no Article draft or Handoff is required.
+      const root = `articles/x-single/${runId}`;
+      await this.store.writeNewBytes(`${root}/${candidate.asset.relative_path}`, await this.store.readBytes(candidate.staged_relative_path));
+      const plan = createPublicationPlanV2_1({
+        planId: this.planId(), runId, targetAccount: metadata.target_account,
+        mode: draft.format, targetPost: null,
+        ...(draft.quote_post === undefined ? {} : { quotePost: draft.quote_post }),
+        items: commonItems.map((item) => ({ ...item, attachments: [candidate.asset] })),
+        articlePackage: { root, digest: sha256(candidate.asset) }, authorizedAsset: candidate.asset,
+        plannedAt: this.now().toISOString(), provenance: { draft_digest: sha256(draft), visual_source: 'single_visual' }
+      });
+      await this.store.writeNew(`${prefix}/publication-plan-v2.1.json`, plan);
+      return plan;
+    }
     const plan = handoff?.visual_asset === undefined
       ? createPublicationPlanV2({
       planId: this.planId(),
@@ -313,6 +357,7 @@ export class XService {
       adapter: 'browser',
       mode: draft.format,
       targetPost: draft.target_post ?? null,
+      ...(draft.quote_post === undefined ? {} : { quotePost: draft.quote_post }),
       media: [],
       items: commonItems,
       plannedAt: this.now().toISOString(),
@@ -324,6 +369,7 @@ export class XService {
           targetAccount: metadata.target_account,
           mode: draft.format,
           targetPost: draft.target_post ?? null,
+          ...(draft.quote_post === undefined ? {} : { quotePost: draft.quote_post }),
           items: commonItems.map((item, index) => ({
             ...item,
             attachments: index === 0 ? [handoff.visual_asset!] : []

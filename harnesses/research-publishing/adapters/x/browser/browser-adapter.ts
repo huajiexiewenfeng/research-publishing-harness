@@ -79,6 +79,7 @@ export interface BrowserExecutionStatus {
 }
 
 interface StoredComposerContext {
+  readonly quote_entry_step?: number;
   readonly expected_account: string;
   readonly created_item_refs: readonly string[];
   readonly next_ordinal: number;
@@ -292,7 +293,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
     }
     const observation = await this.readObservation(snapshot, context.latest_observation_id);
 
-    if (snapshot.state === 'account_verified' && plan.intent.mode !== 'reply') {
+    if (snapshot.state === 'account_verified' && plan.intent.mode !== 'reply' && plan.intent.quote_post === undefined) {
       const page = this.contract.detectPage(observation);
       if (page.kind !== 'composer') {
         return this.issueAndPersist(snapshot, context, {
@@ -990,6 +991,7 @@ export class BrowserAdapter implements BrowserAdapterApi {
       next_ordinal: context.next_ordinal,
       add_retry_count: context.add_retry_count,
       last_page_revision: context.last_page_revision,
+      ...(context.quote_entry_step === undefined ? {} : { quote_entry_step: context.quote_entry_step }),
       attachment_command_issued: context.attachment_command_issued ?? false,
       alt_text_command_issued: context.alt_text_command_issued ?? false,
       attachment_retry_count: context.attachment_retry_count ?? 0

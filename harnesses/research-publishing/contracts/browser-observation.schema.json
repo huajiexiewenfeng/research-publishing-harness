@@ -18,6 +18,11 @@
     "page_revision": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "observed_at": { "type": "string", "format": "date-time" },
     "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "composer_quote_post_id": { "type": ["string", "null"] },
+    "quote_controls": {
+      "type": "object", "additionalProperties": false, "required": ["repost_ref", "quote_ref"],
+      "properties": { "repost_ref": { "type": ["string", "null"] }, "quote_ref": { "type": ["string", "null"] } }
+    },
     "public_posts": { "type": "array", "items": { "$ref": "#/$defs/publicPost" } },
     "composer_attachments": { "type": "array", "items": { "$ref": "#/$defs/composerAttachment" } }
   },
@@ -57,6 +62,7 @@
         "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
         "published_at": { "type": "string", "format": "date-time" },
         "reply_to_id": { "type": ["string", "null"] },
+        "quoted_post_id": { "type": ["string", "null"] },
         "media": { "type": "array", "items": { "$ref": "#/$defs/publicMedia" } }
       }
     },

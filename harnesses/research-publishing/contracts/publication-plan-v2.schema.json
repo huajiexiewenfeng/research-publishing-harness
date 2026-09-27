@@ -87,6 +87,7 @@
         "target_account": { "type": "string", "pattern": "^@[A-Za-z0-9_]{1,15}$" },
         "adapter": { "enum": ["manual", "browser"] },
         "mode": { "enum": ["single", "thread", "reply"] },
+        "quote_post": { "$ref": "#/$defs/targetPost" },
         "target_post": {
           "oneOf": [
             { "type": "null" },

@@ -48,6 +48,7 @@ export interface BrowserPublicPostObservation {
   readonly links: readonly BrowserObservedLink[];
   readonly published_at: string;
   readonly reply_to_id: string | null;
+  readonly quoted_post_id?: string | null;
   readonly media?: readonly BrowserPublicMediaObservation[];
 }
 
@@ -79,6 +80,8 @@ export interface BrowserObservation {
   readonly nodes: readonly BrowserNodeObservation[];
   readonly public_posts: readonly BrowserPublicPostObservation[];
   readonly composer_attachments?: readonly BrowserComposerAttachmentObservation[];
+  readonly composer_quote_post_id?: string | null;
+  readonly quote_controls?: { readonly repost_ref: string | null; readonly quote_ref: string | null };
 }
 
 export type BrowserCommandPayload =
@@ -157,6 +160,8 @@ export function computePageRevision(input: BrowserObservationInput): string {
     canonical_url: input.canonical_url,
     nodes: input.nodes,
     public_posts: input.public_posts
-    ,composer_attachments: input.composer_attachments ?? []
+    ,composer_attachments: input.composer_attachments ?? [],
+    ...(input.composer_quote_post_id === undefined ? {} : { composer_quote_post_id: input.composer_quote_post_id }),
+    ...(input.quote_controls === undefined ? {} : { quote_controls: input.quote_controls })
   });
 }

@@ -29,9 +29,13 @@ Normal image transaction: locate the approved marker → upload one file → ver
 
 ## Single, Thread, and Reply Browser Adapter required flow
 
+For research-sharing Singles, normally prepare one explanatory image. Reuse a confirmed asset; otherwise propose/generate one focused visual using the available image skill, with English labels for an English post. Follow the user's visual style (for example hand-drawn), not a universal style requirement. Short questions, quick opinions, Replies, and explicit text-only requests need no image. Default preparation is not publication approval. Review text, image, Alt, and any quoted article together once; never regenerate an approved image during text-only edits.
+
+For a Single with a quoted article, an independent image, or a user-reported manual publication, read [Single visuals, Quote, and manual completion](references/single-visual-quote.md). These are small extensions of the existing Plan and verification flow, not X Article materialization.
+
 1. Run `scripts/invoke.mjs doctor --workspace <path> --output json` and stop if the Harness is unavailable or incompatible.
-2. Prepare, accept, and review the X draft, then run `x plan --adapter browser`. Text-only uses V2.0. Visual V2.1 requires an Article Handoff that already names one exact `asset_id`; never select an image automatically.
-3. Show the exact account, mode, Reply target, ordered text, Adapter, expiry, and Plan Digest. For V2.1 also show image preview, target ordinal, Alt Text, MIME, asset id, source digest, and Article Package digest.
+2. Prepare, accept, and review the X draft, then run `x plan --adapter browser`. Text-only uses V2.0. Visual V2.1 accepts either an Article Handoff naming one exact `asset_id`, or `single_visual` for an independent Single. Select the image during preparation, then lock it in the Plan; never substitute it during execution.
+3. Show the exact account, mode, Reply/Quote target, ordered text, Adapter, expiry, and Plan Digest. For V2.1 also show image preview, target ordinal, Alt Text, MIME, asset id, source digest, and asset-package digest.
 4. Ask for one explicit confirmation of `publish_once` for that exact Audit block. This is the content-specific approval; do not combine it with unrelated decisions.
 5. Only after the confirmation, run `x approve` with the unchanged Plan.
 6. Start `x browser start` with an explicit compatible Chrome binding. Never switch to the in-app browser, Edge, or Computer Use.
@@ -41,9 +45,13 @@ Normal image transaction: locate the approved marker → upload one file → ver
 
 Any content, account, mode, link, Reply target, Adapter, image bytes, asset id, Alt Text, Claim refs, or attachment ordinal change invalidates Approval.
 
+Changing the quoted article also invalidates Approval. Between actions inspect only the relevant control or changed region; finish with one complete check of account, text, image, saved Alt, quoted article identity, and submission state. Do not add per-image approvals or repeated whole-page scans.
+
 V2.1 requires `file_upload` and `attachment_alt_text`. Execute only the Package-relative asset in the claimed command. Receipt Source, Composer, and Public evidence are separate; `published_media_unverified` is honest when X hides public fields. Never claim that X-transcoded bytes equal the source digest.
 
 ## Manual explicit fallback
+
+If the Human has already published, do not publish again or manufacture an earlier approval/handoff. Verify their public URL and use `x record-observed` as described in the Single reference. This records human publication; it does not mark any Browser execution successful.
 
 Manual is an explicit fallback only after a pre-submit Browser failure. Explain the failure, create a Manual Plan, show its exact Preview, and obtain a new explicit Approval before `x handoff`. Never convert an attempted or uncertain Browser submission into Manual publishing.
 

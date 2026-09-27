@@ -31,6 +31,7 @@ export interface PublicationIntentV2 {
   readonly adapter: PublicationAdapterV2;
   readonly mode: XPublicationMode;
   readonly target_post: PublicationTargetPostV2 | null;
+  readonly quote_post?: PublicationTargetPostV2;
   readonly media: readonly PublicationMediaV2[];
   readonly items: readonly PublicationItemV2[];
   readonly action: 'publish_once';
@@ -54,6 +55,7 @@ export interface CreatePublicationPlanV2Input {
   readonly adapter: PublicationAdapterV2;
   readonly mode: XPublicationMode;
   readonly targetPost: PublicationTargetPostV2 | null;
+  readonly quotePost?: PublicationTargetPostV2;
   readonly media: readonly PublicationMediaV2[];
   readonly items: ReadonlyArray<{
     readonly ordinal: number;
@@ -96,6 +98,7 @@ export function createPublicationPlanV2(
     adapter: input.adapter,
     mode: input.mode,
     target_post: input.targetPost,
+    ...(input.quotePost === undefined ? {} : { quote_post: input.quotePost }),
     media: input.media,
     items,
     action: 'publish_once'
@@ -116,6 +119,7 @@ export function createPublicationPlanV2(
 
 export function assertPublicationPlanV2(plan: PublicationPlanV2): void {
   validateContract<PublicationPlanV2>('publication-plan-v2', plan);
+  assertQuoteTarget(plan.intent);
   if (!ACCOUNT.test(plan.intent.target_account) || !SHA256.test(plan.plan_digest)) {
     throw new HarnessError('CONTRACT_INVALID', 'invalid V2 account or digest');
   }
@@ -152,5 +156,15 @@ export function assertPublicationPlanV2(plan: PublicationPlanV2): void {
       'CONTRACT_INVALID',
       'V2 publication mode, target, and reply chain are inconsistent'
     );
+  }
+}
+
+export function assertQuoteTarget(intent: { readonly mode: XPublicationMode; readonly quote_post?: PublicationTargetPostV2 }): void {
+  const target = intent.quote_post;
+  if (target === undefined) return;
+  const match = /^https:\/\/x\.com\/([A-Za-z0-9_]{1,15})\/status\/(\d+)$/.exec(target.url);
+  if (intent.mode !== 'single' || !match || match[2] !== target.id ||
+    `@${match[1]}`.toLowerCase() !== target.author.toLowerCase()) {
+    throw new HarnessError('CONTRACT_INVALID', 'Quote requires a Single and an exact X account/post URL binding');
   }
 }

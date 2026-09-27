@@ -11,6 +11,7 @@
     "content_type": { "enum": ["anchor", "research_note", "reply"] },
     "format": { "enum": ["single", "thread", "reply"] },
     "language": { "enum": ["en", "zh-CN"] },
+    "quote_post": { "$ref": "#/properties/target_post" },
     "items": {
       "type": "array",
       "minItems": 1,

@@ -26,6 +26,7 @@ export function createPublicationPlanV2(input) {
         adapter: input.adapter,
         mode: input.mode,
         target_post: input.targetPost,
+        ...(input.quotePost === undefined ? {} : { quote_post: input.quotePost }),
         media: input.media,
         items,
         action: 'publish_once'
@@ -45,6 +46,7 @@ export function createPublicationPlanV2(input) {
 }
 export function assertPublicationPlanV2(plan) {
     validateContract('publication-plan-v2', plan);
+    assertQuoteTarget(plan.intent);
     if (!ACCOUNT.test(plan.intent.target_account) || !SHA256.test(plan.plan_digest)) {
         throw new HarnessError('CONTRACT_INVALID', 'invalid V2 account or digest');
     }
@@ -73,6 +75,16 @@ export function assertPublicationPlanV2(plan) {
         plan.items[0]?.reply_to === 'target';
     if (!singleValid && !threadValid && !replyValid) {
         throw new HarnessError('CONTRACT_INVALID', 'V2 publication mode, target, and reply chain are inconsistent');
+    }
+}
+export function assertQuoteTarget(intent) {
+    const target = intent.quote_post;
+    if (target === undefined)
+        return;
+    const match = /^https:\/\/x\.com\/([A-Za-z0-9_]{1,15})\/status\/(\d+)$/.exec(target.url);
+    if (intent.mode !== 'single' || !match || match[2] !== target.id ||
+        `@${match[1]}`.toLowerCase() !== target.author.toLowerCase()) {
+        throw new HarnessError('CONTRACT_INVALID', 'Quote requires a Single and an exact X account/post URL binding');
     }
 }
 //# sourceMappingURL=publication-plan-v2.js.map

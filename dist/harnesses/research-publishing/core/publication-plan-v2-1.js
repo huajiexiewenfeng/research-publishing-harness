@@ -1,6 +1,6 @@
 import { sha256 } from './digest.js';
 import { HarnessError } from './errors.js';
-import { normalizePublicationText } from './publication-plan-v2.js';
+import { assertQuoteTarget, normalizePublicationText } from './publication-plan-v2.js';
 import { validateContract } from './schema-validator.js';
 const ACCOUNT = /^@[A-Za-z0-9_]{1,15}$/;
 export function createPublicationPlanV2_1(input) {
@@ -21,6 +21,7 @@ export function createPublicationPlanV2_1(input) {
     const intent = {
         schema_version: '2.1', platform: 'x', target_account: input.targetAccount,
         adapter: 'browser', mode: input.mode, target_post: input.targetPost,
+        ...(input.quotePost === undefined ? {} : { quote_post: input.quotePost }),
         items, action: 'publish_once'
     };
     const plan = {
@@ -33,6 +34,7 @@ export function createPublicationPlanV2_1(input) {
 }
 export function assertPublicationPlanV2_1(plan) {
     validateContract('publication-plan-v2-1', plan);
+    assertQuoteTarget(plan.intent);
     if (!ACCOUNT.test(plan.intent.target_account) ||
         sha256({ intent: plan.intent, article_package: plan.article_package }) !== plan.plan_digest ||
         sha256(plan.items) !== sha256(plan.intent.items)) {

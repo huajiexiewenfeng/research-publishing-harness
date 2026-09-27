@@ -23,6 +23,7 @@ export interface PublicationIntentV2 {
     readonly adapter: PublicationAdapterV2;
     readonly mode: XPublicationMode;
     readonly target_post: PublicationTargetPostV2 | null;
+    readonly quote_post?: PublicationTargetPostV2;
     readonly media: readonly PublicationMediaV2[];
     readonly items: readonly PublicationItemV2[];
     readonly action: 'publish_once';
@@ -44,6 +45,7 @@ export interface CreatePublicationPlanV2Input {
     readonly adapter: PublicationAdapterV2;
     readonly mode: XPublicationMode;
     readonly targetPost: PublicationTargetPostV2 | null;
+    readonly quotePost?: PublicationTargetPostV2;
     readonly media: readonly PublicationMediaV2[];
     readonly items: ReadonlyArray<{
         readonly ordinal: number;
@@ -56,3 +58,7 @@ export interface CreatePublicationPlanV2Input {
 export declare function normalizePublicationText(text: string): string;
 export declare function createPublicationPlanV2(input: CreatePublicationPlanV2Input): PublicationPlanV2;
 export declare function assertPublicationPlanV2(plan: PublicationPlanV2): void;
+export declare function assertQuoteTarget(intent: {
+    readonly mode: XPublicationMode;
+    readonly quote_post?: PublicationTargetPostV2;
+}): void;

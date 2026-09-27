@@ -19,7 +19,8 @@ import type { XArticleBrowserCommandV1 } from '../adapters/x/article-browser/art
 import { XArticleWeb2026_08Contract } from '../adapters/x/article-browser/contracts/x-article-web-2026-08.js';
 import { ArticleService, type ArticleBrief, type ArticleDraft, type VisualReviewInput, type XHandoff } from '../branches/article-harness/article-service.js';
 import { XArticleService } from '../branches/x-article-harness/x-article-service.js';
-import { XService, type PublicationPlan, type XBrief, type XDraft } from '../branches/x-harness/x-service.js';
+import { XService, type PublicationPlan, type XBrief, type XDraft, type SingleVisualInput } from '../branches/x-harness/x-service.js';
+import type { BrowserObservation } from '../adapters/x/browser/browser-protocol.js';
 import { approvePublication, type Approval } from '../core/approval.js';
 import { approvePublicationV2, type ApprovalV2 } from '../core/approval-v2.js';
 import { approvePublicationV2_1, type ApprovalV2_1 } from '../core/approval-v2-1.js';
@@ -1859,6 +1860,11 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
       const artifact = await new ManualAdapter(store).recordPublished(record.receipt, record.public_result);
       return { ok: true, operation, artifact, state: 'finalized' };
     }
+    if (operation === 'x record-observed') {
+      const record = input as unknown as { plan: PublicationPlanV2 | PublicationPlanV2_1; observation: BrowserObservation };
+      const artifact = await new ManualAdapter(store).recordObserved(record.plan, record.observation);
+      return { ok: true, operation, artifact, state: artifact.status };
+    }
     const runId = requiredRunId(options, input as { run_id?: string } | undefined);
     if (operation === 'x review') {
       const artifact = await x.reviewX(runId);
@@ -1876,8 +1882,14 @@ async function execute(argv: readonly string[]): Promise<CliResult> {
     }
     if (operation === 'x plan') {
       const handoff = (input as { article_handoff?: XHandoff } | undefined)?.article_handoff;
+      const visual = (input as { single_visual?: SingleVisualInput } | undefined)?.single_visual;
+      if (visual !== undefined && options.adapter !== 'browser') {
+        throw new HarnessError('CONTRACT_INVALID', 'single_visual requires the browser Plan format');
+      }
       const artifact = options.adapter === 'browser'
-        ? handoff === undefined
+        ? visual !== undefined
+          ? await x.planXBrowser(runId, handoff, visual)
+          : handoff === undefined
           ? await x.planXBrowser(runId)
           : await x.planXBrowser(runId, handoff)
         : await x.planX(runId);

@@ -13,6 +13,7 @@ export interface ComposerContext {
     readonly attachment_command_issued?: boolean;
     readonly alt_text_command_issued?: boolean;
     readonly attachment_retry_count?: number;
+    readonly quote_entry_step?: number;
 }
 export type ComposerDecision = {
     readonly kind: 'command';
