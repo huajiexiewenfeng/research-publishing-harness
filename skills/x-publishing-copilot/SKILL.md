@@ -23,7 +23,9 @@ For V3.4, run Fast Path status and continuously consume the existing atomic `nex
 
 For claimed `navigate`, `observe_article_page`, `upload_article_cover`, and `replace_article_visual_anchor` commands, use the packaged Complete Host Bridge exactly as defined by the V3.4 reference. Never call the Cover or Inline Host modules directly or recreate their browser transactions in the task.
 
-PNG Article inline images use the Host's verified clipboard-paste path by default, at their approved source positions. Cover upload is unchanged. Do not repeat a paste or switch to a chooser after an uncertain result; reconcile the existing image. Alt, content, position, autosave and publication approval checks remain mandatory.
+Article inline images, including PNG, default to the Host's standard file-chooser upload at their approved source positions. Clipboard paste is an explicitly selected alternative, not a required dependency. Never repeat delivery or switch transports after an uncertain result; first reconcile the existing image. Use local control/image observations between actions, not repeated manual full-article scans. Final Alt, content, position, autosave and publication approval checks remain mandatory.
+
+Normal image transaction: locate the approved marker → upload one file → verify saved Alt → remove the exact marker and its verified empty block → report. Wait for the actual Insert/Edit controls; a successful click or closed dialog alone is not saved evidence. Preserve normal paragraph spacing. Finish with one complete review of text, headings, links, image identity/order/position, Alt, marker/empty-line residue and autosave. Do not add per-image approvals or treat draft completion as publication.
 
 ## Single, Thread, and Reply Browser Adapter required flow
 

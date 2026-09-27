@@ -191,6 +191,15 @@ async function resolveInsertFileInput(tab, timeoutMs) {
     name: 'Insert',
     exact: true
   });
+  // The live Insert dialog can have no accessible name. Use its already-visible
+  // scoped control rather than first timing out on a name the page does not have.
+  if (await namedDialog.count() === 0) {
+    const dialog = tab.playwright.getByRole('dialog');
+    if (await dialog.count() === 1) {
+      const upload = dialog.getByRole('button', { name: 'Add photos or video', exact: true });
+      if (await uniqueVisible(upload) && await upload.isEnabled()) return upload;
+    }
+  }
   try {
     await namedDialog.waitFor({ state: 'visible', timeoutMs });
     if (await namedDialog.count() === 1 && await namedDialog.isVisible()) {
@@ -274,7 +283,7 @@ async function runInlineImageAttempt({
   progress,
   probeInline,
   transaction,
-  transport = command?.payload?.asset?.mime_type === 'image/png' ? 'clipboard' : 'file_chooser'
+  transport = 'file_chooser'
 }) {
   const beforeWrite = () => progress?.assertActive();
   const milestone = (stage, evidence) => progress?.milestone(command.payload.asset.asset_id, stage, evidence);
@@ -342,11 +351,18 @@ async function runInlineImageAttempt({
   }
 
   milestone('anchor_verified', { anchor_id: command.payload.anchor.anchor_id });
+  if (!transaction.fileDelivered && typeof probeInline === 'function') {
+    try {
+      // Both transports must reconcile an existing image before any new delivery.
+      if (await probeInline() !== null) {
+        return outcome('uncertain', 'unknown', 'observation_unavailable_after_selection', beforeObservation);
+      }
+    } catch {
+      return outcome('uncertain', 'unknown', 'observation_unavailable_after_selection', beforeObservation);
+    }
+  }
   if (transport === 'clipboard' && !transaction.fileDelivered) {
     try {
-      // A partial image already beside this marker must be reconciled, not pasted again.
-      const existing = typeof probeInline === 'function' ? await probeInline() : null;
-      if (existing !== null) return outcome('uncertain', 'unknown', 'observation_unavailable_after_selection', beforeObservation);
       if (await tab.playwright.getByRole('dialog').count() !== 0) {
         return outcome('rejected', 'none', 'anchor_context_changed', beforeObservation);
       }
@@ -414,9 +430,6 @@ async function runInlineImageAttempt({
         await addMedia.click({ timeoutMs });
         const mediaMenu = tab.playwright.getByRole('menuitem', { name: 'Media', exact: true });
         await mediaMenu.waitFor({ state: 'visible', timeoutMs });
-        if (typeof tab.playwright.waitForTimeout === 'function') {
-          await tab.playwright.waitForTimeout(300);
-        }
         try {
           beforeWrite();
           await mediaMenu.click({ timeoutMs });
@@ -446,10 +459,13 @@ async function runInlineImageAttempt({
       if (!hostSelectionMayHaveOccurred(error)) {
         return outcome('transient_failure', 'none', 'file_transfer_missing', null);
       }
+      transaction.fileDelivered = true;
     }
 
     try {
-      const applied = await completeMediaEditor({ tab, timeoutMs, appearanceTimeoutMs: timeoutMs, beforeWrite });
+      const visibleImage = typeof probeInline === 'function' ? await probeInline() : null;
+      const applied = await completeMediaEditor({ tab, timeoutMs,
+        appearanceTimeoutMs: visibleImage?.status === 'uploaded' ? 0 : timeoutMs, beforeWrite });
       if (applied.kind === 'applied') milestone('media_applied', { dialog_closed: true });
     } catch {
       return outcome(
@@ -586,6 +602,23 @@ async function runInlineImageAttempt({
     return outcome('uncertain', 'unknown', 'inline_alt_unverified', afterUpload);
   }
 
+  // Preserve the recovery marker until the current image, not merely a closed
+  // dialog, confirms the saved description. No full article scan is needed.
+  if (typeof probeInline === 'function') {
+    try {
+      const persisted = await waitForStableHostObservation({
+        observe: probeInline, timeoutMs: stabilityTimeoutMs, pollMs, deadlineExceeded,
+        isStable: (value) => value?.status === 'uploaded'
+          && value.alt_text === command.payload.asset.alt_text
+      });
+      if (persisted?.status !== 'uploaded' || persisted.alt_text !== command.payload.asset.alt_text) {
+        return outcome('uncertain', 'unknown', 'inline_alt_unverified', afterUpload);
+      }
+    } catch {
+      return outcome('uncertain', 'unknown', 'inline_alt_unverified', afterUpload);
+    }
+  }
+
   if (localMedia?.anchor_present === true || anchorStillPresent(afterUpload, command)) {
     try {
       transaction.stage = 'anchor_focus';
@@ -601,24 +634,30 @@ async function runInlineImageAttempt({
       if (selection !== command.payload.anchor.marker) {
         return outcome('uncertain', 'unknown', 'anchor_context_changed', afterUpload);
       }
+      const anchorKey = await tab.playwright.evaluate(() =>
+        window.getSelection()?.anchorNode?.parentElement?.closest('[data-block="true"]')
+          ?.getAttribute('data-offset-key') ?? null, { readAnchorKey: true });
       transaction.stage = 'anchor_delete';
       beforeWrite();
       await tab.cua.keypress({ keys: ['BACKSPACE'] });
-      if (localMedia?.media_after_anchor === true) {
-        const emptyAtCursor = await tab.playwright.evaluate(({ anchorIndex, mediaIndex }) => {
-          const root = document.querySelector('[data-testid="composer"][contenteditable="true"]');
-          const rows = Array.from(root?.querySelectorAll('[data-block="true"]') ?? []);
-          const empty = rows[anchorIndex];
-          const selection = window.getSelection();
-          return !!empty && empty.textContent === '' && selection?.isCollapsed === true
-            && !!selection.anchorNode && empty.contains(selection.anchorNode)
-            && mediaIndex === anchorIndex + 1 && !!rows[mediaIndex]?.querySelector('img');
-        }, { checkEmptyAnchor: true, anchorIndex: localMedia.anchor_dom_index, mediaIndex: localMedia.media_dom_index });
-        if (emptyAtCursor === true) {
-          beforeWrite();
-          await tab.cua.keypress({ keys: ['BACKSPACE'] });
-        }
-        // If focus moved, leave the harmless spacer; never delete other content.
+      // Delete only the empty block just created by this transaction. Never use
+      // a blanket second Backspace against an unverified caret or adjacent media.
+      const removable = typeof anchorKey === 'string' && await tab.playwright.evaluate(({ anchorKey }) => {
+        const selection = window.getSelection();
+        const row = selection?.anchorNode?.parentElement?.closest('[data-block="true"]');
+        const previous = row?.previousElementSibling;
+        const next = row?.nextElementSibling;
+        return selection?.isCollapsed === true
+          && row?.getAttribute('data-offset-key') === anchorKey
+          && row.textContent === ''
+          && !row.querySelector('img,video,button,[contenteditable="false"]')
+          && !!previous?.matches('[data-block="true"]')
+          && !previous.querySelector('img,video,[contenteditable="false"]')
+          && !!next?.querySelector('img');
+      }, { checkEmptyAnchor: true, anchorKey });
+      if (removable === true) {
+        beforeWrite();
+        await tab.cua.keypress({ keys: ['BACKSPACE'] });
       }
     } catch (error) {
       transaction.errors.push({ stage: transaction.stage, error: String(error) });
